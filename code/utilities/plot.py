@@ -1,6 +1,10 @@
 import matplotlib.pyplot as plt
+import json
 
-def display_challenge(challenge, solution=None, color_map='inferno'):
+training_challenge_dict = json.load(open('../data/RAW_DATA_DIR/arc-prize-2024/arc-agi_training_challenges.json'))
+training_solutions_dict = json.load(open('../data/RAW_DATA_DIR/arc-prize-2024/arc-agi_training_solutions.json'))
+
+def display_challenge(challenge_key, solution=None, color_map='inferno'):
     """
     Display the challenge inputs and outputs as a grid of images.
 
@@ -23,6 +27,9 @@ def display_challenge(challenge, solution=None, color_map='inferno'):
     None
         The function displays the plot using plt.show().
     """
+    challenge = training_challenge_dict[challenge_key]
+    solution = training_solutions_dict[challenge_key]       
+
     test = challenge['test']
     train = challenge['train']
 
