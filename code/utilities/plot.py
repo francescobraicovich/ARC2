@@ -1,10 +1,11 @@
 import matplotlib.pyplot as plt
 import json
+from utilities.transform import apply_transformations
 
 training_challenge_dict = json.load(open('../data/RAW_DATA_DIR/arc-prize-2024/arc-agi_training_challenges.json'))
 training_solutions_dict = json.load(open('../data/RAW_DATA_DIR/arc-prize-2024/arc-agi_training_solutions.json'))
 
-def display_challenge(challenge_key, solution=None, color_map='inferno'):
+def display_challenge(challenge_key, solution=None, color_map='inferno', transformations=None, kwargs=None):
     """
     Display the challenge inputs and outputs as a grid of images.
 
@@ -49,8 +50,13 @@ def display_challenge(challenge_key, solution=None, color_map='inferno'):
 
         ax_input = axs[i, 0]
         ax_output = axs[i, 1]
+
+        if transformations is not None:
+            input = apply_transformations(input, transformations, kwargs)
+            output = apply_transformations(output, transformations, kwargs)
         
         # Plot the array as an image
+        print(input)
         im_input = ax_input.imshow(input, cmap=color_map)
         im_output = ax_output.imshow(output, cmap=color_map)
 
