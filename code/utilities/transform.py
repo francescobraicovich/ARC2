@@ -34,6 +34,10 @@ def convert_axis(array, axis):
     axis = int(axis % 1)
     return axis
 
+def convert_color(array, color):
+    color = int(color % 9)
+    return color
+
 def transpose(array):
     array = convert_to_array(array)
     return np.transpose(array)
@@ -68,8 +72,14 @@ def alt_drag(array, pos1, pos2):
     return array
 
 def flip(array, axis):
-    print('original array:', array)
     array = convert_to_array(array)
     array = np.flip(array, axis)
-    print('flipped array:', array)
+    return array
+
+def color_cell(array, pos, color):
+    array = convert_to_array(array)
+    pos = convert_position(array, pos)
+    color = convert_color(array, color)
+    i, j = pos // np.shape(array)[1], pos % np.shape(array)[1]
+    array[i, j] = color
     return array
