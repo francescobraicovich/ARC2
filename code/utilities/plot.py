@@ -56,7 +56,6 @@ def display_challenge(challenge_key, solution=None, color_map='inferno', transfo
             output = apply_transformations(output, transformations, kwargs)
         
         # Plot the array as an image
-        print(input)
         im_input = ax_input.imshow(input, cmap=color_map)
         im_output = ax_output.imshow(output, cmap=color_map)
 

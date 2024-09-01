@@ -87,7 +87,9 @@ def color_cell(array, pos, color):
 def crop(array, pos1, pos2):
     array = convert_to_array(array)
     pos1, pos2 = convert_position(array, pos1), convert_position(array, pos2)
+    if pos1 > pos2:
+        pos1, pos2 = pos2, pos1
     i1, j1 = pos1 // np.shape(array)[1], pos1 % np.shape(array)[1]
     i2, j2 = pos2 // np.shape(array)[1], pos2 % np.shape(array)[1]
-
-    return array[i1:i2, j1:j2]
+    array = array[i1:i2+1, j1:j2+1]
+    return array
