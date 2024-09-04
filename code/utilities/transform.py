@@ -1,6 +1,107 @@
 
 import numpy as np
 
+
+def select_by_color(array, color):
+    # mask elements of the array
+    mask = array == color
+    return mask
+
+def select_by_color_and_geometry(array, color, l1, l2):
+
+    """
+    This function selects the elements of the array that are of a certain color and have a certain geometry.
+    If more than one selection is possible, both are returned. Both will be kept as a possible transformation.
+    The utility function will then have to decide which one to keep. 
+    """
+
+    # mask elements of the array
+    color_mask = select_by_color(array, color)
+    indices_color = np.where(color_mask) # indices of the elements of the array that are of the color we are looking for
+
+    all_geometries = []
+
+    # iterate over the indices of the elements of the array that are of the color we are looking for 
+    # to find all matching geometries of the color we are looking for. 
+    for i, j in zip(*indices_color):
+        
+        delta_i = l1
+        delta_j = l2
+
+        new_i = i + delta_i
+        new_j = j + delta_j
+
+        new_i_in_bounds = new_i >= 0 and new_i < array.shape[0]
+        new_j_in_bounds = new_j >= 0 and new_j < array.shape[1]
+
+        if new_i_in_bounds and new_j_in_bounds: # if the new indices are in bounds, we can select the geometry
+            geometry = color_mask[i:new_i, j:new_j] # select the geometry in the color mask
+
+            if np.sum(geometry) == l1*l2: # if the geometry is all of the color we are looking for, we can return it
+                all_geometries.append((i, j, new_i, new_j)) # return the indices of the geometry
+
+    def overlap(geometry1, geometry2):
+        """
+        Check if two geometries overlap.
+        """
+        i1, j1, new_i1, new_j1 = geometry1
+        i2, j2, new_i2, new_j2 = geometry2
+
+        # check if the geometries overlap
+        overlap_i = (i1 >= i2 and i1 <= new_i2) or (new_i1 >= i2 and new_i1 <= new_i2) or (i2 >= i1 and i2 <= new_i1) or (new_i2 >= i1 and new_i2 <= new_i1)
+        overlap_j = (j1 >= j2 and j1 <= new_j2) or (new_j1 >= j2 and new_j1 <= new_j2) or (j2 >= j1 and j2 <= new_j1) or (new_j2 >= j1 and new_j2 <= new_j1)
+
+        return overlap_i and overlap_j
+
+    geometries_combinations = set() # store all possible combinations of the geometries that do not overlap
+    
+    # find all possible combinations of the geometries that do not overlap
+    for i, geometry1 in enumerate(all_geometries): # iterate over all geometries
+        geometry_combination_i = set(i) # store the indices of the geometries that do not overlap with geometry1
+        
+        for j, geometry2 in enumerate(all_geometries): # iterate over all geometries again
+            overlap_found = False
+            for k in geometry_combination_i: # iterate over the indices of the geometries that are already in the combination
+                selected_geometry = all_geometries[k] # get the geometry that is already in the combination
+                if overlap(geometry2, selected_geometry): # check if the geometry2 overlaps with the selected geometry
+                    overlap_found = True # if there is an overlap, we break
+                    break
+            if not overlap_found: # if there is no overlap, we add the geometry to the combination
+                geometry_combination_i.add(j) 
+        geometry_combination_i = frozenset(geometry_combination_i) # convert the set to a frozenset to be able to add it to the set of geometries combinations
+        geometries_combinations.add(geometry_combination_i) # add the combination to the set of geometries combinations
+
+    geometries_combinations = list(geometries_combinations) # convert the set to a list
+    return geometries_combinations
+
+
+
+
+
+
+
+        
+
+
+
+
+
+            
+
+                    
+
+        
+
+
+
+
+
+
+
+
+
+
+
 def apply_transformations(array, transformations, kwargs):
     """
     Apply a series of transformations to an array.
