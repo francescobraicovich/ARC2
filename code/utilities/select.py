@@ -76,24 +76,27 @@ def select_by_color_and_geometry(array, target_color, height, width, display=Fal
     Returns all possible non-overlapping combinations of matching geometries.
     """
     color_mask = select_by_color(array, target_color)
+    
+    # if there are no elements with the target color, we return the color mask (all false)
+    if np.sum(color_mask) == 0:
+        return color_mask
+    
     matching_geometries = find_matching_geometries(color_mask, height, width)
+
+    if len(matching_geometries) == 0:
+        return np.zeros_like(color_mask, dtype=bool)
     
     if display:
         plot_geometries(array, matching_geometries)
 
     geometry_combinations = find_non_overlapping_combinations(matching_geometries)
 
-    print('geometry_combinations: ', geometry_combinations)
-    print('matching geometries: ', matching_geometries)
-
     if display:
         plot_geometry_combinations(array, geometry_combinations, matching_geometries)
     
-    num_combinations = len(matching_geometries)
+    num_combinations = len(geometry_combinations)
     geometries_array = np.zeros((num_combinations, array.shape[0], array.shape[1]), dtype=bool)
-    
     for k, combination in enumerate(geometry_combinations):
-        combination_array = geometries_array[k]
         for index in combination:
             i1, j1, i2, j2 = matching_geometries[index]
             geometries_array[k, i1:i2, j1:j2] = True
