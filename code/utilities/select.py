@@ -203,7 +203,7 @@ def select_by_color_and_area(array, target_color, area):
     
     return selected_geometries
 
-def select_by_color_and_adjacent(array, target_color):
+def select_by_color_and_adjacent(array, target_color, display=False):
     """
     This function selects geometries of the same color that are adjacent to each other.
     Output: a list of arrays (masks) with the selected geometries.
@@ -233,11 +233,13 @@ def select_by_color_and_adjacent(array, target_color):
     for k, geometry in enumerate(separated_geometries):
         combination_mask = np.zeros(array.shape, dtype=bool)
         for index in geometry:
-            #print('index:', index)
             i, j = index
-            #print('i:', i, 'j:', j)
             i, j = tuple(index)
             combination_mask[i, j] = True
+        if display:
+            plt.imshow(combination_mask, cmap='inferno')
+            plt.title(f'Geometry {k}')
+            plt.show()
         selected_geometries[k] = combination_mask
 
     return selected_geometries
