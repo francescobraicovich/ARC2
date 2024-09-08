@@ -75,6 +75,13 @@ def select_by_color_and_geometry(array, target_color, height, width, display=Fal
     Select elements of the array with a specific color and geometry. Works for rectangular geometries.
     Returns all possible non-overlapping combinations of matching geometries.
     """
+
+    if height < 1 or width < 1:
+        return np.zeros_like(array, dtype=bool)
+    
+    if height > array.shape[0] or width > array.shape[1]:
+        return np.zeros_like(array, dtype=bool)
+
     color_mask = select_by_color(array, target_color)
     
     # if there are no elements with the target color, we return the color mask (all false)
@@ -214,6 +221,9 @@ def select_by_color_and_adjacent(array, target_color, display=False):
     color_mask = select_by_color(array, target_color)
     is_where_true, js_where_true = np.where(color_mask)
 
+    if np.sum(color_mask) == 0:
+        return np.zeros_like(color_mask, dtype=bool)
+
     separated_geometries = [] # store the separated geometries
     separated_geometries.append({(is_where_true[0], js_where_true[0])}) # add the first element
     
@@ -253,16 +263,15 @@ def select_adjacent_to_color(array, target_color, num_adjacent_cells, display=Fa
     This function selects cells that are adjacent to a specific color wiht a specific number of points of contact.
     """
 
-    print('array shape: ', array.shape)
+    if num_adjacent_cells < 0 or num_adjacent_cells > 4:
+        false_mask = np.zeros_like(array, dtype=bool)
+        return false_mask
 
     color_mask = select_by_color(array, target_color)
     invers_color_mask = ~color_mask
 
     # create a padded color mask
     padded_color_mask = np.pad(color_mask, ((1, 1), (1, 1)), mode='constant', constant_values=0)
-
-    print('padded color mask: ', padded_color_mask)
-    print('padded color mask shape: ', padded_color_mask.shape)
 
     # convolute the color mask with the kernel
     kernel = np.array([[0, 1, 0], [1, 0, 1], [0, 1, 0]])
