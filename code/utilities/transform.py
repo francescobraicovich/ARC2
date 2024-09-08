@@ -2,98 +2,32 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-
-
-def apply_transformations(array, transformations, kwargs):
+def plot_array(array):
     """
-    Apply a series of transformations to an array.
+    Plot the input array as an image.
 
     Parameters:
-    - array: The input array to be transformed.
-    - transformations: A list of transformation functions to be applied to the array.
-    - kwargs: A list of keyword arguments for each transformation function. If None, no keyword arguments will be passed.
-
-    Returns:
-    - The transformed array.
-
+    - array: The input array to be plotted.
     """
-    for j, transformation in enumerate(transformations):
-        if kwargs is not None:
-            current_kwargs = kwargs[j] if kwargs is not None else {}
-            array = transformation(array, **current_kwargs)
-        else:
-            array = transformation(array)
-    return array
+    plt.imshow(array, cmap='inferno')
+    plt.show()
 
-def convert_to_array(array):
-    """
-    Convert input to a NumPy array of integers.
+def find_smallest_rectangle(array, mask):
 
-    Parameters:
-    - array: Input data to be converted.
+    is_mask, js_mask  = np.where(mask)
+    i_min, i_max = min(is_mask), max(is_mask)
+    j_min, j_max = min(js_mask), max(js_mask)
 
-    Returns:
-    - NumPy array of integers.
-    """
-    return np.array(array, dtype=int)
+    return i_min, j_min, i_max, j_max
 
-def convert_position(array, pos):
-    """
-    Convert a position to a valid index within the array.
+def find_smallest_square(array, mask):
 
-    Parameters:
-    - array: The input array.
-    - pos: The position to be converted.
+    i_min, j_min, i_max, j_max = find_smallest_rectangle(array, mask)
+    size = max(i_max - i_min + 1, j_max - j_min + 1)
 
-    Returns:
-    - An integer representing a valid position within the array.
-    """
-    num_cells = np.prod(np.shape(array))
-    pos = int(pos % num_cells)
-    return pos
+    return i_min, j_min, i_min + size - 1, j_min + size - 1
 
-def convert_axis(array, axis):
-    """
-    Convert an axis value to either 0 or 1.
-
-    Parameters:
-    - array: The input array (unused in this function).
-    - axis: The axis value to be converted.
-
-    Returns:
-    - An integer (0 or 1) representing the axis.
-    """
-    axis = int(axis % 2)
-    return axis
-
-def convert_color(array, color):
-    """
-    Convert a color value to a valid color index (0-8).
-
-    Parameters:
-    - array: The input array (unused in this function).
-    - color: The color value to be converted.
-
-    Returns:
-    - An integer (0-8) representing a valid color index.
-    """
-    color = int(color % 9)
-    return color
-
-def transpose(array):
-    """
-    Transpose the input array.
-
-    Parameters:
-    - array: The input array to be transposed.
-
-    Returns:
-    - Transposed NumPy array.
-    """
-    array = convert_to_array(array)
-    return np.transpose(array)
-
-def rotate(array, n):
+def rotate(array, mask, n, display=False):
     """
     Rotate the input array 90 degrees n times counterclockwise.
 
@@ -104,10 +38,17 @@ def rotate(array, n):
     Returns:
     - Rotated NumPy array.
     """
-    array = convert_to_array(array)
-    return np.rot90(array, n)
 
-def delete_cell(array, pos):
+    i_min, j_min, i_max, j_max = find_smallest_square(array, mask)
+
+    array[i_min:i_max+1, j_min:j_max+1] = np.rot90(array[i_min:i_max+1, j_min:j_max+1], n)
+
+    if display:
+        plot_array(array)
+    
+    return array
+
+def delete(array, mask, display=False):
     """
     Set the value of a cell at the given position to 0.
 
@@ -118,52 +59,57 @@ def delete_cell(array, pos):
     Returns:
     - Modified NumPy array with the specified cell set to 0.
     """
-    array = convert_to_array(array)
-    pos = convert_position(array, pos)
-    i, j = pos // np.shape(array)[1], pos % np.shape(array)[1]
-    array[i, j] = 0
+    array[mask] = 0
+    if display:
+        plot_array(array)
     return array
 
-def drag(array, pos1, pos2):
-    """
-    Move a cell from pos1 to pos2, leaving the original position empty.
+def drag(array, mask, rel_pos_i, rel_pos_j, display=True):
+    
+    i_min, j_min, i_max, j_max = find_smallest_rectangle(array, mask)
+    i_min_new, j_min_new, i_max_new, j_max_new = i_min + rel_pos_i, j_min + rel_pos_j, i_max + rel_pos_i, j_max + rel_pos_j
 
-    Parameters:
-    - array: The input array.
-    - pos1: The original position of the cell to be moved.
-    - pos2: The destination position for the cell.
+    if i_min_new < 0 or j_min_new < 0 or i_max_new >= np.shape(array)[0] or j_max_new >= np.shape(array)[1]:
+        return array
+    
+    indices = np.where(mask)
+    is_mask, js_mask = indices
 
-    Returns:
-    - Modified NumPy array with the cell moved.
-    """
-    array = convert_to_array(array)
-    pos1, pos2 = convert_position(array, pos1), convert_position(array, pos2)
-    i1, j1 = pos1 // np.shape(array)[1], pos1 % np.shape(array)[1]
-    i2, j2 = pos2 // np.shape(array)[1], pos2 % np.shape(array)[1]
+    new_is_mask = is_mask + rel_pos_i
+    new_js_mask = js_mask + rel_pos_j
 
-    array[i2, j2] = array[i1, j1]
-    array[i1, j1] = 0
+    copy = np.copy(array)
+    copy[indices] = 0
+    copy[new_is_mask, new_js_mask] = array[is_mask, js_mask]
+
+    if display:
+        plot_array(copy)
+
+    return copy
+
+def alt_drag(array, mask, rel_pos_i, rel_pos_j, display=True):
+
+    i_min, j_min, i_max, j_max = find_smallest_rectangle(array, mask)
+    i_min_new, j_min_new, i_max_new, j_max_new = i_min + rel_pos_i, j_min + rel_pos_j, i_max + rel_pos_i, j_max + rel_pos_j
+
+    if i_min_new < 0 or j_min_new < 0 or i_max_new >= np.shape(array)[0] or j_max_new >= np.shape(array)[1]:
+        return array
+    
+    indices = np.where(mask)
+    is_mask, js_mask = indices
+
+    new_is_mask = is_mask + rel_pos_i
+    new_js_mask = js_mask + rel_pos_j
+
+    array[new_is_mask, new_js_mask] = array[is_mask, js_mask]
+
+    if display:
+        plot_array(array)
+
     return array
 
-def alt_drag(array, pos1, pos2):
-    """
-    Copy a cell from pos1 to pos2, leaving the original cell unchanged.
 
-    Parameters:
-    - array: The input array.
-    - pos1: The position of the cell to be copied.
-    - pos2: The destination position for the copy.
-
-    Returns:
-    - Modified NumPy array with the cell copied.
-    """
-    array = convert_to_array(array)
-    i1, j1 = pos1 // np.shape(array)[1], pos1 % np.shape(array)[1]
-    i2, j2 = pos2 // np.shape(array)[1], pos2 % np.shape(array)[1]
-
-    array[i2, j2] = array[i1, j1]
-    return array
-
+    
 def flip(array, axis):
     """
     Flip the array along the specified axis.
