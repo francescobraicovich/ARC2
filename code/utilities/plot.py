@@ -1,6 +1,5 @@
 import matplotlib.pyplot as plt
 import json
-from utilities.transform import apply_transformations
 
 training_challenge_dict = json.load(open('../data/RAW_DATA_DIR/arc-prize-2024/arc-agi_training_challenges.json'))
 training_solutions_dict = json.load(open('../data/RAW_DATA_DIR/arc-prize-2024/arc-agi_training_solutions.json'))
@@ -52,8 +51,9 @@ def display_challenge(challenge_key, solution=None, color_map='inferno', transfo
         ax_output = axs[i, 1]
 
         if transformations is not None:
-            input = apply_transformations(input, transformations, kwargs)
-            output = apply_transformations(output, transformations, kwargs)
+            #input = apply_transformations(input, transformations, kwargs)
+            #output = apply_transformations(output, transformations, kwargs)
+            pass
         
         # Plot the array as an image
         im_input = ax_input.imshow(input, cmap=color_map)
