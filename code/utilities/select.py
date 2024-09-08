@@ -72,7 +72,7 @@ def select_by_color(array, color):
 
 def select_by_color_and_geometry(array, target_color, height, width, display=False):
     """
-    Select elements of the array with a specific color and geometry.
+    Select elements of the array with a specific color and geometry. Works for rectangular geometries.
     Returns all possible non-overlapping combinations of matching geometries.
     """
     color_mask = select_by_color(array, target_color)
@@ -187,6 +187,8 @@ def geometries_overlap(geo1, geo2):
     col_overlap = (c1 <= c2 < c1_end) or (c2 <= c1 < c2_end)
     
     return row_overlap and col_overlap
+
+""""
 def select_by_color_and_area(array, target_color, area):
 
     color_mask = select_by_color(array, target_color)
@@ -202,6 +204,7 @@ def select_by_color_and_area(array, target_color, area):
             selected_geometries.append(geometry)
     
     return selected_geometries
+"""
 
 def select_by_color_and_adjacent(array, target_color, display=False):
     """
@@ -243,3 +246,44 @@ def select_by_color_and_adjacent(array, target_color, display=False):
         selected_geometries[k] = combination_mask
 
     return selected_geometries
+
+def select_adjacent_to_color(array, target_color, num_adjacent_cells, display=False):
+
+    """
+    This function selects cells that are adjacent to a specific color wiht a specific number of points of contact.
+    """
+
+    print('array shape: ', array.shape)
+
+    color_mask = select_by_color(array, target_color)
+    invers_color_mask = ~color_mask
+
+    # create a padded color mask
+    padded_color_mask = np.pad(color_mask, ((1, 1), (1, 1)), mode='constant', constant_values=0)
+
+    print('padded color mask: ', padded_color_mask)
+    print('padded color mask shape: ', padded_color_mask.shape)
+
+    # convolute the color mask with the kernel
+    kernel = np.array([[0, 1, 0], [1, 0, 1], [0, 1, 0]])
+
+    convoluted_mask = np.zeros_like(padded_color_mask, dtype=bool)
+
+    for i in range(padded_color_mask.shape[0]-2):
+        for j in range(padded_color_mask.shape[1]-2):
+            convoluted_mask[i, j] = np.sum(padded_color_mask[i:i+3, j:j+3] * kernel) == num_adjacent_cells
+
+    # remove the padding
+    convoluted_mask = convoluted_mask[:-2, :-2]
+    convoluted_mask = convoluted_mask & invers_color_mask
+
+    if display:
+        plt.imshow(convoluted_mask, cmap='inferno')
+        plt.title('Selected geometries')
+        plt.show()
+
+    return convoluted_mask
+    
+
+
+    
