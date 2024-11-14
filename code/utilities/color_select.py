@@ -11,19 +11,19 @@ class ColorSelector:
         self.num_colors = num_colors
         self.all_colors = np.arange(num_colors)
         self.invalid_color = -1 # Return this value if the color is invalid so the selection doesn't select anything.
+        self.big_number = 1000000
 
     def mostcolor(self, grid: np.ndarray) -> int:
         """ most common color """
         values = grid.flatten()
         counts = np.bincount(values, minlength=self.num_colors)
-        print(counts)
         return np.argmax(counts)
     
     def leastcolor(self, grid: np.ndarray) -> int:
         """ least common color """
         values = grid.flatten()
         counts = np.bincount(values, minlength=self.num_colors)
-        counts[counts == 0] = 10000000
+        counts[counts == 0] = self.big_number
         return np.argmin(counts)
     
     def rankcolor(self, grid: np.ndarray, rank: int) -> int:
