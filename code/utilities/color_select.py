@@ -11,7 +11,7 @@ class ColorSelector:
         self.num_colors = num_colors
         self.all_colors = np.arange(num_colors)
         self.invalid_color = -1 # Return this value if the color is invalid so the selection doesn't select anything.
-        self.big_number = 1000000
+        self.big_number = 1000000 # A big number to use for sorting colors by decreasing count (otherwise colors wihth 0 count will be selected).
 
     def mostcolor(self, grid: np.ndarray) -> int:
         """ most common color """
