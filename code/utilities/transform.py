@@ -1,6 +1,45 @@
 
 import numpy as np
 import matplotlib.pyplot as plt
+from checks import check_axis
+
+# Implemented methods:
+# - flip(grid, selection, axis): Flip the grid along the specified axis.
+# - delete(grid, selection): Set the value of the selected cells to 0.
+
+class Transformer:
+    def __init__(self):
+        pass
+
+    def create_grid3d(self, grid, selection):
+        num_selections = selection.shape[0]
+        grid_3d = np.stack([grid] * num_selections, axis=0)
+        return grid_3d
+
+    def flip(self, grid, selection, axis):
+        """
+        Flip the grid along the specified axis.
+        """
+        if check_axis(axis) == False:
+            return grid
+        grid_3d = self.create_grid3d(grid, selection)
+        grid_3d = np.flip(grid_3d, axis)
+        return grid_3d
+    
+    def delete(self, grid, selection):
+        """
+        Set the value of the selected cells to 0.
+        """
+        grid_3d = self.create_grid3d(grid, selection)
+        grid_3d[selection] = 0
+        return grid_3d
+    
+    def color(self, grid, selection, color_selection_method, color_selection_param):
+        """
+        Color the selected cells using the specified color selection method.
+        """
+        # TODO: Select the coloring method from the ColorSelector class, then color the selected cells.
+        return None
 
 def plot_array(array):
     """
@@ -81,23 +120,6 @@ def rotate(array, mask, n, display=False):
     if display:
         plot_array(array)
     
-    return array
-
-def delete(array, mask, display=False):
-    """
-    Set the value of a cell at the given position to 0.
-
-    Parameters:
-    - array: The input array.
-    - mask: The binary mask specifying the cells to be deleted.
-    - pos: The position of the cell to be deleted.
-
-    Returns:
-    - Modified NumPy array with the specified cell set to 0.
-    """
-    array[mask] = 0
-    if display:
-        plot_array(array)
     return array
 
 def drag(array, mask, row_shift, col_shift, display=True):
@@ -192,21 +214,6 @@ def alt_drag(array, mask, row_shift, col_shift, display=True):
         plot_array(array)
 
     # Return the modified array with the shifted region
-    return array
-
-def flip(array, axis):
-    """
-    Flip the array along the specified axis.
-
-    Parameters:
-    - array: The input array to be flipped.
-    - axis: The axis along which to flip (0 for vertical, 1 for horizontal).
-
-    Returns:
-    - Flipped NumPy array.
-    """
-    array = convert_to_array(array)
-    array = np.flip(array, axis)
     return array
 
 def color_cell(array, pos, color):
