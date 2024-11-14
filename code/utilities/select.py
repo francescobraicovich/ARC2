@@ -71,14 +71,13 @@ class Selector():
 
         self.display = display
         self.cmap = 'inferno'
-        
 
-    def select_color(self, problem:np.ndarray, color:int, display_overturn=None):
-        if not isinstance(problem, np.ndarray):
-            raise Exception('First argument of the function should be the problem array')
+    def select_color(self, grid:np.ndarray, color:int, display_overturn=None):
+        if not isinstance(grid, np.ndarray):
+            raise Exception('First argument of the function should be the grid array')
         if (not isinstance(color, int)) or (color < 0) or (color > 9):
             raise Exception('Second argument of the function shoud be the color int, with ')
-        mask = problem == color
+        mask = grid == color
         mask = np.reshape(mask, (-1, self.nrows, self.ncols))
         
         display = self.display
@@ -88,7 +87,7 @@ class Selector():
             self.plot_selection(mask)
         return mask
     
-    def select_colored_rectangle_combinations(self, problem:np.ndarray, color:int, height, width):
+    def select_colored_rectangle_combinations(self, grid:np.ndarray, color:int, height, width):
         """
         Select elements of the array with a specific color and geometry. Works for rectangular geometries.
         Returns all possible non-overlapping combinations of matching geometries.
@@ -97,8 +96,8 @@ class Selector():
         # This is computationally too expensive when width and height are small. We need to think of how to deal 
         # with small heights and widths. Implement the solution as checks for height and width values.
 
-        if not isinstance(problem, np.ndarray):
-            raise Exception('First argument of the function should be the problem array')
+        if not isinstance(grid, np.ndarray):
+            raise Exception('First argument of the function should be the grid array')
         if (not isinstance(color, int)) or (color < 0) or (color > 9):
             raise Exception('Second argument of the function shoud be the color int, with ')
         
@@ -106,7 +105,7 @@ class Selector():
             mask = np.zeros((1, self.nrows, self.ncols), dtype=bool)
             return mask
       
-        color_mask = self.select_color(problem, color, display_overturn=False)
+        color_mask = self.select_color(grid, color, display_overturn=False)
         color_mask = color_mask[0, :, :] # remove the first dimension
         
         # if there are no elements with the target color, we return the color mask (all false)
@@ -133,13 +132,13 @@ class Selector():
 
         return selection_array
     
-    def select_colored_separated_shapes(self, problem, color):
+    def select_colored_separated_shapes(self, grid, color):
 
         """
         This function selects all shapes of the same color that are not connected one to the other.
         Output: a list of arrays (masks) with the selected geometries.
         """
-        color_mask = self.select_color(problem, color, display_overturn=False)
+        color_mask = self.select_color(grid, color, display_overturn=False)
         color_mask = color_mask[0, :, :] # remove the first dimension
         is_where_true, js_where_true = np.where(color_mask)
 
@@ -177,17 +176,17 @@ class Selector():
             self.plot_selection(selection_array)
         return selection_array
     
-    def select_adjacent_to_color(self, problem, color, num_adjacent_cells):
+    def select_adjacent_to_color(self, grid, color, num_adjacent_cells):
 
         """
         This function selects cells that are adjacent to a specific color wiht a specific number of points of contact.
         """
 
         if num_adjacent_cells < 0 or num_adjacent_cells > 4:
-            false_mask = np.zeros_like(problem, dtype=bool)
+            false_mask = np.zeros_like(grid, dtype=bool)
             return false_mask
 
-        color_mask = self.select_color(problem, color, display_overturn=False)
+        color_mask = self.select_color(grid, color, display_overturn=False)
         color_mask = color_mask[0, :, :] # remove the first dimension
         invers_color_mask = ~color_mask
 
