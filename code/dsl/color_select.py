@@ -37,7 +37,7 @@ class ColorSelector:
         counts = np.bincount(values, minlength=self.num_colors)
         return np.argsort(-counts)[rank]
     
-    def rankshapecolor_nodiag(self, grid: np.ndarray, rank: int) -> int:
+    def rank_largest_shape_color_nodiag(self, grid: np.ndarray, rank: int) -> int:
         """ the color of the rank-th largest shape """
         unique_colors = np.unique(grid)
         num_colors = len(unique_colors)
@@ -55,6 +55,36 @@ class ColorSelector:
             biggest_count = np.max(counts)
             dimension_of_biggest_shape[i] = biggest_count
 
+        sorted_indices = np.argsort(-dimension_of_biggest_shape)
+        index = sorted_indices[rank]
+        color = unique_colors[index]
+        return color
+    
+    def rank_largest_shape_color_diag(self, grid: np.ndarray, rank: int) -> int:
+        """ The color of the rank-th largest shape, considering diagonal connections """
+        unique_colors = np.unique(grid)
+        num_colors = len(unique_colors)
+        if not check_integer(rank, 0, num_colors):
+            return self.invalid_color
+        
+        dimension_of_biggest_shape = np.zeros(num_colors, dtype=int)
+        
+        # Define connectivity for diagonal connections (8-connectivity for 2D grids)
+        connectivity = np.ones((3, 3), dtype=int)  # A 3x3 grid of ones includes diagonals
+        
+        for i, color in enumerate(unique_colors):
+            copied_grid = np.copy(grid)
+            color_mask = copied_grid == color
+            copied_grid[color_mask] = 1
+            copied_grid[~color_mask] = 0
+            
+            # Label connected regions with diagonal connectivity
+            labeled_grid, num_labels = label(copied_grid, structure=connectivity)
+            unique, counts = np.unique(labeled_grid, return_counts=True)
+            unique, counts = unique[1:], counts[1:]  # Remove the 0 label (background)
+            biggest_count = np.max(counts)
+            dimension_of_biggest_shape[i] = biggest_count
+        
         sorted_indices = np.argsort(-dimension_of_biggest_shape)
         index = sorted_indices[rank]
         color = unique_colors[index]
