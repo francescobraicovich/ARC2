@@ -1,6 +1,8 @@
 import numpy as np
 from dsl.utilities.checks import check_color_rank
 
+# ColorSelector class that contains methods to select colors from a grid.
+
 # Implemented methods:
 # - mostcolor(grid): Return the most common color in the grid.
 # - leastcolor(grid): Return the least common color in the grid.
@@ -10,7 +12,7 @@ class ColorSelector:
     def __init__(self, num_colors: int = 9):
         self.num_colors = num_colors
         self.all_colors = np.arange(num_colors)
-        self.invalid_color = -1 # Return this value if the color is invalid so the selection doesn't select anything.
+        self.invalid_color = -10 # Return this value if the color is invalid so the selection doesn't select anything.
         self.big_number = 1000000 # A big number to use for sorting colors by decreasing count (otherwise colors wihth 0 count will be selected).
 
     def mostcolor(self, grid: np.ndarray) -> int:
