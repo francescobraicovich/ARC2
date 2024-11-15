@@ -1,5 +1,6 @@
 import numpy as np
-from dsl.utilities.checks import check_color_rank
+from dsl.utilities.checks import check_color_rank, check_integer
+from scipy.ndimage import find_objects, label
 
 # ColorSelector class that contains methods to select colors from a grid.
 
@@ -36,4 +37,25 @@ class ColorSelector:
         counts = np.bincount(values, minlength=self.num_colors)
         return np.argsort(-counts)[rank]
     
-    
+    def rankshapecolor_nodiag(self, grid: np.ndarray, rank: int) -> int:
+        """ the color of the rank-th largest shape """
+        unique_colors = np.unique(grid)
+        num_colors = len(unique_colors)
+        if check_integer(rank, 0, num_colors) == False:
+            return self.invalid_color
+        dimension_of_biggest_shape = np.zeros(num_colors, dtype=int)
+        for i in range(num_colors):
+            copied_grid = np.copy(grid)
+            color_mask = copied_grid == unique_colors[i]
+            copied_grid[color_mask] = 1
+            copied_grid[~color_mask] = 0
+            labeled_grid, num_labels = label(copied_grid)
+            unique, counts = np.unique(labeled_grid, return_counts=True)
+            unique, counts = unique[1:], counts[1:] # Remove the 0 label (background)
+            biggest_count = np.max(counts)
+            dimension_of_biggest_shape[i] = biggest_count
+
+        sorted_indices = np.argsort(-dimension_of_biggest_shape)
+        index = sorted_indices[rank]
+        color = unique_colors[index]
+        return color

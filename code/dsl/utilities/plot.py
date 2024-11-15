@@ -1,10 +1,31 @@
 import matplotlib.pyplot as plt
 import json
+from matplotlib import colors
+import numpy as np
+
+# Define the colormap: -1 maps to white, other values follow the colors list
+cmap = colors.ListedColormap(
+    ['#FFFFFF',  # -1 corresponds to white
+     '#000000',  # 0
+     '#0074D9',  # 1
+     '#FF4136',  # 2
+     '#2ECC40',  # 3
+     '#FFDC00',  # 4
+     '#AAAAAA',  # 5
+     '#F012BE',  # 6
+     '#FF851B',  # 7
+     '#7FDBFF',  # 8
+     '#870C25']  # 9
+)
+
+# Define the boundaries for each color in the colormap
+bounds = [-1.5, -0.5, 0.5, 1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5, 9.5]
+norm = colors.BoundaryNorm(boundaries=bounds, ncolors=cmap.N)
 
 training_challenge_dict = json.load(open('../data/RAW_DATA_DIR/arc-prize-2024/arc-agi_training_challenges.json'))
 training_solutions_dict = json.load(open('../data/RAW_DATA_DIR/arc-prize-2024/arc-agi_training_solutions.json'))
 
-def display_challenge(challenge_key, solution=None, color_map='inferno', transformations=None, kwargs=None):
+def display_challenge(challenge_key, solution=None, color_map=cmap, transformations=None, kwargs=None):
     """
     Display the challenge inputs and outputs as a grid of images.
 
@@ -56,8 +77,8 @@ def display_challenge(challenge_key, solution=None, color_map='inferno', transfo
             pass
         
         # Plot the array as an image
-        im_input = ax_input.imshow(input, cmap=color_map)
-        im_output = ax_output.imshow(output, cmap=color_map)
+        im_input = ax_input.imshow(input, cmap=color_map, norm=norm)
+        im_output = ax_output.imshow(output, cmap=color_map, norm=norm)
 
         # remove labels
         ax_input.set_xticks([])
@@ -76,8 +97,8 @@ def display_challenge(challenge_key, solution=None, color_map='inferno', transfo
         ax_input = axs[-1, 0]
         ax_output = axs[-1, 1]
 
-        im_input = ax_input.imshow(input, cmap=color_map)
-        im_output = ax_output.imshow(output, cmap=color_map)
+        im_input = ax_input.imshow(input, cmap=color_map, norm=norm)
+        im_output = ax_output.imshow(output, cmap=color_map, norm=norm)
 
         ax_input.set_title(f"Test Input")
         ax_output.set_title(f"Test Output")
@@ -110,11 +131,9 @@ def plot_selection(selection_mask):
     # Hide any unused subplots
     for idx in range(num_selections, len(axs)):
         axs[idx].axis('off')
-
     plt.show()
 
-def plot_grid(grid_3d):
-    cmap = 'inferno'
+def plot_grid_3d(grid_3d):
     num_transformations = grid_3d.shape[0] # Number of transformations to plot
 
     # Calculate the number of rows and columns for the subplots
@@ -125,7 +144,7 @@ def plot_grid(grid_3d):
     axs = axs.flatten() if num_transformations > 1 else [axs]
 
     for idx, grid in enumerate(grid_3d):
-        axs[idx].imshow(grid, cmap=cmap)
+        axs[idx].imshow(grid, cmap=cmap, norm=norm)
         axs[idx].set_title(f'Transformation on selection {idx}')
         axs[idx].axis('off')
 
@@ -134,3 +153,9 @@ def plot_grid(grid_3d):
         axs[idx].axis('off')
 
     plt.show()
+
+def plot_grid(grid):
+    # add a dimension to the grid to make it 3D
+    grid_3d = np.expand_dims(grid, axis=0)
+    plot_grid_3d(grid_3d)
+
