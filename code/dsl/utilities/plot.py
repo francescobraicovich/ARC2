@@ -113,7 +113,7 @@ def plot_selection(selection_mask):
 
     plt.show()
 
-def plot_transformed(grid_3d):
+def plot_grid(grid_3d):
     cmap = 'inferno'
     num_transformations = grid_3d.shape[0] # Number of transformations to plot
 
@@ -126,7 +126,7 @@ def plot_transformed(grid_3d):
 
     for idx, grid in enumerate(grid_3d):
         axs[idx].imshow(grid, cmap=cmap)
-        axs[idx].set_title(f'Transformation {idx}')
+        axs[idx].set_title(f'Transformation on selection {idx}')
         axs[idx].axis('off')
 
     # Hide any unused subplots
