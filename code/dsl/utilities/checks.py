@@ -4,6 +4,7 @@
 # - check_axis(axis): Check if the axis is valid (1 or 2). Returns True if valid, False otherwise.
 # - check_color_rank(rank): Check if the color rank is valid. Returns True if valid, False otherwise.
 # - check_color(color): Check if the color is valid. Returns True if valid, False otherwise.
+# - check_num_rotations(num_rotations): Check if the number of rotations is valid. Returns True if valid, False otherwise.
 
 def check_integer(value, minimum, maximum):
     """
