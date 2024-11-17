@@ -63,23 +63,21 @@ class Transformer:
         grid_3d[~bounding_rectangle] = -1
         return grid_3d
     
-    def color(self, grid, selection, color_selection_method, color_selection_param = None):
+    def color(self, grid, selection, color_selected):
         """
-        Color the selected cells using the specified color selection method.
+        Apply a color transformation (color_selected) to the selected cells (selection) in the grid and return a new 3D grid.
         """
-        from color_select import ColorSelector
-        color_selector= ColorSelector()
+        grid_3d = create_grid3d(grid, selection)
 
-        if color_selection_param is not None: # For methods that require a parameter
-            color_value = color_selection_method(grid, color_selection_param)
-        else: # For methods that don't require a parameter
-            color_value = color_selection_method(grid)
+        for idx, mask in enumerate(selection):
+            grid_layer = grid.copy()
+            grid_layer[mask == 1] = color_selected
+            grid_3d[idx] = grid_layer
 
-        grid_3d = self.create_grid3d(grid, selection)
-        grid_3d[selection] = color_value
         return grid_3d
+
     
-    def fill_with_color(self, grid, color, fill_color): #change to take a selection if we want to
+    def fill_with_color(self, grid, color, fill_color): #change to take a selection and not do it alone if we want to + 3d or 2d ?
         '''
         Fill all holes inside the single connected shape of the specified color
         and return the modified 2D grid.
