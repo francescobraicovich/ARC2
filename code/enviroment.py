@@ -2,13 +2,13 @@ import numpy as np
 import random
 from dsl.utilities.padding import pad_grid, unpad_grid
 
-def extract_states(training_grid0, training_grid1):
+def extract_states(training_grid0, training_grid1, dim):
     """
     Extract the current and target states from the training grids.
     """
-    current_state0 = training_grid0[:30, :30] # get the current state before the action
-    current_state1 = training_grid1[:30, :30] # get the current state after the action
-    target_state = training_grid0[:30, 30:] # get the target state
+    current_state0 = training_grid0[:, :dim] # get the current state before the action
+    current_state1 = training_grid1[:, :dim] # get the current state after the action
+    target_state = training_grid0[:, dim:] # get the target state
     
     # Remove padding
     current_state0 = unpad_grid(current_state0)
@@ -19,15 +19,18 @@ def extract_states(training_grid0, training_grid1):
 
 
 class ARCEnviroment():
-    def __init__(self, challenge_dictionary, solution_dictionary):
+    def __init__(self, challenge_dictionary, dim=30):
         self.challenge_dictionary = challenge_dictionary
         self.num_challenges = len(challenge_dictionary)
+        self.dim = dim # maximum dimension of the problem
 
         # reward variables
         self.step_penalty = -1
         self.maximum_similarity = 50
         self.completed_challenge_reward = 25
 
+        # Initialize current training grid
+        self.current_training_grid = self.get_random_challenge()
 
     def get_random_challenge(self):
         """
@@ -47,8 +50,8 @@ class ARCEnviroment():
         return training_grid
     
     def reset(self):
-        self.training_grid = self.get_random_challenge()
-        return self.training_grid
+        self.current_training_grid = self.get_random_challenge()
+        return self.current_training_grid
     
     def shape_reward(self, current_state0, current_state1, target_state):
         """
@@ -90,8 +93,7 @@ class ARCEnviroment():
             # The agent changed the shape of the grid, and it is the correct shape
             else:
                 return 5, False
-        
-    
+          
     def similarity_reward(self, current_state0, current_state1, target_state):
         """
         Reward the agent based on the similarity of the grid.
@@ -110,12 +112,26 @@ class ARCEnviroment():
         """
 
         shape_reward, shapes_agree = self.shape_reward(current_state0, current_state1, target_state)
-        if not shapes_agree:
+        if not shapes_agree: # If the shapes do not agree, we return the shape reward
             return shape_reward
         
+        # If the shapes agree, we compute the similarity reward
         similarity_reward = self.similarity_reward(current_state0, current_state1, target_state)
+        
+        # If the agent has completed the challenge, we return the completed challenge reward
+        if np.all(current_state1 == target_state):
+            return shape_reward + similarity_reward + self.completed_challenge_reward
+        
+        # If the agent has not completed the challenge, we return the sum of the shape and similarity rewards
         return shape_reward + similarity_reward + self.step_penalty
 
     def step(self, action):
-        # TODO: Implement the step function
+        dim = self.dim        
+        current_state0 = self.current_training_grid[:, :dim]
+
+        # Apply the action to the current state
+        current_state1 = action(current_state0)
+
+        
+
         pass
