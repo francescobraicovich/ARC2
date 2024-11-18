@@ -2,6 +2,7 @@ import numpy as np
 from dsl.utilities.checks import check_axis, check_num_rotations
 from dsl.utilities.plot import plot_selection, plot_grid
 from dsl.utilities.transformation_utilities import create_grid3d, find_bounding_rectangle, find_bounding_square
+from dsl.color_select import ColorSelector
 from dsl.select import Selector
 
 
@@ -18,6 +19,7 @@ from dsl.select import Selector
 # - color(grid, selection, color_selected): Apply a color transformation (color_selected) to the selected cells (selection) in the grid and return a new 3D grid.   
 # - copy_paste(grid, selection, shift_x, shift_y): Shift the selected cells in the grid by (shift_x, shift_y).
 # - cut_paste(grid, selection, shift_x, shift_y): Shift the selected cells in the grid by (shift_x, shift_y) and set the original cells to 0.
+# - change_background_color(grid, selection, new_color): Change the background color of the grid to the specified color.
 
 class Transformer:
     def __init__(self):
@@ -156,6 +158,18 @@ class Transformer:
         grid_3d_f = - grid_3d_o + grid_3d
 
         return grid_3d_f
+    
+    def change_background_color(self, grid, selection, new_color):
+        '''
+        Change the background color of the grid to the specified color.
+        ''' 
+        grid_f_w = grid.copy()
+        color_selector = ColorSelector()
+        background_color = color_selector.mostcolor(grid)
+        grid_f_w[grid_f_w == background_color] = new_color
+        grid3d = create_grid3d(grid_f_w,selection)
+        
+        return grid3d
 
 
 
