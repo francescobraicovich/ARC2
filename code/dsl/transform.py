@@ -170,6 +170,18 @@ class Transformer:
         grid3d = create_grid3d(grid_f_w,selection)
         
         return grid3d
+    
+    def change_selection_to_background_color(self, grid, selection):
+        '''
+        Change the selected cells in the grid to the background color.
+        ''' 
+        color_selector = ColorSelector()
+        background_color = color_selector.mostcolor(grid)
+        grid_3d = create_grid3d(grid, selection)
+        for idx in range(selection.shape[0]):
+            grid_3d[idx][selection[idx] == 1] = background_color
 
+        return grid_3d
 
+ 
 
