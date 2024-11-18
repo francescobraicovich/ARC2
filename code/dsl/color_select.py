@@ -59,3 +59,23 @@ class ColorSelector:
         index = sorted_indices[rank]
         color = unique_colors[index]
         return color
+
+    def palette(self, grid: np.ndarray) -> set:
+        """Return the set of unique colors in the grid."""
+        return set(np.unique(grid))
+    
+    def numcolors(self, grid: np.ndarray) -> int:
+        """Return the number of unique colors in the grid."""
+        return len(palette(grid))
+    
+    def colorcount(self, grid: np.ndarray, value: int) -> int:
+        """Return the number of cells with the given color."""
+        return np.sum(grid == value)
+    
+
+    
+    
+    
+    
+    
+    
