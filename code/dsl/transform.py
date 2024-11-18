@@ -2,16 +2,19 @@ import numpy as np
 from dsl.utilities.checks import check_axis, check_num_rotations
 from dsl.utilities.plot import plot_selection, plot_grid
 from dsl.utilities.transformation_utilities import create_grid3d, find_bounding_rectangle, find_bounding_square
+from dsl.select import Selector
+
 
 # Transformer class that contains methods to transform the grid.
 # The grid is a 2D numpy array, and the selection is a 3D boolean mask.
 # Hence, the grid must be stacked along the third dimension to create a 3D grid, using the create_grid3d method.
 
-# Implemented methods:
+# Implemented methods:AAA
 # - flip(grid, selection, axis): Flip the grid along the specified axis.
 # - delete(grid, selection): Set the value of the selected cells to 0.
 # - rotate(grid, selection, num_rotations): Rotate the selected cells 90 degrees n times counterclockwise.
 # - crop(grid, selection): Crop the grid to the bounding rectangle around the selection. Use -1 as the value for cells outside the selection.
+# - fill_with_color(grid, color, fill_color): Fills any shape of a given color with the fill_color
 
 class Transformer:
     def __init__(self):
@@ -60,9 +63,42 @@ class Transformer:
         grid_3d[~bounding_rectangle] = -1
         return grid_3d
     
-    def color(self, grid, selection, color_selection_method, color_selection_param):
+    def color(self, grid, selection, color_selected):
         """
-        Color the selected cells using the specified color selection method.
+        Apply a color transformation (color_selected) to the selected cells (selection) in the grid and return a new 3D grid.
         """
-        # TODO: Select the coloring method from the ColorSelector class, then color the selected cells.
-        return None
+        grid_3d = create_grid3d(grid, selection)
+
+        for idx, mask in enumerate(selection):
+            grid_layer = grid.copy()
+            grid_layer[mask == 1] = color_selected
+            grid_3d[idx] = grid_layer
+
+        return grid_3d
+
+    
+    def fill_with_color(self, grid, color, fill_color): #change to take a selection and not do it alone if we want to + 3d or 2d ?
+        '''
+        Fill all holes inside the single connected shape of the specified color
+        and return the modified 2D grid.
+        '''
+        selector = Selector(grid.shape)
+        bounding_shapes = selector.select_colored_separated_shapes(grid, color)  # Get all separated shapes
+
+        # Combine all bounding shapes into one mask
+        combined_mask = np.any(bounding_shapes, axis=0)
+
+        # Detect holes inside the combined mask
+        from scipy.ndimage import binary_fill_holes
+        filled_mask = binary_fill_holes(combined_mask)  # Fill all enclosed regions within the combined mask
+
+        # Create a new grid with the filled mask
+        filled_grid = grid.copy()
+        filled_grid[filled_mask] = fill_color  # Fill the entire bounding shape (and its holes)
+
+        # Ensure original color (`3`) remains in the bounding region
+        filled_grid[combined_mask] = color
+
+        return filled_grid
+
+
