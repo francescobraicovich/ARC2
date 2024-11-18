@@ -15,6 +15,9 @@ from dsl.select import Selector
 # - rotate(grid, selection, num_rotations): Rotate the selected cells 90 degrees n times counterclockwise.
 # - crop(grid, selection): Crop the grid to the bounding rectangle around the selection. Use -1 as the value for cells outside the selection.
 # - fill_with_color(grid, color, fill_color): Fills any shape of a given color with the fill_color
+# - color(grid, selection, color_selected): Apply a color transformation (color_selected) to the selected cells (selection) in the grid and return a new 3D grid.   
+# - copy_paste(grid, selection, shift_x, shift_y): Shift the selected cells in the grid by (shift_x, shift_y).
+# - cut_paste(grid, selection, shift_x, shift_y): Shift the selected cells in the grid by (shift_x, shift_y) and set the original cells to 0.
 
 class Transformer:
     def __init__(self):
@@ -77,7 +80,7 @@ class Transformer:
         return grid_3d
 
     
-    def fill_with_color(self, grid, color, fill_color): #change to take a selection and not do it alone if we want to + 3d or 2d ?
+    def fill_with_color(self, grid, color, fill_color) : #change to take a selection and not do it alone if we want to + 3d or 2d ?
         '''
         Fill all holes inside the single connected shape of the specified color
         and return the modified 2D grid.
@@ -100,5 +103,59 @@ class Transformer:
         filled_grid[combined_mask] = color
 
         return filled_grid
+    
+    def copy_paste(self, grid, selection, shift_x, shift_y):
+        """
+        Shift the selected cells in the grid by (shift_x, shift_y).
+        """
+        grid_3d = create_grid3d(grid, selection)
+        # Extract the selected values #keeping the original color values
+        selected_values = grid_3d*selection
+                
+        # For each layer
+        for idx in range(selection.shape[0]):
+            layer_selection = selection[idx]
+            coords = np.argwhere(layer_selection)
+            # Add shift to coordinates
+            new_coords = coords + np.array([shift_x, shift_y])
+            # Filter out coordinates that are out of bounds
+            valid_indices = (new_coords[:,0] >= 0) & (new_coords[:,0] < grid_3d.shape[1]) & \
+                            (new_coords[:,1] >= 0) & (new_coords[:,1] < grid_3d.shape[2])
+            coords = coords[valid_indices]
+            new_coords = new_coords[valid_indices]
+            # Paste the cut selection to the new positions
+            for (old_i, old_j), (new_i, new_j) in zip(coords, new_coords):
+                grid_3d[idx, new_i, new_j] = selected_values[idx, old_i, old_j]
+        
+        return grid_3d
+    
+    def cut_paste(self, grid, selection, shift_x, shift_y):
+        """
+        Shift the selected cells in the grid by (shift_x, shift_y).
+        """
+        grid_3d = create_grid3d(grid, selection)
+        grid_3d_o = grid_3d.copy()
+        # Extract the selected values #keeping the original color values
+        selected_values = grid_3d*selection
+                
+        # For each layer
+        for idx in range(selection.shape[0]):
+            layer_selection = selection[idx]
+            coords = np.argwhere(layer_selection)
+            # Add shift to coordinates
+            new_coords = coords + np.array([shift_x, shift_y])
+            # Filter out coordinates that are out of bounds
+            valid_indices = (new_coords[:,0] >= 0) & (new_coords[:,0] < grid_3d.shape[1]) & \
+                            (new_coords[:,1] >= 0) & (new_coords[:,1] < grid_3d.shape[2])
+            coords = coords[valid_indices]
+            new_coords = new_coords[valid_indices]
+            # Paste the cut selection to the new positions
+            for (old_i, old_j), (new_i, new_j) in zip(coords, new_coords):
+                grid_3d[idx, new_i, new_j] = selected_values[idx, old_i, old_j]
+        
+        grid_3d_f = - grid_3d_o + grid_3d
+
+        return grid_3d_f
+
 
 
