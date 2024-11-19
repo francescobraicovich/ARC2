@@ -143,24 +143,36 @@ class Selector():
         return selection_mask
 
     def select_outer_border(self, grid, color):
+        """
+        Select the outer border of the elements with a specific color.
+        """
         color_separated_shapes = self.select_connected_shapes(grid, color)
         for i in range(len(color_separated_shapes)):
             color_separated_shapes[i] = find_boundaries(color_separated_shapes[i], mode = 'outer')
         return color_separated_shapes
     
     def select_inner_border(self, grid, color):
+        """
+        Select the inner border of the elements with a specific color.
+        """
         color_separated_shapes = self.select_connected_shapes(grid, color)
         for i in range(len(color_separated_shapes)):
             color_separated_shapes[i] = find_boundaries(color_separated_shapes[i], mode = 'inner')
         return color_separated_shapes
     
     def select_outer_border_diag(self, grid, color):
+        """
+        Select the outer border of the elements with a specific color with diagonal connectivity.
+        """
         color_separated_shapes = self.select_connected_shapes_diag(grid, color)
         for i in range(len(color_separated_shapes)):
             color_separated_shapes[i] = find_boundaries(color_separated_shapes[i], mode = 'outer')
         return color_separated_shapes
     
     def select_inner_border_diag(self, grid, color):
+        """
+        Select the inner border of the elements with a specific color with diagonal connectivity.
+        """
         color_separated_shapes = self.select_connected_shapes_diag(grid, color)
         for i in range(len(color_separated_shapes)):
             color_separated_shapes[i] = find_boundaries(color_separated_shapes[i], mode = 'inner')
