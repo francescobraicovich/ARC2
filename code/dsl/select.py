@@ -64,6 +64,9 @@ class Selector():
         return selection_array
     
     def select_colored_separated_shapes(self, grid, color):
+        pass
+    
+    def select_colored_separated_shapes(self, grid, color):
 
         """
         This function selects all shapes of the same color that are not connected one to the other.
