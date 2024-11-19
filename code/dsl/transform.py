@@ -154,3 +154,81 @@ class Transformer:
                 grid_3d[i, min_row:max_row+1, min_col:max_col+1] = mirrored
 
         return grid_3d
+    
+    def copy_paste(self, grid, selection, shift_x, shift_y):
+        """
+        Shift the selected cells in the grid by (shift_x, shift_y).
+        """
+        grid_3d = create_grid3d(grid, selection)
+        # Extract the selected values #keeping the original color values
+        selected_values = grid_3d*selection
+                
+        # For each layer
+        for idx in range(selection.shape[0]):
+            layer_selection = selection[idx]
+            coords = np.argwhere(layer_selection)
+            # Add shift to coordinates
+            new_coords = coords + np.array([shift_x, shift_y])
+            # Filter out coordinates that are out of bounds
+            valid_indices = (new_coords[:,0] >= 0) & (new_coords[:,0] < grid_3d.shape[1]) & \
+                            (new_coords[:,1] >= 0) & (new_coords[:,1] < grid_3d.shape[2])
+            coords = coords[valid_indices]
+            new_coords = new_coords[valid_indices]
+            # Paste the cut selection to the new positions
+            for (old_i, old_j), (new_i, new_j) in zip(coords, new_coords):
+                grid_3d[idx, new_i, new_j] = selected_values[idx, old_i, old_j]
+        
+        return grid_3d
+    
+    def cut_paste(self, grid, selection, shift_x, shift_y):
+        """
+        Shift the selected cells in the grid by (shift_x, shift_y).
+        """
+        grid_3d = create_grid3d(grid, selection)
+        grid_3d_o = grid_3d.copy()
+        # Extract the selected values #keeping the original color values
+        selected_values = grid_3d*selection
+                
+        # For each layer
+        for idx in range(selection.shape[0]):
+            layer_selection = selection[idx]
+            coords = np.argwhere(layer_selection)
+            # Add shift to coordinates
+            new_coords = coords + np.array([shift_x, shift_y])
+            # Filter out coordinates that are out of bounds
+            valid_indices = (new_coords[:,0] >= 0) & (new_coords[:,0] < grid_3d.shape[1]) & \
+                            (new_coords[:,1] >= 0) & (new_coords[:,1] < grid_3d.shape[2])
+            coords = coords[valid_indices]
+            new_coords = new_coords[valid_indices]
+            # Paste the cut selection to the new positions
+            for (old_i, old_j), (new_i, new_j) in zip(coords, new_coords):
+                grid_3d[idx, new_i, new_j] = selected_values[idx, old_i, old_j]
+        
+        grid_3d_f = - grid_3d_o + grid_3d
+
+        return grid_3d_f
+    
+    def change_background_color(self, grid, selection, new_color):
+        '''
+        Change the background color of the grid to the specified color.
+        ''' 
+        grid_f_w = grid.copy()
+        color_selector = ColorSelector()
+        background_color = color_selector.mostcolor(grid)
+        grid_f_w[grid_f_w == background_color] = new_color
+        grid3d = create_grid3d(grid_f_w,selection)
+        
+        return grid3d
+    
+    def change_selection_to_background_color(self, grid, selection):
+        '''
+        Change the selected cells in the grid to the background color.
+        ''' 
+        color_selector = ColorSelector()
+        background_color = color_selector.mostcolor(grid)
+        grid_3d = create_grid3d(grid, selection)
+        for idx in range(selection.shape[0]):
+            grid_3d[idx][selection[idx] == 1] = background_color
+
+        return grid_3d
+
