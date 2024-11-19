@@ -22,6 +22,7 @@ from dsl.color_select import ColorSelector
 # - copy_paste(grid, selection, shift_x, shift_y): Shift the selected cells in the grid by (shift_x, shift_y).
 # - cut_paste(grid, selection, shift_x, shift_y): Shift the selected cells in the grid by (shift_x, shift_y) and set the original cells to 0.
 # - change_background_color(grid, selection, new_color): Change the background color of the grid to the specified color.
+# - vupscale(grid, selection, scale_factor): Upscale the selection in the grid by a specified scale factor, and cap the upscaled selection to match the original size.
 
 class Transformer:
     def __init__(self):
@@ -89,6 +90,8 @@ class Transformer:
         Fill all holes inside the single connected shape of the specified color
         and return the modified 2D grid.
         '''
+        # TODO @vittorio (credo) : La funzione deve prendere la selection come input e non fare la selezione da sola
+        # TODO @vittorio : controllare se il colore è nel range dei colori possibili, altrimenti ritornare la grid_3d invariata
         selector = Selector(grid.shape)
         bounding_shapes = selector.select_colored_separated_shapes(grid, color)  # Get all separated shapes
 
@@ -163,6 +166,8 @@ class Transformer:
         grid_3d = create_grid3d(grid, selection)
         # Extract the selected values #keeping the original color values
         selected_values = grid_3d*selection
+
+        # TODO @vittorio : controllare se shift_x e shift_y sono nel range delle dimensioni della griglia, altrimenti ritornare la grid_3d invariata
                 
         # For each layer
         for idx in range(selection.shape[0]):
@@ -187,6 +192,8 @@ class Transformer:
         """
         grid_3d = create_grid3d(grid, selection)
         grid_3d_o = grid_3d.copy()
+        # TODO @vittorio : controllare se shift_x e shift_y sono nel range delle dimensioni della griglia, altrimenti ritornare la grid_3d invariata
+        
         # Extract the selected values #keeping the original color values
         selected_values = grid_3d*selection
                 
@@ -212,7 +219,8 @@ class Transformer:
     def change_background_color(self, grid, selection, new_color):
         '''
         Change the background color of the grid to the specified color.
-        ''' 
+        '''
+        # TODO @vittorio : controllare se new_color è nel range dei colori possibili, altrimenti ritornare la grid_3d invariata
         grid_f_w = grid.copy()
         color_selector = ColorSelector()
         background_color = color_selector.mostcolor(grid)
@@ -299,3 +307,8 @@ class Transformer:
         selection_3d_grid[capped_selection] = capped_upscaled_grid[capped_selection].ravel()
 
         return selection_3d_grid
+    
+    def hupscale(self, grid, selection, scale_factor):
+        # TODO @filippo : Implement horizontal upscaling
+
+        pass
