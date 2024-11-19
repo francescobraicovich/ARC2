@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from dsl.utilities.checks import check_color, check_integer
 from dsl.utilities.selection_utilities import find_matching_geometries, find_non_overlapping_combinations
+from skimage.segmentation import find_boundaries
 
 # This class is used to select elements of the grid based on specific criteria.
 
@@ -10,6 +11,8 @@ from dsl.utilities.selection_utilities import find_matching_geometries, find_non
 # - select_colored_rectangle_combinations: select elements of the grid with a specific color and geometry
 # - select_colored_separated_shapes: select elements of the grid with a specific color that are not connected
 # - select_adjacent_to_color: select elements of the grid that are adjacent to a specific color
+# - select_outer_border: select the outer border of the elements with a specific color
+# - select_inner_border: select the inner border of the elements with a specific color
 
 
 class Selector():
@@ -137,3 +140,15 @@ class Selector():
         # add the additional dimension to the selection mask
         selection_mask = np.reshape(convoluted_mask, (-1, self.nrows, self.ncols))
         return selection_mask
+
+    def select_outer_border(self, grid, color):
+        color_separated_shapes = self.select_colored_separated_shapes(grid, color)
+        for i in range(len(color_separated_shapes)):
+            color_separated_shapes[i] = find_boundaries(color_separated_shapes[i], mode = 'outer')
+        return color_separated_shapes
+    
+    def select_inner_border(self, grid, color):
+        color_separated_shapes = self.select_colored_separated_shapes(grid, color)
+        for i in range(len(color_separated_shapes)):
+            color_separated_shapes[i] = find_boundaries(color_separated_shapes[i], mode = 'inner')
+        return color_separated_shapes
