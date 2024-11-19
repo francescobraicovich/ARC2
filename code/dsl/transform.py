@@ -20,7 +20,7 @@ from dsl.select import Selector
 # - copy_paste(grid, selection, shift_x, shift_y): Shift the selected cells in the grid by (shift_x, shift_y).
 # - cut_paste(grid, selection, shift_x, shift_y): Shift the selected cells in the grid by (shift_x, shift_y) and set the original cells to 0.
 # - change_background_color(grid, selection, new_color): Change the background color of the grid to the specified color.
-
+# - change_selection_to_background_color(grid, selection): Change the selected cells in the grid to the background color. 
 class Transformer:
     def __init__(self):
         pass
