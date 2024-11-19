@@ -3,16 +3,20 @@ import matplotlib.pyplot as plt
 from dsl.utilities.checks import check_color, check_integer
 from dsl.utilities.selection_utilities import find_matching_geometries, find_non_overlapping_combinations
 from skimage.segmentation import find_boundaries
+from scipy.ndimage import label
 
 # This class is used to select elements of the grid based on specific criteria.
 
 # Implemented methods:
 # - select_color: select elements of the grid with a specific color
 # - select_colored_rectangle_combinations: select elements of the grid with a specific color and geometry
-# - select_colored_separated_shapes: select elements of the grid with a specific color that are not connected
+# - select_connected_shapes: select connected shapes of a specific color
+# - select_connected_shapes_diag: select connected shapes of a specific color with diagonal connectivity
 # - select_adjacent_to_color: select elements of the grid that are adjacent to a specific color
 # - select_outer_border: select the outer border of the elements with a specific color
 # - select_inner_border: select the inner border of the elements with a specific color
+# - select_outer_border_diag: select the outer border of the elements with a specific color with diagonal connectivity
+# - select_inner_border_diag: select the inner border of the elements with a specific color with diagonal connectivity
 
 
 class Selector():
@@ -66,48 +70,45 @@ class Selector():
                 selection_array[k, i1:i2, j1:j2] = True
         return selection_array
     
-    def select_colored_separated_shapes(self, grid, color):
-        pass
-    
-    def select_colored_separated_shapes(self, grid, color):
-
-        """
-        This function selects all shapes of the same color that are not connected one to the other.
-        Output: a list of arrays (masks) with the selected geometries.
-        """
+    def select_connected_shapes(self, grid, color):
         color_mask = self.select_color(grid, color)
         if np.sum(color_mask) == 0:
             return self.no_selection
         color_mask = color_mask[0, :, :] # remove the first dimension
-        is_where_true, js_where_true = np.where(color_mask) # get the cordinates of the elements
 
-        separated_geometries = [] # store the separated geometries
-        separated_geometries.append({(is_where_true[0], js_where_true[0])}) # add the first element
+        # Label connected components
+        labeled_array, num_features = label(color_mask)
         
-        for i, j in zip(is_where_true[1:], js_where_true[1:]): # iterate over the rest of the elements
-            found = False # flag to check if the element is found in the separated geometries
-            for geometry in separated_geometries: # iterate over the separated geometries
-                for tuple_cordinates in geometry: # iterate over the cordinates of the geometry
-                    i0, j0 = tuple_cordinates # get the cordinates of the element in the geometry
-                    if abs(i-i0) <= 1 and abs(j-j0) <= 1: 
-                        geometry.add((i, j))
-                        found = True
-                        break
-                    
-            if not found:
-                separated_geometries.append({(i, j)})
-
-        # create an array to store the selected geometries
-        selection_array = np.zeros((len(separated_geometries), self.nrows, self.ncols), dtype=bool)
-
-        for k, geometry in enumerate(separated_geometries):
-            combination_mask = np.zeros(self.shape, dtype=bool)
-            for index in geometry:
-                i, j = index
-                i, j = tuple(index)
-                combination_mask[i, j] = True
-            selection_array[k] = combination_mask
-        return selection_array
+        # Initialize the 3D array with the same height and width as the input
+        shape = (num_features, *color_mask.shape)
+        result_3d = np.zeros(shape, dtype=bool)
+        
+        # Extract each connected component as a separate 2D array
+        for i in range(1, num_features + 1):  # Labels start from 1
+            result_3d[i - 1] = (labeled_array == i)
+        
+        return result_3d
+    
+    def select_connected_shapes_diag(self, grid, color):
+        color_mask = self.select_color(grid, color)
+        if np.sum(color_mask) == 0:
+            return self.no_selection
+        color_mask = color_mask[0, :, :] # remove the first dimension
+        
+        # Label connected components
+        structure = np.ones((3, 3), dtype=bool)  # 8-connectivity for 2D
+        labeled_array, num_features = label(color_mask, structure)
+        
+        # Initialize the 3D array with the same height and width as the input
+        shape = (num_features, *color_mask.shape)
+        result_3d = np.zeros(shape, dtype=bool)
+        
+        # Extract each connected component as a separate 2D array
+        for i in range(1, num_features + 1):  # Labels start from 1
+            result_3d[i - 1] = (labeled_array == i)
+        
+        return result_3d
+    
     
     def select_adjacent_to_color(self, grid, color, num_adjacent_cells):
         """
@@ -142,13 +143,25 @@ class Selector():
         return selection_mask
 
     def select_outer_border(self, grid, color):
-        color_separated_shapes = self.select_colored_separated_shapes(grid, color)
+        color_separated_shapes = self.select_connected_shapes(grid, color)
         for i in range(len(color_separated_shapes)):
             color_separated_shapes[i] = find_boundaries(color_separated_shapes[i], mode = 'outer')
         return color_separated_shapes
     
     def select_inner_border(self, grid, color):
-        color_separated_shapes = self.select_colored_separated_shapes(grid, color)
+        color_separated_shapes = self.select_connected_shapes(grid, color)
+        for i in range(len(color_separated_shapes)):
+            color_separated_shapes[i] = find_boundaries(color_separated_shapes[i], mode = 'inner')
+        return color_separated_shapes
+    
+    def select_outer_border_diag(self, grid, color):
+        color_separated_shapes = self.select_connected_shapes_diag(grid, color)
+        for i in range(len(color_separated_shapes)):
+            color_separated_shapes[i] = find_boundaries(color_separated_shapes[i], mode = 'outer')
+        return color_separated_shapes
+    
+    def select_inner_border_diag(self, grid, color):
+        color_separated_shapes = self.select_connected_shapes_diag(grid, color)
         for i in range(len(color_separated_shapes)):
             color_separated_shapes[i] = find_boundaries(color_separated_shapes[i], mode = 'inner')
         return color_separated_shapes
