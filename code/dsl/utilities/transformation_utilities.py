@@ -58,3 +58,24 @@ def find_bounding_square(mask):
         # Set the bounding square region to True
         i_th_slice[row_start_new:row_end_new, col_start_new:col_end_new] = True
     return mask 
+
+def center_of_mass(bool_array):
+    """
+    Calculate the integer indices of the center of mass of the `True` values in a NumPy boolean array.
+    
+    Parameters:
+        bool_array (numpy.ndarray): A boolean array.
+        
+    Returns:
+        tuple: A tuple of integers representing the center of mass indices along each axis.
+    """
+    # Ensure input is a numpy array
+    bool_array = np.asarray(bool_array)
+    
+    # Get the indices of the True values
+    indices = np.nonzero(bool_array)
+    
+    # Calculate the center of mass as the mean of these indices
+    center = tuple(int(round(np.mean(axis))) for axis in indices)
+    
+    return center
