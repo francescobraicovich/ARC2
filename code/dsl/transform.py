@@ -143,9 +143,9 @@ class Transformer:
                 min_col, max_col = cols.min(), cols.max()
 
                 # Extract the square region
-                square = grid_3d[i, min_row:max_row+1, min_col:max_col+1]
+                square = grid_3d[i, min_row:max_row+1, min_col:max_col+1].copy()
                 # Mirror along the anti-diagonal
-                mirrored = np.flipud(square.T)
+                mirrored = np.flip((np.rot90(square)),1)
                 # Replace the original square with the mirrored one
                 grid_3d[i, min_row:max_row+1, min_col:max_col+1] = mirrored
 
