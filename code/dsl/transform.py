@@ -2,7 +2,6 @@ import numpy as np
 from dsl.utilities.checks import check_axis, check_num_rotations
 from dsl.utilities.plot import plot_selection, plot_grid
 from dsl.utilities.transformation_utilities import create_grid3d, find_bounding_rectangle, find_bounding_square
-from dsl.color_select import ColorSelector
 from dsl.select import Selector
 
 
@@ -16,11 +15,13 @@ from dsl.select import Selector
 # - rotate(grid, selection, num_rotations): Rotate the selected cells 90 degrees n times counterclockwise.
 # - crop(grid, selection): Crop the grid to the bounding rectangle around the selection. Use -1 as the value for cells outside the selection.
 # - fill_with_color(grid, color, fill_color): Fills any shape of a given color with the fill_color
+# - mirror_main_diagonal(grid, selection): Mirror the selected region along the main diagonal (top-left to bottom-right).
+# - mirror_anti_diagonal(grid, selection): Mirror the selected region along the anti-diagonal (top-right to bottom-left).
 # - color(grid, selection, color_selected): Apply a color transformation (color_selected) to the selected cells (selection) in the grid and return a new 3D grid.   
 # - copy_paste(grid, selection, shift_x, shift_y): Shift the selected cells in the grid by (shift_x, shift_y).
 # - cut_paste(grid, selection, shift_x, shift_y): Shift the selected cells in the grid by (shift_x, shift_y) and set the original cells to 0.
 # - change_background_color(grid, selection, new_color): Change the background color of the grid to the specified color.
-# - change_selection_to_background_color(grid, selection): Change the selected cells in the grid to the background color. 
+
 class Transformer:
     def __init__(self):
         pass
@@ -82,7 +83,7 @@ class Transformer:
         return grid_3d
 
     
-    def fill_with_color(self, grid, color, fill_color) : #change to take a selection and not do it alone if we want to + 3d or 2d ?
+    def fill_with_color(self, grid, color, fill_color): #change to take a selection and not do it alone if we want to + 3d or 2d ?
         '''
         Fill all holes inside the single connected shape of the specified color
         and return the modified 2D grid.
@@ -106,82 +107,50 @@ class Transformer:
 
         return filled_grid
     
-    def copy_paste(self, grid, selection, shift_x, shift_y):
-        """
-        Shift the selected cells in the grid by (shift_x, shift_y).
-        """
+    def mirror_main_diagonal(self, grid, selection):
+        '''
+        Mirror the selected region along the main diagonal (top-left to bottom-right).
+        '''
         grid_3d = create_grid3d(grid, selection)
-        # Extract the selected values #keeping the original color values
-        selected_values = grid_3d*selection
-                
-        # For each layer
-        for idx in range(selection.shape[0]):
-            layer_selection = selection[idx]
-            coords = np.argwhere(layer_selection)
-            # Add shift to coordinates
-            new_coords = coords + np.array([shift_x, shift_y])
-            # Filter out coordinates that are out of bounds
-            valid_indices = (new_coords[:,0] >= 0) & (new_coords[:,0] < grid_3d.shape[1]) & \
-                            (new_coords[:,1] >= 0) & (new_coords[:,1] < grid_3d.shape[2])
-            coords = coords[valid_indices]
-            new_coords = new_coords[valid_indices]
-            # Paste the cut selection to the new positions
-            for (old_i, old_j), (new_i, new_j) in zip(coords, new_coords):
-                grid_3d[idx, new_i, new_j] = selected_values[idx, old_i, old_j]
-        
-        return grid_3d
-    
-    def cut_paste(self, grid, selection, shift_x, shift_y):
-        """
-        Shift the selected cells in the grid by (shift_x, shift_y).
-        """
-        grid_3d = create_grid3d(grid, selection)
-        grid_3d_o = grid_3d.copy()
-        # Extract the selected values #keeping the original color values
-        selected_values = grid_3d*selection
-                
-        # For each layer
-        for idx in range(selection.shape[0]):
-            layer_selection = selection[idx]
-            coords = np.argwhere(layer_selection)
-            # Add shift to coordinates
-            new_coords = coords + np.array([shift_x, shift_y])
-            # Filter out coordinates that are out of bounds
-            valid_indices = (new_coords[:,0] >= 0) & (new_coords[:,0] < grid_3d.shape[1]) & \
-                            (new_coords[:,1] >= 0) & (new_coords[:,1] < grid_3d.shape[2])
-            coords = coords[valid_indices]
-            new_coords = new_coords[valid_indices]
-            # Paste the cut selection to the new positions
-            for (old_i, old_j), (new_i, new_j) in zip(coords, new_coords):
-                grid_3d[idx, new_i, new_j] = selected_values[idx, old_i, old_j]
-        
-        grid_3d_f = - grid_3d_o + grid_3d
+        bounding_square = find_bounding_square(selection)  # Find the bounding square for each selection slice
 
-        return grid_3d_f
-    
-    def change_background_color(self, grid, selection, new_color):
-        '''
-        Change the background color of the grid to the specified color.
-        ''' 
-        grid_f_w = grid.copy()
-        color_selector = ColorSelector()
-        background_color = color_selector.mostcolor(grid)
-        grid_f_w[grid_f_w == background_color] = new_color
-        grid3d = create_grid3d(grid_f_w,selection)
-        
-        return grid3d
-    
-    def change_selection_to_background_color(self, grid, selection):
-        '''
-        Change the selected cells in the grid to the background color.
-        ''' 
-        color_selector = ColorSelector()
-        background_color = color_selector.mostcolor(grid)
-        grid_3d = create_grid3d(grid, selection)
-        for idx in range(selection.shape[0]):
-            grid_3d[idx][selection[idx] == 1] = background_color
+        for i in range(grid_3d.shape[0]):  # Iterate through each selection slice
+            mask = bounding_square[i]  # Mask for the current bounding square
+            rows, cols = np.where(mask)  # Get the indices of the selected region
+            if len(rows) > 0 and len(cols) > 0:
+                # Calculate the bounding square limits
+                min_row, max_row = rows.min(), rows.max()
+                min_col, max_col = cols.min(), cols.max()
+
+                # Extract the square region
+                square = grid_3d[i, min_row:max_row+1, min_col:max_col+1]
+                # Mirror along the main diagonal
+                mirrored = square.T
+                # Replace the original square with the mirrored one
+                grid_3d[i, min_row:max_row+1, min_col:max_col+1] = mirrored
 
         return grid_3d
 
- 
+    def mirror_anti_diagonal(self, grid, selection):
+        '''
+        Mirror the selected region along the anti-diagonal (top-right to bottom-left).
+        '''
+        grid_3d = create_grid3d(grid, selection)
+        bounding_square = find_bounding_square(selection)  # Find the bounding square for each selection slice
 
+        for i in range(grid_3d.shape[0]):  # Iterate through each selection slice
+            mask = bounding_square[i]  # Mask for the current bounding square
+            rows, cols = np.where(mask)  # Get the indices of the selected region
+            if len(rows) > 0 and len(cols) > 0:
+                # Calculate the bounding square limits
+                min_row, max_row = rows.min(), rows.max()
+                min_col, max_col = cols.min(), cols.max()
+
+                # Extract the square region
+                square = grid_3d[i, min_row:max_row+1, min_col:max_col+1].copy()
+                # Mirror along the anti-diagonal
+                mirrored = np.flip((np.rot90(square)),1)
+                # Replace the original square with the mirrored one
+                grid_3d[i, min_row:max_row+1, min_col:max_col+1] = mirrored
+
+        return grid_3d
