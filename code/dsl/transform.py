@@ -15,6 +15,8 @@ from dsl.select import Selector
 # - rotate(grid, selection, num_rotations): Rotate the selected cells 90 degrees n times counterclockwise.
 # - crop(grid, selection): Crop the grid to the bounding rectangle around the selection. Use -1 as the value for cells outside the selection.
 # - fill_with_color(grid, color, fill_color): Fills any shape of a given color with the fill_color
+# - mirror_main_diagonal(grid, selection): Mirror the selected region along the main diagonal (top-left to bottom-right).
+# - mirror_anti_diagonal(grid, selection): Mirror the selected region along the anti-diagonal (top-right to bottom-left).
 
 class Transformer:
     def __init__(self):
@@ -101,4 +103,50 @@ class Transformer:
 
         return filled_grid
     
+    def mirror_main_diagonal(self, grid, selection):
+        '''
+        Mirror the selected region along the main diagonal (top-left to bottom-right).
+        '''
+        grid_3d = create_grid3d(grid, selection)
+        bounding_square = find_bounding_square(selection)  # Find the bounding square for each selection slice
 
+        for i in range(grid_3d.shape[0]):  # Iterate through each selection slice
+            mask = bounding_square[i]  # Mask for the current bounding square
+            rows, cols = np.where(mask)  # Get the indices of the selected region
+            if len(rows) > 0 and len(cols) > 0:
+                # Calculate the bounding square limits
+                min_row, max_row = rows.min(), rows.max()
+                min_col, max_col = cols.min(), cols.max()
+
+                # Extract the square region
+                square = grid_3d[i, min_row:max_row+1, min_col:max_col+1]
+                # Mirror along the main diagonal
+                mirrored = square.T
+                # Replace the original square with the mirrored one
+                grid_3d[i, min_row:max_row+1, min_col:max_col+1] = mirrored
+
+        return grid_3d
+
+    def mirror_anti_diagonal(self, grid, selection):
+        '''
+        Mirror the selected region along the anti-diagonal (top-right to bottom-left).
+        '''
+        grid_3d = create_grid3d(grid, selection)
+        bounding_square = find_bounding_square(selection)  # Find the bounding square for each selection slice
+
+        for i in range(grid_3d.shape[0]):  # Iterate through each selection slice
+            mask = bounding_square[i]  # Mask for the current bounding square
+            rows, cols = np.where(mask)  # Get the indices of the selected region
+            if len(rows) > 0 and len(cols) > 0:
+                # Calculate the bounding square limits
+                min_row, max_row = rows.min(), rows.max()
+                min_col, max_col = cols.min(), cols.max()
+
+                # Extract the square region
+                square = grid_3d[i, min_row:max_row+1, min_col:max_col+1]
+                # Mirror along the anti-diagonal
+                mirrored = np.flipud(square.T)
+                # Replace the original square with the mirrored one
+                grid_3d[i, min_row:max_row+1, min_col:max_col+1] = mirrored
+
+        return grid_3d
