@@ -1,6 +1,6 @@
 import numpy as np
 from dsl.utilities.checks import check_axis, check_num_rotations
-from dsl.utilities.plot import plot_selection, plot_grid
+from scipy.ndimage import binary_fill_holes
 from dsl.utilities.transformation_utilities import create_grid3d, find_bounding_rectangle, find_bounding_square, center_of_mass
 from dsl.select import Selector
 from dsl.color_select import ColorSelector
@@ -10,35 +10,45 @@ from dsl.color_select import ColorSelector
 # The grid is a 2D numpy array, and the selection is a 3D boolean mask.
 # Hence, the grid must be stacked along the third dimension to create a 3D grid, using the create_grid3d method.
 
-# Implemented methods:AAA
-# - flip(grid, selection, axis): Flip the grid along the specified axis.
-# - delete(grid, selection): Set the value of the selected cells to 0.
-# - rotate(grid, selection, num_rotations): Rotate the selected cells 90 degrees n times counterclockwise.
-# - crop(grid, selection): Crop the grid to the bounding rectangle around the selection. Use -1 as the value for cells outside the selection.
-# - fill_with_color(grid, color, fill_color): Fills any shape of a given color with the fill_color
-# - mirror_main_diagonal(grid, selection): Mirror the selected region along the main diagonal (top-left to bottom-right).
-# - mirror_anti_diagonal(grid, selection): Mirror the selected region along the anti-diagonal (top-right to bottom-left).
-# - color(grid, selection, color_selected): Apply a color transformation (color_selected) to the selected cells (selection) in the grid and return a new 3D grid.   
-# - copy_paste(grid, selection, shift_x, shift_y): Shift the selected cells in the grid by (shift_x, shift_y).
-# - cut_paste(grid, selection, shift_x, shift_y): Shift the selected cells in the grid by (shift_x, shift_y) and set the original cells to 0.
-# - change_background_color(grid, selection, new_color): Change the background color of the grid to the specified color.
-# - vupscale(grid, selection, scale_factor): Upscale the selection in the grid by a specified scale factor, and cap the upscaled selection to match the original size.
+# Implemented methods:
+# 1 - flipv(grid, selection): Flip the grid vertically.
+# 2 - fliph(grid, selection): Flip the grid horizontally.
+# 3 - delete(grid, selection): Set the value of the selected cells to 0.
+# 4 - rotate90(grid, selection): Rotate the selected cells 90 degrees counterclockwise.
+# 5 - rotate180(grid, selection): Rotate the selected cells 180 degrees counterclockwise.
+# 6 - rotate270(grid, selection): Rotate the selected cells 270 degrees counterclockwise.
+# 7 - crop(grid, selection): Crop the grid to the bounding rectangle around the selection. Use -1 as the value for cells outside the selection.
+# 8 - fill_with_color(grid, color, fill_color): Fills any shape of a given color with the fill_color
+# 9 - mirror_main_diagonal(grid, selection): Mirror the selected region along the main diagonal (top-left to bottom-right).
+# 10 - mirror_anti_diagonal(grid, selection): Mirror the selected region along the anti-diagonal (top-right to bottom-left).
+# 11 - color(grid, selection, color_selected): Apply a color transformation (color_selected) to the selected cells (selection) in the grid and return a new 3D grid.   
+# 12 - copy_paste(grid, selection, shift_x, shift_y): Shift the selected cells in the grid by (shift_x, shift_y).
+# 13 - cut_paste(grid, selection, shift_x, shift_y): Shift the selected cells in the grid by (shift_x, shift_y) and set the original cells to 0.
+# 14 - change_background_color(grid, selection, new_color): Change the background color of the grid to the specified color.
+# 15 - vupscale(grid, selection, scale_factor): Upscale the selection in the grid by a specified scale factor, and cap the upscaled selection to match the original size.
 
 class Transformer:
     def __init__(self):
         pass
 
-    def flip(self, grid, selection, axis):
+    def flipv(self, grid, selection):
         """
         Flip the grid along the specified axis.
         """
         grid_3d = create_grid3d(grid, selection) # Add an additional dimension to the grid by stacking it
-        if check_axis(axis) == False:
-            return grid_3d
-        axis += 1 # Increas axis by 1 to account for the additional dimension
         bounding_rectangle = find_bounding_rectangle(selection) # Find the bounding rectangle around the selection for each slice
-        flipped_bounding_rectangle = np.flip(bounding_rectangle, axis=axis) # Flip the selection along the specified axis
-        grid_3d[bounding_rectangle] = np.flip(grid_3d, axis=axis)[flipped_bounding_rectangle] # Flip the bounding rectangle along the specified axis
+        flipped_bounding_rectangle = np.flip(bounding_rectangle, axis=1) # Flip the selection along the specified axis
+        grid_3d[bounding_rectangle] = np.flip(grid_3d, axis=1)[flipped_bounding_rectangle] # Flip the bounding rectangle along the specified axis
+        return grid_3d
+    
+    def fliph(self, grid, selection):
+        """
+        Flip the grid along the specified axis.
+        """
+        grid_3d = create_grid3d(grid, selection) # Add an additional dimension to the grid by stacking it
+        bounding_rectangle = find_bounding_rectangle(selection) # Find the bounding rectangle around the selection for each slice
+        flipped_bounding_rectangle = np.flip(bounding_rectangle, axis=2) # Flip the selection along the specified axis
+        grid_3d[bounding_rectangle] = np.flip(grid_3d, axis=2)[flipped_bounding_rectangle] # Flip the bounding rectangle along the specified axis
         return grid_3d
     
     def delete(self, grid, selection):
@@ -60,6 +70,24 @@ class Transformer:
         rotated_bounding_square = np.rot90(bounding_square, num_rotations, axes=(1, 2))
         grid_3d[bounding_square] = np.rot90(grid_3d, num_rotations, axes=(1, 2))[rotated_bounding_square]
         return grid_3d
+    
+    def rotate90(self, grid, selection):
+        """
+        Rotate the selected cells 90 degrees counterclockwise.
+        """
+        return self.rotate(grid, selection, 1)
+
+    def rotate180(self, grid, selection):
+        """
+        Rotate the selected cells 180 degrees counterclockwise.
+        """
+        return self.rotate(grid, selection, 2)
+    
+    def rotate270(self, grid, selection):
+        """
+        Rotate the selected cells 270 degrees counterclockwise.
+        """
+        return self.rotate(grid, selection, 3)
     
     def crop(self, grid, selection):
         """
@@ -99,7 +127,6 @@ class Transformer:
         combined_mask = np.any(bounding_shapes, axis=0)
 
         # Detect holes inside the combined mask
-        from scipy.ndimage import binary_fill_holes
         filled_mask = binary_fill_holes(combined_mask)  # Fill all enclosed regions within the combined mask
 
         # Create a new grid with the filled mask
