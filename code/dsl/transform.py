@@ -1,5 +1,6 @@
 import numpy as np
-from dsl.utilities.checks import check_axis, check_num_rotations
+from dsl.utilities.plot import plot_selection
+from dsl.utilities.checks import check_axis, check_num_rotations, check_color
 from scipy.ndimage import binary_fill_holes
 from dsl.utilities.transformation_utilities import create_grid3d, find_bounding_rectangle, find_bounding_square, center_of_mass
 from dsl.select import Selector
@@ -339,3 +340,25 @@ class Transformer:
         # TODO @filippo : Implement horizontal upscaling
 
         pass
+
+    def fill_bounding_rectangle_with_color(self, grid, selection, color):
+        '''
+        Fill the bounding rectangle around the selection with the specified color.
+        '''
+        if check_color(color) == False:
+            return grid
+        grid_3d = create_grid3d(grid, selection)
+        bounding_rectangle = find_bounding_rectangle(selection)
+        grid_3d[bounding_rectangle & (~selection)] = color
+        return grid_3d
+    
+    def fill_bounding_square_with_color(self, grid, selection, color):
+        '''
+        Fill the bounding square around the selection with the specified color.
+        '''
+        if check_color(color) == False:
+            return grid
+        grid_3d = create_grid3d(grid, selection)
+        bounding_square = find_bounding_square(selection)
+        grid_3d[bounding_square & (~selection)] = color
+        return grid_3d
