@@ -1,18 +1,18 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from dsl.utilities.checks import check_color, check_integer
-from dsl.utilities.selection_utilities import find_matching_geometries, find_non_overlapping_combinations
 from skimage.segmentation import find_boundaries
-from scipy.ndimage import label
+from scipy.ndimage import label, convolve
 
 # This class is used to select elements of the grid based on specific criteria.
 
 # Implemented methods:
 # - select_color: select elements of the grid with a specific color
-# - select_colored_rectangle_combinations: select elements of the grid with a specific color and geometry
+# - select_rectangles: select rectangles of a specific color, height and width
 # - select_connected_shapes: select connected shapes of a specific color
 # - select_connected_shapes_diag: select connected shapes of a specific color with diagonal connectivity
-# - select_adjacent_to_color: select elements of the grid that are adjacent to a specific color
+# - select_adjacent_to_color: select elements of the grid that are adjacent to a specific color with a specific number of points of contact
+# - select_adjacent_to_color_diag: select elements of the grid that are adjacent to a specific color with a specific number of points of contact with diagonal connectivity
 # - select_outer_border: select the outer border of the elements with a specific color
 # - select_inner_border: select the inner border of the elements with a specific color
 # - select_outer_border_diag: select the outer border of the elements with a specific color with diagonal connectivity
@@ -34,15 +34,22 @@ class Selector():
         mask = np.reshape(mask, (-1, self.nrows, self.ncols))
         return mask
     
-    def select_colored_rectangle_combinations(self, grid:np.ndarray, color:int, height, width):
+    def select_rectangles(self, grid, color, height, width):
         """
-        Select elements of the array with a specific color and geometry. Works for rectangular geometries.
-        Returns all possible non-overlapping combinations of matching geometries.
+        Extract all possible rectangles of a given height and width where all elements are True
+        from a 2D boolean mask. The result is a 3D array where each layer corresponds to one rectangle.
+
+        Parameters:
+        - boolean_mask: 2D numpy array (boolean)
+        - height: int, height of the rectangle
+        - width: int, width of the rectangle
+
+        Returns:
+        - 3D numpy array where each layer contains a single rectangle of True values.
         """
-        # TODO: Currently this function returns all possible non-overlapping combinations of matching geometris
-        # This is computationally too expensive when width and height are small. We need to think of how to deal 
-        # with small heights and widths. Implement the solution as checks for height and width values.
-        
+        rows, cols = grid.shape
+        rectangles = []
+
         if check_integer(height, self.minimum_geometry_size, self.nrows) == False:
             return self.no_selection
         if check_integer(width, self.minimum_geometry_size, self.ncols) == False:
@@ -54,21 +61,28 @@ class Selector():
         if np.sum(color_mask) == 0:
             return self.no_selection
         color_mask = color_mask[0, :, :] # remove the first dimension
-        
-        matching_geometries = find_matching_geometries(color_mask, height, width)
 
-        if len(matching_geometries) == 0:
-            return self.no_selection
+        # Iterate over all possible starting points for the rectangle
+        for i in range(rows - height + 1):
+            for j in range(cols - width + 1):
+                # Extract the rectangle
+                sub_rect = color_mask[i:i+height, j:j+width]
+                
+                # Check if all values in the rectangle are True
+                if np.all(sub_rect):
+                    # Create a new boolean mask with the rectangle as True
+                    rect_mask = np.zeros_like(color_mask, dtype=bool)
+                    rect_mask[i:i+height, j:j+width] = True
+                    rectangles.append(rect_mask)
         
-        geometry_combinations = find_non_overlapping_combinations(matching_geometries)
+        # Combine all rectangles into a 3D array
+        if rectangles:
+            result_3d = np.stack(rectangles, axis=0)
+        else:
+            # If no rectangles are found, return an empty array
+            result_3d = np.zeros((0, * color_mask.shape), dtype=bool)
         
-        num_combinations = len(geometry_combinations)
-        selection_array = np.zeros((num_combinations, self.nrows, self.ncols), dtype=bool)
-        for k, combination in enumerate(geometry_combinations):
-            for index in combination:
-                i1, j1, i2, j2 = matching_geometries[index]
-                selection_array[k, i1:i2, j1:j2] = True
-        return selection_array
+        return result_3d
     
     def select_connected_shapes(self, grid, color):
         color_mask = self.select_color(grid, color)
@@ -109,37 +123,50 @@ class Selector():
         
         return result_3d
     
-    
-    def select_adjacent_to_color(self, grid, color, num_adjacent_cells):
+    def select_adjacent_to_color(self, grid, color, points_of_contact):
         """
-        This function selects cells that are adjacent to a specific color wiht a specific number of points of contact.
+        Finds all cells in a 2D boolean array that have exactly `n` points of contact with `True` values.
         """
-
-        if check_integer(num_adjacent_cells, 1, 4) == False:
+        if check_integer(points_of_contact, 1, 4) == False:
             return self.no_selection
         
         color_mask = self.select_color(grid, color)
         color_mask = color_mask[0, :, :] # remove the first dimension
-        inverse_color_mask = ~color_mask
-
-        # create a padded color mask
-        padded_color_mask = np.pad(color_mask, ((1, 1), (1, 1)), mode='constant', constant_values=0)
-
-        # convolute the color mask with the kernel
-        kernel = np.array([[0, 1, 0], [1, 0, 1], [0, 1, 0]])
-
-        convoluted_mask = np.zeros_like(padded_color_mask, dtype=bool)
-
-        for i in range(padded_color_mask.shape[0]-2):
-            for j in range(padded_color_mask.shape[1]-2):
-                convoluted_mask[i, j] = np.sum(padded_color_mask[i:i+3, j:j+3] * kernel) == num_adjacent_cells
-
-        # remove the padding
-        convoluted_mask = convoluted_mask[:-2, :-2]
-        convoluted_mask = convoluted_mask & inverse_color_mask
+    
+        # Define the kernel for counting neighbors
+        kernel = np.array([[0, 1, 0],
+                        [1, 0, 1],
+                        [0, 1, 0]])
         
-        # add the additional dimension to the selection mask
-        selection_mask = np.reshape(convoluted_mask, (-1, self.nrows, self.ncols))
+        # Convolve the boolean array with the kernel to count neighbors
+        contact_count = convolve(color_mask.astype(int), kernel, mode='constant', cval=0)
+        
+        # Return a boolean array where contact count equals n
+        selection_mask = contact_count == points_of_contact
+        selection_mask = selection_mask & ~color_mask
+        selection_mask = np.reshape(selection_mask, (-1, self.nrows, self.ncols))
+        return selection_mask
+    
+    def select_adjacent_to_color_diag(self, grid, color, points_of_contact):
+        """
+        Finds all cells in a 2D boolean array that have exactly `n` points of contact with `True` values.
+        """
+        if check_integer(points_of_contact, 1, 8) == False:
+            return self.no_selection
+        
+        color_mask = self.select_color(grid, color)
+        color_mask = color_mask[0, :, :] # remove the first dimension
+    
+        # Define the kernel for counting neighbors
+        kernel = np.ones((3, 3), dtype=bool)
+        
+        # Convolve the boolean array with the kernel to count neighbors
+        contact_count = convolve(color_mask.astype(int), kernel, mode='constant', cval=0)
+        
+        # Return a boolean array where contact count equals n
+        selection_mask = contact_count == points_of_contact
+        selection_mask = selection_mask & ~color_mask
+        selection_mask = np.reshape(selection_mask, (-1, self.nrows, self.ncols))
         return selection_mask
 
     def select_outer_border(self, grid, color):
@@ -170,6 +197,7 @@ class Selector():
         return color_separated_shapes
     
     def select_inner_border_diag(self, grid, color):
+
         """
         Select the inner border of the elements with a specific color with diagonal connectivity.
         """
