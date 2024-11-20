@@ -7,16 +7,17 @@ from scipy.ndimage import label, convolve
 # This class is used to select elements of the grid based on specific criteria.
 
 # Implemented methods:
-# - select_color: select elements of the grid with a specific color
-# - select_rectangles: select rectangles of a specific color, height and width
-# - select_connected_shapes: select connected shapes of a specific color
-# - select_connected_shapes_diag: select connected shapes of a specific color with diagonal connectivity
-# - select_adjacent_to_color: select elements of the grid that are adjacent to a specific color with a specific number of points of contact
-# - select_adjacent_to_color_diag: select elements of the grid that are adjacent to a specific color with a specific number of points of contact with diagonal connectivity
-# - select_outer_border: select the outer border of the elements with a specific color
-# - select_inner_border: select the inner border of the elements with a specific color
-# - select_outer_border_diag: select the outer border of the elements with a specific color with diagonal connectivity
-# - select_inner_border_diag: select the inner border of the elements with a specific color with diagonal connectivity
+# 1 - select_color: select elements of the grid with a specific color
+# 2 - select_rectangles: select rectangles of a specific color, height and width
+# 3 - select_connected_shapes: select connected shapes of a specific color
+# 4 - select_connected_shapes_diag: select connected shapes of a specific color with diagonal connectivity
+# 5 - select_adjacent_to_color: select elements of the grid that are adjacent to a specific color with a specific number of points of contact
+# 6 - select_adjacent_to_color_diag: select elements of the grid that are adjacent to a specific color with a specific number of points of contact with diagonal connectivity
+# 7 - select_outer_border: select the outer border of the elements with a specific color
+# 8 - select_inner_border: select the inner border of the elements with a specific color
+# 9 - select_outer_border_diag: select the outer border of the elements with a specific color with diagonal connectivity
+# 10 - select_inner_border_diag: select the inner border of the elements with a specific color with diagonal connectivity
+# 11 - select_all_grid: select the entire grid
 
 
 class Selector():
@@ -205,3 +206,9 @@ class Selector():
         for i in range(len(color_separated_shapes)):
             color_separated_shapes[i] = find_boundaries(color_separated_shapes[i], mode = 'inner')
         return color_separated_shapes
+    
+    def select_all_grid(self, grid):
+        """
+        Select the entire grid.
+        """
+        return np.ones((1, self.nrows, self.ncols), dtype=bool)
