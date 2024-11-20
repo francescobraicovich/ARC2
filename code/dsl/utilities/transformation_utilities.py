@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.ndimage import find_objects
+from skimage.measure import regionprops
 
 # Implemented utility methods:
 # - create_grid3d(grid, selection): Add an additional dimension to the grid by stacking it.
@@ -11,17 +12,30 @@ def create_grid3d(grid, selection):
         grid_3d = np.stack([grid] * num_selections, axis=0)
         return grid_3d
 
-def find_bounding_rectangle(mask):
+def find_bounding_rectangle(input_array):
     """
-    Find the smallest bounding rectangle around non-zero regions in a binary mask.
+    For each 2D slice in the 3D boolean array, calculate the bounding rectangle of `True` values
+    and set the bounding rectangle to `True` in the output 3D array.
+
+    Parameters:
+    input_array (numpy.ndarray): 3D boolean array (d, rows, cols)
+
+    Returns:
+    numpy.ndarray: 3D boolean array with bounding rectangles of `True` values.
     """
-    d, num_rows, num_cols = mask.shape
+    d, rows, cols = input_array.shape
+    output_array = np.zeros_like(input_array, dtype=bool)
+
     for i in range(d):
-        # Find bounding slices of the non-zero region
-        i_th_slice = mask[i]
-        bounding_box = find_objects(i_th_slice)[0] # This assumes a single connected component
-        i_th_slice[bounding_box] = True    
-    return mask
+        slice_2d = input_array[i]
+        
+        # Calculate the bounding box
+        props = regionprops(slice_2d.astype(int))
+        if props:
+            min_row, min_col, max_row, max_col = props[0].bbox
+            output_array[i, min_row:max_row, min_col:max_col] = True
+
+    return output_array
 
 def find_bounding_square(mask):
     """
@@ -58,6 +72,49 @@ def find_bounding_square(mask):
         # Set the bounding square region to True
         i_th_slice[row_start_new:row_end_new, col_start_new:col_end_new] = True
     return mask 
+
+def find_bounding_square(input_array):
+    """
+    For each 2D slice in the 3D boolean array, calculate the bounding square of `True` values
+    and set the bounding square to `True` in the output 3D array.
+
+    Parameters:
+    input_array (numpy.ndarray): 3D boolean array (d, rows, cols)
+
+    Returns:
+    numpy.ndarray: 3D boolean array with bounding squares of `True` values.
+    """
+    d, rows, cols = input_array.shape
+    output_array = np.zeros_like(input_array, dtype=bool)
+
+    for i in range(d):
+        slice_2d = input_array[i]
+        
+        # Calculate the bounding box
+        props = regionprops(slice_2d.astype(int))
+        if props:
+            min_row, min_col, max_row, max_col = props[0].bbox
+
+            # Calculate side length for the bounding square
+            height = max_row - min_row
+            width = max_col - min_col
+            side_length = max(height, width)
+
+            # Ensure the square is centered around the original rectangle
+            mid_row = (min_row + max_row) // 2
+            mid_col = (min_col + max_col) // 2
+
+            # Calculate new bounds for the square
+            half_side = side_length // 2
+            square_min_row = max(0, mid_row - half_side)
+            square_max_row = min(rows, mid_row + half_side + 1)
+            square_min_col = max(0, mid_col - half_side)
+            square_max_col = min(cols, mid_col + half_side + 1)
+
+            # Set the square to True
+            output_array[i, square_min_row:square_max_row, square_min_col:square_max_col] = True
+
+    return output_array
 
 def center_of_mass(bool_array):
     """
