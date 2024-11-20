@@ -1,6 +1,6 @@
 import numpy as np
 from dsl.utilities.plot import plot_selection
-from dsl.utilities.checks import check_axis, check_num_rotations, check_color
+from dsl.utilities.checks import check_axis, check_num_rotations, check_color, check_integer
 from scipy.ndimage import binary_fill_holes
 from dsl.utilities.transformation_utilities import create_grid3d, find_bounding_rectangle, find_bounding_square, center_of_mass
 from dsl.select import Selector
@@ -27,6 +27,13 @@ from dsl.color_select import ColorSelector
 # 13 - cut_paste(grid, selection, shift_x, shift_y): Shift the selected cells in the grid by (shift_x, shift_y) and set the original cells to 0.
 # 14 - change_background_color(grid, selection, new_color): Change the background color of the grid to the specified color.
 # 15 - vupscale(grid, selection, scale_factor): Upscale the selection in the grid by a specified scale factor, and cap the upscaled selection to match the original size.
+# 16 - hupscale(grid, selection, scale_factor): Upscale the selection in the grid by a specified scale factor, and cap the upscaled selection to match the original size.
+# 17 - fill_bounding_rectangle_with_color(grid, selection, color): Fill the bounding rectangle around the selection with the specified color.
+# 18 - fill_bounding_square_with_color(grid, selection, color): Fill the bounding square around the selection with the specified color.
+# 19 - mirror_horizontally(grid, selection): Mirrors the selection horizontally out of the original grid. Works only id columns < 15.
+# 20 - mirror_vertically(grid, selection): Mirrors the selection vertically out of the original grid. Works only id rows < 15.
+# 21 - duplicate_horizontally(grid, selection): Duplicate the selection horizontally out of the original grid. Works only if columns < 15.
+# 22 - duplicate_vertically(grid, selection): Duplicate the selection vertically out of the original grid. Works only if rows < 15.
 
 class Transformer:
     def __init__(self):
@@ -139,7 +146,7 @@ class Transformer:
 
         return filled_grid
     
-    def mirror_main_diagonal(self, grid, selection):
+    def flip_main_diagonal(self, grid, selection):
         '''
         Mirror the selected region along the main diagonal (top-left to bottom-right).
         '''
@@ -163,7 +170,7 @@ class Transformer:
 
         return grid_3d
 
-    def mirror_anti_diagonal(self, grid, selection):
+    def flip_anti_diagonal(self, grid, selection):
         '''
         Mirror the selected region along the anti-diagonal (top-right to bottom-left).
         '''
@@ -362,3 +369,59 @@ class Transformer:
         bounding_square = find_bounding_square(selection)
         grid_3d[bounding_square & (~selection)] = color
         return grid_3d
+    
+    def mirror_horizontally(self, grid, selection):
+        '''
+        Mirrors the selection horizontally out of the original grid. Works only id columns < 15.
+        '''
+        d, rows, cols = np.shape(selection)
+        if cols > 15:
+            return grid
+        grid_3d = create_grid3d(grid, selection)
+        new_grid_3d = np.zeros((d, rows, cols * 2))
+        new_grid_3d[:, :, :cols] = grid_3d
+        new_grid_3d[:, :, cols:] = np.flip(grid_3d, axis=2)
+        flipped_selection = np.flip(selection, axis=2)
+        new_grid_3d[:, :, cols:][~flipped_selection] = 0
+        return new_grid_3d
+    
+    def mirror_vertically(self, grid, selection):
+        '''
+        Mirrors the selection vertically out of the original grid. Works only id rows < 15.
+        '''
+        d, rows, cols = np.shape(selection)
+        if rows > 15:
+            return grid
+        grid_3d = create_grid3d(grid, selection)
+        new_grid_3d = np.zeros((d, rows * 2, cols))
+        new_grid_3d[:, :rows, :] = grid_3d
+        new_grid_3d[:, rows:, :] = np.flip(grid_3d, axis=1)
+        flipped_selection = np.flip(selection, axis=1)
+        new_grid_3d[:, rows:, :][~flipped_selection] = 0
+        return new_grid_3d
+    
+    def duplicate_horizontally(self, grid, selection):
+        """
+        Duplicate the selection horizontally out of the original grid. Works only if columns < 15.
+        """
+        d, rows, cols = np.shape(selection)
+        if cols > 15:
+            return grid
+        grid_3d = create_grid3d(grid, selection)
+        new_grid_3d = np.zeros((d, rows, cols * 2))
+        new_grid_3d[:, :, :cols] = grid_3d
+        new_grid_3d[:, :, cols:][selection] = grid_3d[selection]
+        return new_grid_3d
+    
+    def duplicate_vertically(self, grid, selection):
+        """
+        Duplicate the selection vertically out of the original grid. Works only if rows < 15.
+        """
+        d, rows, cols = np.shape(selection)
+        if rows > 15:
+            return grid
+        grid_3d = create_grid3d(grid, selection)
+        new_grid_3d = np.zeros((d, rows * 2, cols))
+        new_grid_3d[:, :rows, :] = grid_3d
+        new_grid_3d[:, rows:, :][selection] = grid_3d[selection]
+        return new_grid_3d
