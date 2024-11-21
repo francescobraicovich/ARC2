@@ -116,31 +116,24 @@ class Transformer:
         return grid_3d
 
     
-    def fill_with_color(self, grid, color, fill_color): #change to take a selection and not do it alone if we want to + 3d or 2d ?
+    def fill_with_color(self, grid, selection, fill_color): #change to take a selection and not do it alone if we want to + 3d or 2d ?
         '''
         Fill all holes inside the single connected shape of the specified color
         and return the modified 2D grid.
         '''
         # TODO @vittorio (credo) : La funzione deve prendere la selection come input e non fare la selezione da sola
         # TODO @vittorio : controllare se il colore è nel range dei colori possibili, altrimenti ritornare la grid_3d invariata
-        selector = Selector(grid.shape)
-        bounding_shapes = selector.select_colored_separated_shapes(grid, color)  # Get all separated shapes
+        grid_3d = create_grid3d(grid, selection)  
 
-        # Combine all bounding shapes into one mask
-        combined_mask = np.any(bounding_shapes, axis=0)
+        if check_color(fill_color) == False:
+            return grid_3d
+        filled_masks = np.array([binary_fill_holes(i) for i in selection])
+        # Fill the holes in the grids with the specified color
+        new_masks = filled_masks & (~selection)
+        grid_3d[new_masks] = fill_color
 
-        # Detect holes inside the combined mask
-        filled_mask = binary_fill_holes(combined_mask)  # Fill all enclosed regions within the combined mask
-
-        # Create a new grid with the filled mask
-        filled_grid = grid.copy()
-        filled_grid[filled_mask] = fill_color  # Fill the entire bounding shape (and its holes)
-
-        # Ensure original color (`3`) remains in the bounding region
-        filled_grid[combined_mask] = color
-
-        return filled_grid
-    
+        return grid_3d
+        
     def flip_main_diagonal(self, grid, selection):
         '''
         Mirror the selected region along the main diagonal (top-left to bottom-right).
