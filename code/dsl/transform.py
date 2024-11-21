@@ -111,41 +111,29 @@ class Transformer:
         """
         Apply a color transformation (color_selected) to the selected cells (selection) in the grid and return a new 3D grid.
         """
+        if check_color(color_selected) == False:
+            return grid_3d
         grid_3d = create_grid3d(grid, selection)
-
-        for idx, mask in enumerate(selection):
-            grid_layer = grid.copy()
-            grid_layer[mask == 1] = color_selected
-            grid_3d[idx] = grid_layer
-
+        grid_3d[selection == 1] = color_selected
         return grid_3d
 
     
-    def fill_with_color(self, grid, color, fill_color): #change to take a selection and not do it alone if we want to + 3d or 2d ?
+    def fill_with_color(self, grid, selection, fill_color): #change to take a selection and not do it alone if we want to + 3d or 2d ?
         '''
         Fill all holes inside the single connected shape of the specified color
         and return the modified 2D grid.
         '''
-        # TODO @vittorio (credo) : La funzione deve prendere la selection come input e non fare la selezione da sola
-        # TODO @vittorio : controllare se il colore è nel range dei colori possibili, altrimenti ritornare la grid_3d invariata
-        selector = Selector(grid.shape)
-        bounding_shapes = selector.select_colored_separated_shapes(grid, color)  # Get all separated shapes
+        grid_3d = create_grid3d(grid, selection)  
 
-        # Combine all bounding shapes into one mask
-        combined_mask = np.any(bounding_shapes, axis=0)
+        if check_color(fill_color) == False:
+            return grid_3d
+        filled_masks = np.array([binary_fill_holes(i) for i in selection])
+        # Fill the holes in the grids with the specified color
+        new_masks = filled_masks & (~selection)
+        grid_3d[new_masks] = fill_color
 
-        # Detect holes inside the combined mask
-        filled_mask = binary_fill_holes(combined_mask)  # Fill all enclosed regions within the combined mask
-
-        # Create a new grid with the filled mask
-        filled_grid = grid.copy()
-        filled_grid[filled_mask] = fill_color  # Fill the entire bounding shape (and its holes)
-
-        # Ensure original color (`3`) remains in the bounding region
-        filled_grid[combined_mask] = color
-
-        return filled_grid
-    
+        return grid_3d
+        
     def flip_main_diagonal(self, grid, selection):
         '''
         Mirror the selected region along the main diagonal (top-left to bottom-right).
@@ -193,74 +181,91 @@ class Transformer:
                 grid_3d[i, min_row:max_row+1, min_col:max_col+1] = mirrored
 
         return grid_3d
-    
+
     def copy_paste(self, grid, selection, shift_x, shift_y):
         """
-        Shift the selected cells in the grid by (shift_x, shift_y).
+        Shift the selected cells in the grid by (shift_x, shift_y) without using loops.
         """
         grid_3d = create_grid3d(grid, selection)
-        # Extract the selected values #keeping the original color values
-        selected_values = grid_3d*selection
 
-        # TODO @vittorio : controllare se shift_x e shift_y sono nel range delle dimensioni della griglia, altrimenti ritornare la grid_3d invariata
-                
-        # For each layer
-        for idx in range(selection.shape[0]):
-            layer_selection = selection[idx]
-            coords = np.argwhere(layer_selection)
-            # Add shift to coordinates
-            new_coords = coords + np.array([shift_x, shift_y])
-            # Filter out coordinates that are out of bounds
-            valid_indices = (new_coords[:,0] >= 0) & (new_coords[:,0] < grid_3d.shape[1]) & \
-                            (new_coords[:,1] >= 0) & (new_coords[:,1] < grid_3d.shape[2])
-            coords = coords[valid_indices]
-            new_coords = new_coords[valid_indices]
-            # Paste the cut selection to the new positions
-            for (old_i, old_j), (new_i, new_j) in zip(coords, new_coords):
-                grid_3d[idx, new_i, new_j] = selected_values[idx, old_i, old_j]
-        
+        # Get the indices where the selection is True
+        layer_idxs, old_row_idxs, old_col_idxs = np.where(selection)
+
+        # Compute the new coordinates after shifting
+        new_row_idxs = old_row_idxs + shift_y  # Shift rows (vertical)
+        new_col_idxs = old_col_idxs + shift_x  # Shift columns (horizontal)
+
+        # Filter out coordinates that are out of bounds
+        valid_mask = (
+            (new_row_idxs >= 0) & (new_row_idxs < grid_3d.shape[1]) &
+            (new_col_idxs >= 0) & (new_col_idxs < grid_3d.shape[2])
+        )
+
+        # Apply the valid mask to indices and coordinates
+        layer_idxs = layer_idxs[valid_mask]
+        old_row_idxs = old_row_idxs[valid_mask]
+        old_col_idxs = old_col_idxs[valid_mask]
+        new_row_idxs = new_row_idxs[valid_mask]
+        new_col_idxs = new_col_idxs[valid_mask]
+
+        # Get the values to copy
+        values = grid_3d[layer_idxs, old_row_idxs, old_col_idxs]
+
+        # Copy the values to the new positions
+        grid_3d[layer_idxs, new_row_idxs, new_col_idxs] = values
+
         return grid_3d
     
     def cut_paste(self, grid, selection, shift_x, shift_y):
         """
-        Shift the selected cells in the grid by (shift_x, shift_y).
+        Shift the selected cells in the grid by (shift_x, shift_y) without using loops.
         """
         grid_3d = create_grid3d(grid, selection)
-        grid_3d_o = grid_3d.copy()
-        # TODO @vittorio : controllare se shift_x e shift_y sono nel range delle dimensioni della griglia, altrimenti ritornare la grid_3d invariata
-        
-        # Extract the selected values #keeping the original color values
-        selected_values = grid_3d*selection
-                
-        # For each layer
-        for idx in range(selection.shape[0]):
-            layer_selection = selection[idx]
-            coords = np.argwhere(layer_selection)
-            # Add shift to coordinates
-            new_coords = coords + np.array([shift_x, shift_y])
-            # Filter out coordinates that are out of bounds
-            valid_indices = (new_coords[:,0] >= 0) & (new_coords[:,0] < grid_3d.shape[1]) & \
-                            (new_coords[:,1] >= 0) & (new_coords[:,1] < grid_3d.shape[2])
-            coords = coords[valid_indices]
-            new_coords = new_coords[valid_indices]
-            # Paste the cut selection to the new positions
-            for (old_i, old_j), (new_i, new_j) in zip(coords, new_coords):
-                grid_3d[idx, new_i, new_j] = selected_values[idx, old_i, old_j]
-        
-        grid_3d_f = - grid_3d_o + grid_3d
 
-        return grid_3d_f
+        # Get the indices where the selection is True
+        layer_idxs, old_row_idxs, old_col_idxs = np.where(selection)
+
+        # Compute the new coordinates after shifting
+        new_row_idxs = old_row_idxs + shift_y  # Shift rows (vertical)
+        new_col_idxs = old_col_idxs + shift_x  # Shift columns (horizontal)
+
+        # Filter out coordinates that are out of bounds
+        valid_mask = (
+            (new_row_idxs >= 0) & (new_row_idxs < grid_3d.shape[1]) &
+            (new_col_idxs >= 0) & (new_col_idxs < grid_3d.shape[2])
+        )
+
+        # Apply the valid mask to indices and coordinates
+        layer_idxs = layer_idxs[valid_mask]
+        old_row_idxs = old_row_idxs[valid_mask]
+        old_col_idxs = old_col_idxs[valid_mask]
+        new_row_idxs = new_row_idxs[valid_mask]
+        new_col_idxs = new_col_idxs[valid_mask]
+
+        # Get the values to copy
+        values = grid_3d[layer_idxs, old_row_idxs, old_col_idxs]
+        
+        #clear the original positions 
+        grid_3d[layer_idxs, old_row_idxs, old_col_idxs] = 0
+
+        # Copy the values to the new positions
+        grid_3d[layer_idxs, new_row_idxs, new_col_idxs] = values
+
+
+        return grid_3d
     
     def change_background_color(self, grid, selection, new_color):
         '''
         Change the background color of the grid to the specified color.
         '''
-        # TODO @vittorio : controllare se new_color è nel range dei colori possibili, altrimenti ritornare la grid_3d invariata
-        grid_f_w = grid.copy()
+    
+        grid3d = create_grid3d(grid, selection)
         color_selector = ColorSelector()
-        background_color = color_selector.mostcolor(grid)
-        grid_f_w[grid_f_w == background_color] = new_color
-        grid3d = create_grid3d(grid_f_w,selection)
+        background_color = color_selector.mostcolor(grid) # Get the most common color in the grid
+        grid3d[grid3d == background_color] = new_color # Change the background color to the specified color
+
+        if check_color(new_color) == False: # Check if the color is valid
+            return grid3d
         
         return grid3d
     
@@ -271,8 +276,7 @@ class Transformer:
         color_selector = ColorSelector()
         background_color = color_selector.mostcolor(grid)
         grid_3d = create_grid3d(grid, selection)
-        for idx in range(selection.shape[0]):
-            grid_3d[idx][selection[idx] == 1] = background_color
+        grid_3d[selection == 1] = background_color
 
         return grid_3d
 
