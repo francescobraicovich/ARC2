@@ -112,12 +112,7 @@ class Transformer:
         Apply a color transformation (color_selected) to the selected cells (selection) in the grid and return a new 3D grid.
         """
         grid_3d = create_grid3d(grid, selection)
-
-        for idx, mask in enumerate(selection):
-            grid_layer = grid.copy()
-            grid_layer[mask == 1] = color_selected
-            grid_3d[idx] = grid_layer
-
+        grid_3d[selection == 1] = color_selected
         return grid_3d
 
     
