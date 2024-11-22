@@ -8,6 +8,9 @@ from skimage.measure import regionprops
 # - find_bounding_square(mask): Find the smallest bounding square around non-zero regions in a binary mask.
 
 def create_grid3d(grid, selection):
+        #do not add an additional dimension if already 3D
+        if len(grid.shape) == 3:
+            return grid
         num_selections = selection.shape[0]
         grid_3d = np.stack([grid] * num_selections, axis=0)
         return grid_3d
