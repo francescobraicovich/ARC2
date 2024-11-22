@@ -34,6 +34,8 @@ from dsl.color_select import ColorSelector
 # 20 - mirror_vertically(grid, selection): Mirrors the selection vertically out of the original grid. Works only id rows < 15.
 # 21 - duplicate_horizontally(grid, selection): Duplicate the selection horizontally out of the original grid. Works only if columns < 15.
 # 22 - duplicate_vertically(grid, selection): Duplicate the selection vertically out of the original grid. Works only if rows < 15.
+# 23 - copy_paste_vertically(grid, selection): For each mask in the selection, copy its selected area and paste it upwards and downwards as many times as possible within the grid bounds.
+# 24 - copy_paste_horizontally(grid, selection): For each mask in the selection, copy its selected area and paste it leftwards and rightwards as many times as possible within the grid bounds.
 
 class Transformer:
     def __init__(self):
@@ -429,3 +431,121 @@ class Transformer:
         new_grid_3d[:, :rows, :] = grid_3d
         new_grid_3d[:, rows:, :][selection] = grid_3d[selection]
         return new_grid_3d
+    
+    def copy_paste_vertically(self, grid, selection):
+        """
+        For each mask in the selection, copy its selected area and paste it upwards and downwards
+        as many times as possible within the grid bounds.
+        """
+        grid_3d = create_grid3d(grid, selection)
+        n_masks, height_of_grid, width_of_grid = grid_3d.shape
+
+        # Identify rows with at least one '1' in each mask
+        rows_with_one = np.any(selection == 1, axis=2)  # Shape: (n_masks, rows)
+
+        # Initialize arrays for first and last rows containing '1's
+        first_rows = np.full(n_masks, -1)
+        last_rows = np.full(n_masks, -1)
+
+        # Find first and last rows with '1's in each mask
+        for idx in range(n_masks):
+            row_indices = np.where(rows_with_one[idx])[0]
+            if row_indices.size > 0:
+                first_rows[idx] = row_indices[0]
+                last_rows[idx] = row_indices[-1]
+
+        # Calculate the height of the selection per mask
+        selection_height = last_rows - first_rows + 1  # Shape: (n_masks,)
+        # Calculate factors per mask
+        factor_up = np.ceil(first_rows / selection_height).astype(int)
+        factor_down = np.ceil((height_of_grid - last_rows - 1) / selection_height).astype(int)
+        # Initialize the final transformation
+        final_transformation = grid_3d.copy()
+
+        # Loop over each mask
+        for idx in range(n_masks):
+            if selection_height[idx] <= 0:
+                # Skip masks with no selection
+                continue
+
+            # Get the grid and selection for the current mask
+            grid_layer = final_transformation[idx]
+            selection_layer = selection[idx]
+            # Reshape to 3D arrays to match the input of copy_paste
+            grid_layer_3d = np.expand_dims(grid_layer, axis=0)
+            selection_layer_3d = np.expand_dims(selection_layer, axis=0)
+
+            # Copy-paste upwards
+            for i in range(factor_up[idx]):
+                shift = -(i+1) * selection_height[idx]
+                # Perform the copy-paste
+                grid_layer_3d = self.copy_paste(grid_layer_3d, selection_layer_3d, 0, shift) #todo verify this part
+            # Copy-paste downwards
+            for i in range(factor_down[idx]):
+                shift = (i+1) * selection_height[idx]
+                # Perform the copy-paste
+                grid_layer_3d = self.copy_paste(grid_layer_3d, selection_layer_3d, 0, shift)
+
+            # Remove the extra dimension and update the final transformation
+            final_transformation[idx] = grid_layer_3d[0]
+
+        return final_transformation
+
+    def copy_paste_horizontally(self, grid, selection):
+        """
+        For each mask in the selection, copy its selected area and paste it leftwards and rightwards
+        as many times as possible within the grid bounds.
+        """
+        grid_3d = create_grid3d(grid, selection)
+        n_masks, height_of_grid, width_of_grid = grid_3d.shape
+    
+        # Identify columns with at least one '1' in each mask
+        columns_with_one = np.any(selection == 1, axis=1)  # Shape: (n_masks, columns)
+    
+        # Initialize arrays for first and last columns containing '1's
+        first_cols = np.full(n_masks, -1)
+        last_cols = np.full(n_masks, -1)
+    
+        # Find first and last columns with '1's in each mask
+        for idx in range(n_masks):
+            col_indices = np.where(columns_with_one[idx])[0]
+            if col_indices.size > 0:
+                first_cols[idx] = col_indices[0]
+                last_cols[idx] = col_indices[-1]
+    
+        # Calculate the width of the selection per mask
+        selection_width = last_cols - first_cols + 1  # Shape: (n_masks,)
+        # Calculate factors per mask
+        factor_left = np.ceil(first_cols / selection_width).astype(int)
+        factor_right = np.ceil((width_of_grid - last_cols - 1) / selection_width).astype(int)
+        # Initialize the final transformation
+        final_transformation = grid_3d.copy()
+    
+        # Loop over each mask
+        for idx in range(n_masks):
+            if selection_width[idx] <= 0:
+                # Skip masks with no selection
+                continue
+    
+            # Get the grid and selection for the current mask
+            grid_layer = final_transformation[idx]
+            selection_layer = selection[idx]
+            # Reshape to 3D arrays to match the input of copy_paste
+            grid_layer_3d = np.expand_dims(grid_layer, axis=0)
+            selection_layer_3d = np.expand_dims(selection_layer, axis=0)
+    
+            # Copy-paste leftwards
+            for i in range(factor_left[idx]):
+                shift = -(i + 1) * selection_width[idx]
+                # Perform the copy-paste
+                grid_layer_3d = self.copy_paste(grid_layer_3d, selection_layer_3d, shift, 0)
+            # Copy-paste rightwards
+            for i in range(factor_right[idx]):
+                shift = (i + 1) * selection_width[idx]
+                # Perform the copy-paste
+                grid_layer_3d = self.copy_paste(grid_layer_3d, selection_layer_3d, shift, 0)
+    
+            # Remove the extra dimension and update the final transformation
+            final_transformation[idx] = grid_layer_3d[0]
+    
+        return final_transformation
