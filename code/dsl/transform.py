@@ -35,8 +35,9 @@ from dsl.color_select import ColorSelector
 # 21 - mirror_horizontally(grid, selection): Mirrors the selection horizontally out of the original grid. Works only id columns < 15.
 # 22 - mirror_vertically(grid, selection): Mirrors the selection vertically out of the original grid. Works only id rows < 15.
 # 23 - duplicate_horizontally(grid, selection): Duplicate the selection horizontally out of the original grid. Works only if columns < 15.
-# 24 - duplicate_vertically(grid, selection): Duplicate the selection vertically out of the original grid. Works only if rows < 15.
-# 25 - cut_sum(grid, selection, shift_x, shift_y): Shift the selected cells in the grid by (shift_x, shift_y) without using loops and sum the values.
+# 24 - duplicate_vertically(grid, selection): Duplicate the selection vertically out of the original grid. Works only if rows < 15. 
+# 25 - copy_paste_vertically(grid, selection): For each mask in the selection, copy its selected area and paste it upwards and downwards as many times as possible within the grid bounds.
+# 26 - copy_paste_horizontally(grid, selection): For each mask in the selection, copy its selected area and paste it leftwards and rightwards as many times as possible within the grid bounds.
 
 
 class Transformer:
