@@ -344,15 +344,81 @@ class Transformer:
             capped_upscaled_grid[layer_idx] = upscaled_selection_3d_grid[layer_idx, upper_bound:lower_bound, :]
 
         # Update the original grid with the capped selection
-        selection_3d_grid[selection] = 0
+        selection_3d_grid[selection == 1] = 0
         selection_3d_grid[capped_selection] = capped_upscaled_grid[capped_selection].ravel()
 
         return selection_3d_grid
-    
-    def hupscale(self, grid, selection, scale_factor):
-        # TODO @filippo : Implement horizontal upscaling
 
-        pass
+  
+    def hupscale(self, grid, selection, scale_factor):
+        """
+        Upscale the selection in the grid horizontally by a specified scale factor,
+        and cap the upscaled selection to match the original size.
+        """
+        # Create a 3D grid representation
+        selection_3d_grid = create_grid3d(grid, selection)
+        depth, original_rows, original_cols = selection.shape
+
+        # Perform upscaling by repeating elements along columns
+        upscaled_selection = np.repeat(selection, scale_factor, axis=2)
+        upscaled_selection_3d_grid = np.repeat(selection_3d_grid, scale_factor, axis=2)
+        upscaled_cols = upscaled_selection.shape[2]
+
+        # Calculate column boundaries for capping
+        if original_cols % 2 == 0:
+            half_cols_left, half_cols_right = original_cols // 2, original_cols // 2
+        else:
+            half_cols_left, half_cols_right = original_cols // 2 + 1, original_cols // 2
+
+        # Initialize arrays for capped selection and grid
+        capped_selection = np.zeros((depth, original_rows, original_cols), dtype=bool)
+        capped_upscaled_grid = np.zeros((depth, original_rows, original_cols))
+
+        for layer_idx in range(depth):
+            # Compute center of mass for the original and upscaled selection
+            original_com = center_of_mass(selection[layer_idx])[1]
+            upscaled_com = center_of_mass(upscaled_selection[layer_idx])[1]
+
+            # Determine bounds for capping
+            lower_bound = min(int(upscaled_com + half_cols_right), upscaled_cols)
+            upper_bound = max(int(upscaled_com - half_cols_left), 0)
+
+            # Adjust bounds if out of range
+            if lower_bound >= upscaled_cols:
+                lower_bound = upscaled_cols
+                upper_bound = lower_bound - original_cols
+            elif upper_bound <= 0:
+                upper_bound = 0
+                lower_bound = upper_bound + original_cols
+
+            # Apply capping and recalculate center of mass
+            capped_selection[layer_idx] = upscaled_selection[layer_idx, :, upper_bound:lower_bound]
+            capped_com = center_of_mass(capped_selection[layer_idx])[1]
+
+            # Adjust bounds based on center of mass difference
+            offset = int(capped_com - original_com)
+            lower_bound += offset
+            upper_bound += offset
+
+            # Reapply bounds check
+            if lower_bound >= upscaled_cols:
+                lower_bound = upscaled_cols
+                upper_bound = lower_bound - original_cols
+            elif upper_bound <= 0:
+                upper_bound = 0
+                lower_bound = upper_bound + original_cols
+
+            # Final capping
+            capped_selection[layer_idx] = upscaled_selection[layer_idx, :, upper_bound:lower_bound]
+            capped_upscaled_grid[layer_idx] = upscaled_selection_3d_grid[layer_idx, :, upper_bound:lower_bound]
+
+        # Update the original grid with the capped selection
+        selection_3d_grid[selection == 1] = 0
+        capped_mask = capped_selection.astype(bool)
+        selection_3d_grid[capped_mask] = capped_upscaled_grid[capped_mask].ravel()
+
+        return selection_3d_grid
+
 
     def fill_bounding_rectangle_with_color(self, grid, selection, color):
         '''
