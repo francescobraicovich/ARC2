@@ -24,16 +24,20 @@ from dsl.color_select import ColorSelector
 # 10 - mirror_anti_diagonal(grid, selection): Mirror the selected region along the anti-diagonal (top-right to bottom-left).
 # 11 - color(grid, selection, color_selected): Apply a color transformation (color_selected) to the selected cells (selection) in the grid and return a new 3D grid.   
 # 12 - copy_paste(grid, selection, shift_x, shift_y): Shift the selected cells in the grid by (shift_x, shift_y).
-# 13 - cut_paste(grid, selection, shift_x, shift_y): Shift the selected cells in the grid by (shift_x, shift_y) and set the original cells to 0.
-# 14 - change_background_color(grid, selection, new_color): Change the background color of the grid to the specified color.
-# 15 - vupscale(grid, selection, scale_factor): Upscale the selection in the grid by a specified scale factor, and cap the upscaled selection to match the original size.
-# 16 - hupscale(grid, selection, scale_factor): Upscale the selection in the grid by a specified scale factor, and cap the upscaled selection to match the original size.
-# 17 - fill_bounding_rectangle_with_color(grid, selection, color): Fill the bounding rectangle around the selection with the specified color.
-# 18 - fill_bounding_square_with_color(grid, selection, color): Fill the bounding square around the selection with the specified color.
-# 19 - mirror_horizontally(grid, selection): Mirrors the selection horizontally out of the original grid. Works only id columns < 15.
-# 20 - mirror_vertically(grid, selection): Mirrors the selection vertically out of the original grid. Works only id rows < 15.
-# 21 - duplicate_horizontally(grid, selection): Duplicate the selection horizontally out of the original grid. Works only if columns < 15.
-# 22 - duplicate_vertically(grid, selection): Duplicate the selection vertically out of the original grid. Works only if rows < 15.
+# 13 - copy_sum(grid, selection, shift_x, shift_y): Shift the selected cells in the grid by (shift_x, shift_y) without using loops and sum the values.
+# 14 - cut_paste(grid, selection, shift_x, shift_y): Shift the selected cells in the grid by (shift_x, shift_y) and set the original cells to 0.
+# 15 - cut_sum(grid, selection, shift_x, shift_y): Shift the selected cells in the grid by (shift_x, shift_y) without using loops and sum the values.
+# 16 - change_background_color(grid, selection, new_color): Change the background color of the grid to the specified color.
+# 17 - vupscale(grid, selection, scale_factor): Upscale the selection in the grid by a specified scale factor, and cap the upscaled selection to match the original size.
+# 18 - hupscale(grid, selection, scale_factor): Upscale the selection in the grid by a specified scale factor, and cap the upscaled selection to match the original size.
+# 19 - fill_bounding_rectangle_with_color(grid, selection, color): Fill the bounding rectangle around the selection with the specified color.
+# 20 - fill_bounding_square_with_color(grid, selection, color): Fill the bounding square around the selection with the specified color.
+# 21 - mirror_horizontally(grid, selection): Mirrors the selection horizontally out of the original grid. Works only id columns < 15.
+# 22 - mirror_vertically(grid, selection): Mirrors the selection vertically out of the original grid. Works only id rows < 15.
+# 23 - duplicate_horizontally(grid, selection): Duplicate the selection horizontally out of the original grid. Works only if columns < 15.
+# 24 - duplicate_vertically(grid, selection): Duplicate the selection vertically out of the original grid. Works only if rows < 15.
+# 25 - cut_sum(grid, selection, shift_x, shift_y): Shift the selected cells in the grid by (shift_x, shift_y) without using loops and sum the values.
+
 
 class Transformer:
     def __init__(self):
@@ -216,7 +220,8 @@ class Transformer:
 
         return grid_3d
     
-    def cut_paste(self, grid, selection, shift_x, shift_y):
+
+    def copy_sum(self, grid, selection, shift_x, shift_y):
         """
         Shift the selected cells in the grid by (shift_x, shift_y) without using loops.
         """
@@ -244,16 +249,74 @@ class Transformer:
 
         # Get the values to copy
         values = grid_3d[layer_idxs, old_row_idxs, old_col_idxs]
-        
-        #clear the original positions 
-        grid_3d[layer_idxs, old_row_idxs, old_col_idxs] = 0
 
         # Copy the values to the new positions
-        grid_3d[layer_idxs, new_row_idxs, new_col_idxs] = values
-
+        np.add.at(grid_3d, (layer_idxs, new_row_idxs, new_col_idxs), values)
 
         return grid_3d
     
+    def cut_paste(self, grid, selection, shift_x, shift_y):
+        """
+        Shift the selected cells in the grid by (shift_x, shift_y) without using loops.
+        """
+        grid_3d = create_grid3d(grid, selection)
+
+        # Get the indices where the selection is True
+        layer_idxs, old_row_idxs, old_col_idxs = np.where(selection)
+
+        # Compute the new coordinates after shifting
+        new_row_idxs = old_row_idxs + shift_y  # Shift rows (vertical)
+        new_col_idxs = old_col_idxs + shift_x  # Shift columns (horizontal)
+
+        # Filter out coordinates that are out of bounds
+        valid_mask = (
+            (new_row_idxs >= 0) & (new_row_idxs < grid_3d.shape[1]) &
+            (new_col_idxs >= 0) & (new_col_idxs < grid_3d.shape[2])
+        )
+
+        # Get the values to move
+        values = grid_3d[layer_idxs[valid_mask], old_row_idxs[valid_mask], old_col_idxs[valid_mask]]
+
+        # Clear the original positions
+        grid_3d[layer_idxs, old_row_idxs, old_col_idxs] = 0
+
+        # Assign the values to the new positions
+        grid_3d[layer_idxs[valid_mask], new_row_idxs[valid_mask], new_col_idxs[valid_mask]] = values
+
+        return grid_3d
+
+
+    def cut_sum(self, grid, selection, shift_x, shift_y):
+        """
+        Shift the selected cells in the grid by (shift_x, shift_y) without using loops.
+        """
+        grid_3d = create_grid3d(grid, selection)
+
+        # Get the indices where the selection is True
+        layer_idxs, old_row_idxs, old_col_idxs = np.where(selection)
+
+        # Compute the new coordinates after shifting
+        new_row_idxs = old_row_idxs + shift_y  # Shift rows (vertical)
+        new_col_idxs = old_col_idxs + shift_x  # Shift columns (horizontal)
+
+        # Filter out coordinates that are out of bounds
+        valid_mask = (
+            (new_row_idxs >= 0) & (new_row_idxs < grid_3d.shape[1]) &
+            (new_col_idxs >= 0) & (new_col_idxs < grid_3d.shape[2])
+        )
+
+        # Get the values to move
+        values = grid_3d[layer_idxs[valid_mask], old_row_idxs[valid_mask], old_col_idxs[valid_mask]]
+
+        # Clear the original positions
+        grid_3d[layer_idxs, old_row_idxs, old_col_idxs] = 0
+
+        # Paste the values to the new positions adding them to the existing values
+        np.add.at(grid_3d, (layer_idxs[valid_mask], new_row_idxs[valid_mask], new_col_idxs[valid_mask]), values)
+
+        return grid_3d
+    
+
     def change_background_color(self, grid, selection, new_color):
         '''
         Change the background color of the grid to the specified color.
