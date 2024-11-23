@@ -96,3 +96,21 @@ def center_of_mass(bool_array):
     center = tuple(int(round(np.mean(axis))) for axis in indices)
     
     return center
+
+def vectorized_center_of_mass(selection):
+     '''
+     Caluclate the integer indeces of the center of mass of the true values in the selection tensor
+
+     Parameters:
+        selection (numpy.ndarray): A boolean array in 3 dimensions
+    
+    Returns:
+        tuple: A tuple of integers representing the center of mass indices along each axis.
+     '''
+     depth, rows, cols = selection.shape
+     total_weight = np.sum(selection, axis=(1, 2), keepdims=True)
+     row_indices = np.arange(rows).reshape(1, rows, 1)
+     weighted_rows = selection * row_indices
+     sum_weighted_rows = np.sum(weighted_rows, axis=(1, 2), keepdims=True)
+     com = np.round(np.where(total_weight > 0, sum_weighted_rows / total_weight, 0)).astype(int)
+     return com

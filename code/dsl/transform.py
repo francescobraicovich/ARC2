@@ -2,7 +2,7 @@ import numpy as np
 from dsl.utilities.plot import plot_selection
 from dsl.utilities.checks import check_axis, check_num_rotations, check_color, check_integer
 from scipy.ndimage import binary_fill_holes
-from dsl.utilities.transformation_utilities import create_grid3d, find_bounding_rectangle, find_bounding_square, center_of_mass
+from dsl.utilities.transformation_utilities import create_grid3d, find_bounding_rectangle, find_bounding_square, center_of_mass, vectorized_center_of_mass
 from dsl.select import Selector
 from dsl.color_select import ColorSelector
 
@@ -677,3 +677,62 @@ class Transformer:
             final_transformation[idx] = grid_layer_3d[0]
     
         return final_transformation
+    
+    def vectorized_vupscale(self, grid, selection, scale_factor):
+        """
+        Upscale the selection in the grid vertically by a specified scale factor,
+        and overwrite existing values without using loops.
+        """
+        grid_3d = create_grid3d(grid, selection)
+        depth, original_rows, original_cols = selection.shape
+
+        # Upscale selection and grid
+        upscaled_selection = np.repeat(selection, scale_factor, axis=1)
+        upscaled_grid = np.repeat(grid_3d * selection, scale_factor, axis=1)
+        upscaled_rows = upscaled_selection.shape[1]
+
+        com_original = vectorized_center_of_mass(selection)
+        
+        # Compute centers of mass for the upscaled selection
+        com_upscaled = vectorized_center_of_mass(upscaled_selection)   
+        
+        # Compute shift to align centers of mass
+        shift = (com_original - com_upscaled )
+
+        # Create shifted row indices for upscaled selection
+        shifted_row_indices = np.arange(upscaled_rows).reshape(1, upscaled_rows, 1) + shift
+        shifted_row_indices = np.broadcast_to(shifted_row_indices, upscaled_selection.shape)
+        
+        # Create a mask for valid shifted indices
+        valid_mask = (
+            (shifted_row_indices >= 0) &
+            (shifted_row_indices < original_rows) &
+            upscaled_selection
+        )
+
+        # Get indices where valid
+        indices = np.argwhere(valid_mask)
+        d = indices[:, 0]
+        r_upscaled = indices[:, 1]
+        c = indices[:, 2]
+        shifted_rows = shifted_row_indices[valid_mask].flatten()
+        values = upscaled_grid[valid_mask].flatten()
+
+        # Reverse the order to overwrite values in case of overlaps
+        rev_indices = np.arange(len(d) - 1, -1, -1)
+        d_rev = d[rev_indices]
+        shifted_rows_rev = shifted_rows[rev_indices]
+        c_rev = c[rev_indices]
+        values_rev = values[rev_indices]
+
+        # Use indexing to assign values to the final grid
+        final_grid = np.zeros((depth, original_rows, original_cols), dtype=grid_3d.dtype)
+        final_grid[d_rev, shifted_rows_rev, c_rev] = values_rev
+
+        # Clear the original selection from the grid
+        grid_3d[selection] = 0
+
+        # Overwrite the grid with the final grid
+        grid_3d[final_grid != 0] = final_grid[final_grid != 0]
+
+        return grid_3d
