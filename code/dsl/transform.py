@@ -1,7 +1,7 @@
 import numpy as np
 from dsl.utilities.plot import plot_selection
 from dsl.utilities.checks import check_axis, check_num_rotations, check_color, check_integer
-from scipy.ndimage import binary_fill_holes
+from scipy.ndimage import binary_fill_holes, distance_transform_edt
 from dsl.utilities.transformation_utilities import create_grid3d, find_bounding_rectangle, find_bounding_square, center_of_mass, vectorized_center_of_mass
 from dsl.select import Selector
 from dsl.color_select import ColorSelector
@@ -28,16 +28,20 @@ from dsl.color_select import ColorSelector
 # 14 - cut_paste(grid, selection, shift_x, shift_y): Shift the selected cells in the grid by (shift_x, shift_y) and set the original cells to 0.
 # 15 - cut_sum(grid, selection, shift_x, shift_y): Shift the selected cells in the grid by (shift_x, shift_y) without using loops and sum the values.
 # 16 - change_background_color(grid, selection, new_color): Change the background color of the grid to the specified color.
-# 17 - vupscale(grid, selection, scale_factor): Upscale the selection in the grid by a specified scale factor, and cap the upscaled selection to match the original size.
-# 18 - hupscale(grid, selection, scale_factor): Upscale the selection in the grid by a specified scale factor, and cap the upscaled selection to match the original size.
-# 19 - fill_bounding_rectangle_with_color(grid, selection, color): Fill the bounding rectangle around the selection with the specified color.
-# 20 - fill_bounding_square_with_color(grid, selection, color): Fill the bounding square around the selection with the specified color.
-# 21 - mirror_horizontally(grid, selection): Mirrors the selection horizontally out of the original grid. Works only id columns < 15.
-# 22 - mirror_vertically(grid, selection): Mirrors the selection vertically out of the original grid. Works only id rows < 15.
-# 23 - duplicate_horizontally(grid, selection): Duplicate the selection horizontally out of the original grid. Works only if columns < 15.
-# 24 - duplicate_vertically(grid, selection): Duplicate the selection vertically out of the original grid. Works only if rows < 15. 
-# 25 - copy_paste_vertically(grid, selection): For each mask in the selection, copy its selected area and paste it upwards and downwards as many times as possible within the grid bounds.
-# 26 - copy_paste_horizontally(grid, selection): For each mask in the selection, copy its selected area and paste it leftwards and rightwards as many times as possible within the grid bounds.
+# 17 - change_selection_to_background_color(grid, selection): Change the selected cells in the grid to the background color.
+# 18 - vupscale(grid, selection, scale_factor): Upscale the selection in the grid by a specified scale factor, and cap the upscaled selection to match the original size.
+# 19 - hupscale(grid, selection, scale_factor): Upscale the selection in the grid by a specified scale factor, and cap the upscaled selection to match the original size.
+# 21 - fill_bounding_rectangle_with_color(grid, selection, color): Fill the bounding rectangle around the selection with the specified color.
+# 21 - fill_bounding_square_with_color(grid, selection, color): Fill the bounding square around the selection with the specified color.
+# 22 - mirror_horizontally(grid, selection): Mirrors the selection horizontally out of the original grid. Works only id columns < 15.
+# 23 - mirror_vertically(grid, selection): Mirrors the selection vertically out of the original grid. Works only id rows < 15.
+# 24 - duplicate_horizontally(grid, selection): Duplicate the selection horizontally out of the original grid. Works only if columns < 15.
+# 25 - duplicate_vertically(grid, selection): Duplicate the selection vertically out of the original grid. Works only if rows < 15. 
+# 26 - copy_paste_vertically(grid, selection): For each mask in the selection, copy its selected area and paste it upwards and downwards as many times as possible within the grid bounds.
+# 27 - copy_paste_horizontally(grid, selection): For each mask in the selection, copy its selected area and paste it leftwards and rightwards as many times as possible within the grid bounds.
+# XX - vectorized_vupscale the selection in the grid by a specified scale factor, and cap the upscaled selection to match the original size. #TODO @francesco please review method and compare it to the vupscale method
+# 28/31 - gravitate_whole_direction_paste(grid, selection, direction): Copies and pastes the whole selection in the grid along the specified direction until either the end of the grid or the first object encounteres in that direction.
+# 32/35 - gravitate_whole_direction_cut(grid, selection, direction): Cuts and pastes the whole selection in the grid along the specified direction until either the end of the grid or the first object encounteres in that direction.
 
 
 class Transformer:
@@ -681,7 +685,7 @@ class Transformer:
     def vectorized_vupscale(self, grid, selection, scale_factor):
         """
         Upscale the selection in the grid vertically by a specified scale factor,
-        and overwrite existing values without using loops.
+        and overwrite existing values
         """
         grid_3d = create_grid3d(grid, selection)
         depth, original_rows, original_cols = selection.shape
@@ -734,5 +738,530 @@ class Transformer:
 
         # Overwrite the grid with the final grid
         grid_3d[final_grid != 0] = final_grid[final_grid != 0]
+
+        return grid_3d
+    
+    def gravitate_whole_downwards_paste(self, grid, selection):
+        """
+        Copies and pastes the selected cells in the grid downwards until they reach either
+        the bottom of the grid or they land on top of non-zero cells.
+        """
+        grid_3d = create_grid3d(grid, selection)
+
+        # Get dimensions
+        depth, rows, cols = selection.shape
+        
+        # Exclude the selection from the grid to avoid self-collision
+        grid_without_selection = grid_3d.copy()
+
+        # Get the indices where selection is True
+        indices = np.nonzero(selection)  # This returns a tuple of arrays (depth_indices, row_indices, col_indices)
+
+        # Zero out only the corresponding positions in grid_without_selection
+        grid_without_selection[indices] = 0
+
+        # Create row indices
+        row_indices = np.arange(rows).reshape(1, rows, 1)  # Shape: (1, rows, 1)
+
+        # Compute the maximum row index of the selection per depth and column
+        sel_row_indices = np.where(selection, row_indices, -1)  # Shape: (depth, rows, cols)
+        max_row_sel = sel_row_indices.max(axis=1)  # Shape: (depth, cols)
+
+        # Identify columns with selection
+        selection_exists_in_column = (max_row_sel != -1)  # Shape: (depth, cols)
+
+        # Expand dimensions for broadcasting
+        max_row_sel_expanded = max_row_sel[:, None, :]  # Shape: (depth, 1, cols)
+
+        # Create a mask for positions below the selection
+        mask_below_selection = row_indices > max_row_sel_expanded  # Shape: (depth, rows, cols)
+
+        # Identify obstacles below the selection
+        obstacles_below = (grid_without_selection != 0) & mask_below_selection  # Shape: (depth, rows, cols)
+
+        # Determine the first obstacle row index per depth and column
+        obstacle_positions = np.where(obstacles_below, row_indices, rows)
+
+        # Replace obstacle positions in columns without selection with rows + 1
+        obstacle_positions = np.where(selection_exists_in_column[:, None, :], obstacle_positions, rows + 1)
+
+        # Calculate the shift distance per depth and column
+        shift_per_column = obstacle_positions.min(axis=1) - max_row_sel - 1  # Shape: (depth, cols)
+
+        # In columns without selection, set shift_per_column to a large number
+        shift_per_column = np.where(selection_exists_in_column, shift_per_column, rows + 1)
+
+        # Compute the minimum shift over columns with selection for each depth
+        shift_per_depth = np.min(shift_per_column, axis=1)  # Shape: (depth,)
+
+        # Ensure non-negative shifts
+        shift_per_depth = np.clip(shift_per_depth, 0, rows)
+
+        # Get indices where selection is True
+        layer_idxs, old_row_idxs, old_col_idxs = np.where(selection)
+
+        # Get the shift for each selected cell based on its depth
+        shift_y = shift_per_depth[layer_idxs]
+
+        # Call cut_paste with shift_y as an array
+        grid_3d = self.copy_paste(grid_3d, selection, shift_x=0, shift_y=shift_y)
+        
+        return grid_3d
+    
+    def gravitate_whole_upwards_paste(self, grid, selection):
+        """
+        Copies and pastes the selected cells in the grid upwards as a whole until they reach either
+        the top of the grid or they land under non-zero cells.
+        """
+
+        grid_3d = create_grid3d(grid, selection)
+
+        # Get dimensions
+        depth, rows, cols = selection.shape
+
+        # Exclude the selection from the grid to avoid self-collision
+        grid_without_selection = grid_3d.copy()
+        indices = np.nonzero(selection)
+        grid_without_selection[indices] = 0
+
+        # Create row indices
+        row_indices = np.arange(rows).reshape(1, rows, 1)  # Shape: (1, rows, 1)
+
+        # Compute the minimum row index of the selection per depth and column
+        sel_row_indices = np.where(selection, row_indices, rows)  # Shape: (depth, rows, cols)
+        min_row_sel = sel_row_indices.min(axis=1)  # Shape: (depth, cols)
+
+        # Identify columns with selection
+        selection_exists_in_column = (min_row_sel != rows)  # Shape: (depth, cols)
+
+        # Expand dimensions for broadcasting
+        min_row_sel_expanded = min_row_sel[:, None, :]  # Shape: (depth, 1, cols)
+
+        # Create a mask for positions above the selection
+        mask_above_selection = row_indices < min_row_sel_expanded  # Shape: (depth, rows, cols)
+
+        # Identify obstacles above the selection
+        obstacles_above = (grid_without_selection != 0) & mask_above_selection  # Shape: (depth, rows, cols)
+
+        # Determine the last obstacle row index per depth and column
+        obstacle_positions = np.where(obstacles_above, row_indices, -1)
+
+        # Replace obstacle positions in columns without selection with -1
+        obstacle_positions = np.where(selection_exists_in_column[:, None, :], obstacle_positions, -1)
+
+        # Calculate the shift distance per depth and column
+        shift_per_column = min_row_sel - obstacle_positions.max(axis=1) - 1  # Shape: (depth, cols)
+
+        # In columns without selection, set shift_per_column to a large number
+        shift_per_column = np.where(selection_exists_in_column, shift_per_column, rows + 1)
+
+        # Compute the minimum shift over columns with selection for each depth
+        shift_per_depth = np.min(shift_per_column, axis=1)  # Shape: (depth,)
+
+        # Ensure non-negative shifts
+        shift_per_depth = np.clip(shift_per_depth, 0, rows).astype(int)
+
+        # Get indices where selection is True
+        layer_idxs, old_row_idxs, old_col_idxs = np.where(selection)
+
+        # Get the shift for each selected cell based on its depth (negative for upwards movement)
+        shift_y = -shift_per_depth[layer_idxs]
+
+        # Call cut_paste with shift_y as an array
+        grid_3d = self.copy_paste(grid_3d, selection, shift_x=0, shift_y=shift_y)
+
+        return grid_3d
+    
+    def gravitate_whole_right_paste(self, grid, selection):
+        """
+        Copies and pastes the selected cells in the grid to the right as a whole until they reach either
+        the right edge of the grid or they land next to non-zero cells.
+        """
+
+        grid_3d = create_grid3d(grid, selection)
+
+        # Get dimensions
+        depth, rows, cols = selection.shape
+
+        # Exclude the selection from the grid to avoid self-collision
+        grid_without_selection = grid_3d.copy()
+        indices = np.nonzero(selection)
+        grid_without_selection[indices] = 0
+
+        # Create column indices
+        col_indices = np.arange(cols).reshape(1, 1, cols)  # Shape: (1, 1, cols)
+
+        # Compute the maximum column index of the selection per depth and row
+        sel_col_indices = np.where(selection, col_indices, -1)  # Shape: (depth, rows, cols)
+        max_col_sel = sel_col_indices.max(axis=2)  # Shape: (depth, rows)
+
+        # Identify rows with selection
+        selection_exists_in_row = (max_col_sel != -1)  # Shape: (depth, rows)
+
+        # Expand dimensions for broadcasting
+        max_col_sel_expanded = max_col_sel[:, :, None]  # Shape: (depth, rows, 1)
+
+        # Create a mask for positions to the right of the selection
+        mask_right_selection = col_indices > max_col_sel_expanded  # Shape: (depth, rows, cols)
+
+        # Identify obstacles to the right of the selection
+        obstacles_right = (grid_without_selection != 0) & mask_right_selection  # Shape: (depth, rows, cols)
+
+        # Determine the first obstacle column index per depth and row
+        obstacle_positions = np.where(obstacles_right, col_indices, cols)
+        first_obstacle_col = obstacle_positions.min(axis=2)  # Shape: (depth, rows)
+
+        # Replace obstacle positions in rows without selection with cols + 1
+        obstacle_positions = np.where(selection_exists_in_row[:, :, None], obstacle_positions, cols + 1)
+
+        # Calculate the shift distance per depth and row
+        shift_per_row = first_obstacle_col - max_col_sel - 1  # Shape: (depth, rows)
+
+        # In rows without selection, set shift_per_row to a large number
+        shift_per_row = np.where(selection_exists_in_row, shift_per_row, cols + 1)
+
+        # Compute the minimum shift over rows with selection for each depth
+        shift_per_depth = np.min(shift_per_row, axis=1)  # Shape: (depth,)
+
+        # Ensure non-negative shifts
+        shift_per_depth = np.clip(shift_per_depth, 0, cols).astype(int)
+
+        # Get indices where selection is True
+        layer_idxs, old_row_idxs, old_col_idxs = np.where(selection)
+
+        # Get the shift for each selected cell based on its depth
+        shift_x = shift_per_depth[layer_idxs]
+
+        # Call cut_paste with shift_x as an array
+        grid_3d = self.copy_paste(grid_3d, selection, shift_x=shift_x, shift_y=0)
+
+        return grid_3d
+    
+    def gravitate_whole_left_paste(self, grid, selection):
+        """
+        Copies and pastes the selected cells in the grid to the left as a whole until they reach either
+        the left edge of the grid or they land next to non-zero cells.
+        """
+        import numpy as np
+
+        grid_3d = create_grid3d(grid, selection)
+
+        # Get dimensions
+        depth, rows, cols = selection.shape
+
+        # Exclude the selection from the grid to avoid self-collision
+        grid_without_selection = grid_3d.copy()
+        indices = np.nonzero(selection)
+        grid_without_selection[indices] = 0
+
+        # Create column indices
+        col_indices = np.arange(cols).reshape(1, 1, cols)  # Shape: (1, 1, cols)
+
+        # Compute the minimum column index of the selection per depth and row
+        sel_col_indices = np.where(selection, col_indices, cols)  # Shape: (depth, rows, cols)
+        min_col_sel = sel_col_indices.min(axis=2)  # Shape: (depth, rows)
+
+        # Identify rows with selection
+        selection_exists_in_row = (min_col_sel != cols)  # Shape: (depth, rows)
+
+        # Expand dimensions for broadcasting
+        min_col_sel_expanded = min_col_sel[:, :, None]  # Shape: (depth, rows, 1)
+
+        # Create a mask for positions to the left of the selection
+        mask_left_selection = col_indices < min_col_sel_expanded  # Shape: (depth, rows, cols)
+
+        # Identify obstacles to the left of the selection
+        obstacles_left = (grid_without_selection != 0) & mask_left_selection  # Shape: (depth, rows, cols)
+
+        # Determine the last obstacle column index per depth and row
+        obstacle_positions = np.where(obstacles_left, col_indices, -1)
+        last_obstacle_col = obstacle_positions.max(axis=2)  # Shape: (depth, rows)
+
+        # Replace obstacle positions in rows without selection with -1
+        obstacle_positions = np.where(selection_exists_in_row[:, :, None], obstacle_positions, -1)
+
+        # Calculate the shift distance per depth and row
+        shift_per_row = min_col_sel - last_obstacle_col - 1  # Shape: (depth, rows)
+
+        # In rows without selection, set shift_per_row to a large number
+        shift_per_row = np.where(selection_exists_in_row, shift_per_row, cols + 1)
+
+        # Compute the minimum shift over rows with selection for each depth
+        shift_per_depth = np.min(shift_per_row, axis=1)  # Shape: (depth,)
+
+        # Ensure non-negative shifts
+        shift_per_depth = np.clip(shift_per_depth, 0, cols).astype(int)
+
+        # Get indices where selection is True
+        layer_idxs, old_row_idxs, old_col_idxs = np.where(selection)
+
+        # Get the shift for each selected cell based on its depth (negative for leftward movement)
+        shift_x = -shift_per_depth[layer_idxs]
+
+        # Call cut_paste with shift_x as an array
+        grid_3d = self.copy_paste(grid_3d, selection, shift_x=shift_x, shift_y=0)
+
+        return grid_3d
+
+    def gravitate_whole_downwards_cut(self, grid, selection):
+        """
+        Shift the selected cells in the grid downwards until they reach either
+        the bottom of the grid or they land on top of non-zero cells.
+        """
+        grid_3d = create_grid3d(grid, selection)
+
+        # Get dimensions
+        depth, rows, cols = selection.shape
+        
+        # Exclude the selection from the grid to avoid self-collision
+        grid_without_selection = grid_3d.copy()
+
+        # Get the indices where selection is True
+        indices = np.nonzero(selection)  # This returns a tuple of arrays (depth_indices, row_indices, col_indices)
+
+        # Zero out only the corresponding positions in grid_without_selection
+        grid_without_selection[indices] = 0
+
+        # Create row indices
+        row_indices = np.arange(rows).reshape(1, rows, 1)  # Shape: (1, rows, 1)
+
+        # Compute the maximum row index of the selection per depth and column
+        sel_row_indices = np.where(selection, row_indices, -1)  # Shape: (depth, rows, cols)
+        max_row_sel = sel_row_indices.max(axis=1)  # Shape: (depth, cols)
+
+        # Identify columns with selection
+        selection_exists_in_column = (max_row_sel != -1)  # Shape: (depth, cols)
+
+        # Expand dimensions for broadcasting
+        max_row_sel_expanded = max_row_sel[:, None, :]  # Shape: (depth, 1, cols)
+
+        # Create a mask for positions below the selection
+        mask_below_selection = row_indices > max_row_sel_expanded  # Shape: (depth, rows, cols)
+
+        # Identify obstacles below the selection
+        obstacles_below = (grid_without_selection != 0) & mask_below_selection  # Shape: (depth, rows, cols)
+
+        # Determine the first obstacle row index per depth and column
+        obstacle_positions = np.where(obstacles_below, row_indices, rows)
+
+        # Replace obstacle positions in columns without selection with rows + 1
+        obstacle_positions = np.where(selection_exists_in_column[:, None, :], obstacle_positions, rows + 1)
+
+        # Calculate the shift distance per depth and column
+        shift_per_column = obstacle_positions.min(axis=1) - max_row_sel - 1  # Shape: (depth, cols)
+
+        # In columns without selection, set shift_per_column to a large number
+        shift_per_column = np.where(selection_exists_in_column, shift_per_column, rows + 1)
+
+        # Compute the minimum shift over columns with selection for each depth
+        shift_per_depth = np.min(shift_per_column, axis=1)  # Shape: (depth,)
+
+        # Ensure non-negative shifts
+        shift_per_depth = np.clip(shift_per_depth, 0, rows)
+
+        # Get indices where selection is True
+        layer_idxs, old_row_idxs, old_col_idxs = np.where(selection)
+
+        # Get the shift for each selected cell based on its depth
+        shift_y = shift_per_depth[layer_idxs]
+
+        # Call cut_paste with shift_y as an array
+        grid_3d = self.cut_paste(grid_3d, selection, shift_x=0, shift_y=shift_y)
+        
+        return grid_3d
+
+
+    def gravitate_whole_upwards_cut(self, grid, selection):
+        """
+        Shift the selected cells in the grid upwards as a whole until they reach either
+        the top of the grid or they land under non-zero cells.
+        """
+
+        grid_3d = create_grid3d(grid, selection)
+
+        # Get dimensions
+        depth, rows, cols = selection.shape
+
+        # Exclude the selection from the grid to avoid self-collision
+        grid_without_selection = grid_3d.copy()
+        indices = np.nonzero(selection)
+        grid_without_selection[indices] = 0
+
+        # Create row indices
+        row_indices = np.arange(rows).reshape(1, rows, 1)  # Shape: (1, rows, 1)
+
+        # Compute the minimum row index of the selection per depth and column
+        sel_row_indices = np.where(selection, row_indices, rows)  # Shape: (depth, rows, cols)
+        min_row_sel = sel_row_indices.min(axis=1)  # Shape: (depth, cols)
+
+        # Identify columns with selection
+        selection_exists_in_column = (min_row_sel != rows)  # Shape: (depth, cols)
+
+        # Expand dimensions for broadcasting
+        min_row_sel_expanded = min_row_sel[:, None, :]  # Shape: (depth, 1, cols)
+
+        # Create a mask for positions above the selection
+        mask_above_selection = row_indices < min_row_sel_expanded  # Shape: (depth, rows, cols)
+
+        # Identify obstacles above the selection
+        obstacles_above = (grid_without_selection != 0) & mask_above_selection  # Shape: (depth, rows, cols)
+
+        # Determine the last obstacle row index per depth and column
+        obstacle_positions = np.where(obstacles_above, row_indices, -1)
+
+        # Replace obstacle positions in columns without selection with -1
+        obstacle_positions = np.where(selection_exists_in_column[:, None, :], obstacle_positions, -1)
+
+        # Calculate the shift distance per depth and column
+        shift_per_column = min_row_sel - obstacle_positions.max(axis=1) - 1  # Shape: (depth, cols)
+
+        # In columns without selection, set shift_per_column to a large number
+        shift_per_column = np.where(selection_exists_in_column, shift_per_column, rows + 1)
+
+        # Compute the minimum shift over columns with selection for each depth
+        shift_per_depth = np.min(shift_per_column, axis=1)  # Shape: (depth,)
+
+        # Ensure non-negative shifts
+        shift_per_depth = np.clip(shift_per_depth, 0, rows).astype(int)
+
+        # Get indices where selection is True
+        layer_idxs, old_row_idxs, old_col_idxs = np.where(selection)
+
+        # Get the shift for each selected cell based on its depth (negative for upwards movement)
+        shift_y = -shift_per_depth[layer_idxs]
+
+        # Call cut_paste with shift_y as an array
+        grid_3d = self.cut_paste(grid_3d, selection, shift_x=0, shift_y=shift_y)
+
+        return grid_3d
+ 
+    def gravitate_whole_right_cut(self, grid, selection):
+        """
+        Shift the selected cells in the grid to the right as a whole until they reach either
+        the right edge of the grid or they land next to non-zero cells.
+        """
+
+        grid_3d = create_grid3d(grid, selection)
+
+        # Get dimensions
+        depth, rows, cols = selection.shape
+
+        # Exclude the selection from the grid to avoid self-collision
+        grid_without_selection = grid_3d.copy()
+        indices = np.nonzero(selection)
+        grid_without_selection[indices] = 0
+
+        # Create column indices
+        col_indices = np.arange(cols).reshape(1, 1, cols)  # Shape: (1, 1, cols)
+
+        # Compute the maximum column index of the selection per depth and row
+        sel_col_indices = np.where(selection, col_indices, -1)  # Shape: (depth, rows, cols)
+        max_col_sel = sel_col_indices.max(axis=2)  # Shape: (depth, rows)
+
+        # Identify rows with selection
+        selection_exists_in_row = (max_col_sel != -1)  # Shape: (depth, rows)
+
+        # Expand dimensions for broadcasting
+        max_col_sel_expanded = max_col_sel[:, :, None]  # Shape: (depth, rows, 1)
+
+        # Create a mask for positions to the right of the selection
+        mask_right_selection = col_indices > max_col_sel_expanded  # Shape: (depth, rows, cols)
+
+        # Identify obstacles to the right of the selection
+        obstacles_right = (grid_without_selection != 0) & mask_right_selection  # Shape: (depth, rows, cols)
+
+        # Determine the first obstacle column index per depth and row
+        obstacle_positions = np.where(obstacles_right, col_indices, cols)
+        first_obstacle_col = obstacle_positions.min(axis=2)  # Shape: (depth, rows)
+
+        # Replace obstacle positions in rows without selection with cols + 1
+        obstacle_positions = np.where(selection_exists_in_row[:, :, None], obstacle_positions, cols + 1)
+
+        # Calculate the shift distance per depth and row
+        shift_per_row = first_obstacle_col - max_col_sel - 1  # Shape: (depth, rows)
+
+        # In rows without selection, set shift_per_row to a large number
+        shift_per_row = np.where(selection_exists_in_row, shift_per_row, cols + 1)
+
+        # Compute the minimum shift over rows with selection for each depth
+        shift_per_depth = np.min(shift_per_row, axis=1)  # Shape: (depth,)
+
+        # Ensure non-negative shifts
+        shift_per_depth = np.clip(shift_per_depth, 0, cols).astype(int)
+
+        # Get indices where selection is True
+        layer_idxs, old_row_idxs, old_col_idxs = np.where(selection)
+
+        # Get the shift for each selected cell based on its depth
+        shift_x = shift_per_depth[layer_idxs]
+
+        # Call cut_paste with shift_x as an array
+        grid_3d = self.cut_paste(grid_3d, selection, shift_x=shift_x, shift_y=0)
+
+        return grid_3d
+    
+    def gravitate_whole_left_cut(self, grid, selection):
+        """
+        Shift the selected cells in the grid to the left as a whole until they reach either
+        the left edge of the grid or they land next to non-zero cells.
+        """
+        import numpy as np
+
+        grid_3d = create_grid3d(grid, selection)
+
+        # Get dimensions
+        depth, rows, cols = selection.shape
+
+        # Exclude the selection from the grid to avoid self-collision
+        grid_without_selection = grid_3d.copy()
+        indices = np.nonzero(selection)
+        grid_without_selection[indices] = 0
+
+        # Create column indices
+        col_indices = np.arange(cols).reshape(1, 1, cols)  # Shape: (1, 1, cols)
+
+        # Compute the minimum column index of the selection per depth and row
+        sel_col_indices = np.where(selection, col_indices, cols)  # Shape: (depth, rows, cols)
+        min_col_sel = sel_col_indices.min(axis=2)  # Shape: (depth, rows)
+
+        # Identify rows with selection
+        selection_exists_in_row = (min_col_sel != cols)  # Shape: (depth, rows)
+
+        # Expand dimensions for broadcasting
+        min_col_sel_expanded = min_col_sel[:, :, None]  # Shape: (depth, rows, 1)
+
+        # Create a mask for positions to the left of the selection
+        mask_left_selection = col_indices < min_col_sel_expanded  # Shape: (depth, rows, cols)
+
+        # Identify obstacles to the left of the selection
+        obstacles_left = (grid_without_selection != 0) & mask_left_selection  # Shape: (depth, rows, cols)
+
+        # Determine the last obstacle column index per depth and row
+        obstacle_positions = np.where(obstacles_left, col_indices, -1)
+        last_obstacle_col = obstacle_positions.max(axis=2)  # Shape: (depth, rows)
+
+        # Replace obstacle positions in rows without selection with -1
+        obstacle_positions = np.where(selection_exists_in_row[:, :, None], obstacle_positions, -1)
+
+        # Calculate the shift distance per depth and row
+        shift_per_row = min_col_sel - last_obstacle_col - 1  # Shape: (depth, rows)
+
+        # In rows without selection, set shift_per_row to a large number
+        shift_per_row = np.where(selection_exists_in_row, shift_per_row, cols + 1)
+
+        # Compute the minimum shift over rows with selection for each depth
+        shift_per_depth = np.min(shift_per_row, axis=1)  # Shape: (depth,)
+
+        # Ensure non-negative shifts
+        shift_per_depth = np.clip(shift_per_depth, 0, cols).astype(int)
+
+        # Get indices where selection is True
+        layer_idxs, old_row_idxs, old_col_idxs = np.where(selection)
+
+        # Get the shift for each selected cell based on its depth (negative for leftward movement)
+        shift_x = -shift_per_depth[layer_idxs]
+
+        # Call cut_paste with shift_x as an array
+        grid_3d = self.cut_paste(grid_3d, selection, shift_x=shift_x, shift_y=0)
 
         return grid_3d
