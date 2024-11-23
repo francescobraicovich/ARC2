@@ -42,7 +42,7 @@ from dsl.color_select import ColorSelector
 # XX - vectorized_vupscale the selection in the grid by a specified scale factor, and cap the upscaled selection to match the original size. #TODO @francesco please review method and compare it to the vupscale method
 # 28/31 - gravitate_whole_direction_paste(grid, selection, direction): Copies and pastes the whole selection in the grid along the specified direction until either the end of the grid or the first object encounteres in that direction.
 # 32/35 - gravitate_whole_direction_cut(grid, selection, direction): Cuts and pastes the whole selection in the grid along the specified direction until either the end of the grid or the first object encounteres in that direction.
-
+#36/39 - direction_gravity(grid, selection): Move the selection in the direction until it hits the edge of the grid or another object. Tiles of the selection are moved independently, they are not "glued".
 
 class Transformer:
     def __init__(self):
@@ -1263,5 +1263,176 @@ class Transformer:
 
         # Call cut_paste with shift_x as an array
         grid_3d = self.cut_paste(grid_3d, selection, shift_x=shift_x, shift_y=0)
+
+        return grid_3d
+    
+    def down_gravity(self, grid, selection):
+        """
+        Apply gravity to selected cells, moving them down until they hit non-zero cells or the bottom of the grid.
+        """
+
+        # Step 1: Convert to 3D grid using the selection and grid
+        grid_3d = create_grid3d(grid, selection)
+
+        # Step 2: Get dimensions of the grid
+        num_layers, num_rows, num_cols = grid_3d.shape
+        
+        # Step 3: Process each selection layer individually
+        for layer_idx in range(num_layers):
+            # Extract the current selection mask (2D)
+            selection_layer = selection[layer_idx]
+            
+            # Create a mask where the cells are selected (non-zero)
+            selected_cells = np.where(selection_layer == 1)
+            selected_rows, selected_cols = selected_cells
+            
+            # Step 4: Process each selected cell, starting from the bottom
+            for i in range(len(selected_rows)-1, -1, -1):
+                row, col = selected_rows[i], selected_cols[i]
+                value = grid_3d[layer_idx, row, col]
+                
+                # Clear the current position in the grid and the selection mask
+                grid_3d[layer_idx, row, col] = 0
+                selection_layer[row, col] = 0
+
+                # Step 5: Find the target position by moving down
+                for target_row in range(row + 1, num_rows):
+                    if grid_3d[layer_idx, target_row, col] != 0:  # Hit non-zero cell
+                        grid_3d[layer_idx, target_row - 1, col] = value
+                        selection_layer[target_row - 1, col] = 1
+                        break
+                else:
+                    # No non-zero cell encountered, drop to the bottom row
+                    grid_3d[layer_idx, num_rows - 1, col] = value
+                    selection_layer[num_rows - 1, col] = 1
+
+        return grid_3d
+    
+    def up_gravity(self, grid, selection):
+        """
+        Apply upward gravity to selected cells, moving them up until they hit non-zero cells or the top of the grid.
+        The function vectorizes this operation by using the create_grid3d function.
+        """
+
+        # Step 1: Convert to 3D grid using the selection and grid
+        grid_3d = create_grid3d(grid, selection)
+
+        # Step 2: Get dimensions of the grid
+        num_layers, num_rows, num_cols = grid_3d.shape
+        
+        # Step 3: Process each selection layer individually
+        for layer_idx in range(num_layers):
+            # Extract the current selection mask (2D)
+            selection_layer = selection[layer_idx]
+            
+            # Create a mask where the cells are selected (non-zero)
+            selected_cells = np.where(selection_layer == 1)
+            selected_rows, selected_cols = selected_cells
+            
+            # Step 4: Process each selected cell, starting from the top
+            for i in range(len(selected_rows)):
+                row, col = selected_rows[i], selected_cols[i]
+                value = grid_3d[layer_idx, row, col]
+                
+                # Clear the current position in the grid and the selection mask
+                grid_3d[layer_idx, row, col] = 0
+                selection_layer[row, col] = 0
+
+                # Step 5: Find the target position by moving up
+                for target_row in range(row - 1, -1, -1):
+                    if grid_3d[layer_idx, target_row, col] != 0:  # Hit non-zero cell
+                        grid_3d[layer_idx, target_row + 1, col] = value
+                        selection_layer[target_row + 1, col] = 1
+                        break
+                else:
+                    # No non-zero cell encountered, drop to the top row
+                    grid_3d[layer_idx, 0, col] = value
+                    selection_layer[0, col] = 1
+
+        return grid_3d
+
+    def right_gravity(self, grid, selection):
+        """
+        Apply gravity to selected cells, moving them towards the right until they hit non-zero cells or the rightmost column.
+        The function vectorizes this operation by using the create_grid3d function.
+        """
+
+        # Step 1: Convert to 3D grid using the selection and grid
+        grid_3d = create_grid3d(grid, selection)
+
+        # Step 2: Get dimensions of the grid
+        num_layers, num_rows, num_cols = grid_3d.shape
+        
+        # Step 3: Process each selection layer individually
+        for layer_idx in range(num_layers):
+            # Extract the current selection mask (2D)
+            selection_layer = selection[layer_idx]
+            
+            # Create a mask where the cells are selected (non-zero)
+            selected_cells = np.where(selection_layer == 1)
+            selected_rows, selected_cols = selected_cells
+            
+            # Step 4: Process each selected cell, starting from the right
+            for i in range(len(selected_cols)-1, -1, -1):
+                row, col = selected_rows[i], selected_cols[i]
+                value = grid_3d[layer_idx, row, col]
+                
+                # Clear the current position in the grid and the selection mask
+                grid_3d[layer_idx, row, col] = 0
+                selection_layer[row, col] = 0
+
+                # Step 5: Find the target position by moving right
+                for target_col in range(col + 1, num_cols):
+                    if grid_3d[layer_idx, row, target_col] != 0:  # Hit non-zero cell
+                        grid_3d[layer_idx, row, target_col - 1] = value
+                        selection_layer[row, target_col - 1] = 1
+                        break
+                else:
+                    # No non-zero cell encountered, move to the far right column
+                    grid_3d[layer_idx, row, num_cols - 1] = value
+                    selection_layer[row, num_cols - 1] = 1
+
+        return grid_3d
+
+    def left_gravity(self, grid, selection):
+        """
+        Apply gravity to selected cells, moving them towards the left until they hit non-zero cells or the leftmost column.
+        The function vectorizes this operation by using the create_grid3d function.
+        """
+
+        # Step 1: Convert to 3D grid using the selection and grid
+        grid_3d = create_grid3d(grid, selection)
+
+        # Step 2: Get dimensions of the grid
+        num_layers, num_rows, num_cols = grid_3d.shape
+        
+        # Step 3: Process each selection layer individually
+        for layer_idx in range(num_layers):
+            # Extract the current selection mask (2D)
+            selection_layer = selection[layer_idx]
+            
+            # Create a mask where the cells are selected (non-zero)
+            selected_cells = np.where(selection_layer == 1)
+            selected_rows, selected_cols = selected_cells
+            
+            # Step 4: Process each selected cell, starting from the left
+            for i in range(len(selected_cols)-1, -1, -1):
+                row, col = selected_rows[i], selected_cols[i]
+                value = grid_3d[layer_idx, row, col]
+                
+                # Clear the current position in the grid and the selection mask
+                grid_3d[layer_idx, row, col] = 0
+                selection_layer[row, col] = 0
+
+                # Step 5: Find the target position by moving left
+                for target_col in range(col - 1, -1, -1):
+                    if grid_3d[layer_idx, row, target_col] != 0:  # Hit non-zero cell
+                        grid_3d[layer_idx, row, target_col + 1] = value
+                        selection_layer[row, target_col + 1] = 1
+                        break
+                else:
+                    # No non-zero cell encountered, move to the far left column
+                    grid_3d[layer_idx, row, 0] = value
+                    selection_layer[row, 0] = 1
 
         return grid_3d
