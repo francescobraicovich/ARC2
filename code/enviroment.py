@@ -3,6 +3,7 @@ import random
 from dsl.utilities.padding import pad_grid, unpad_grid
 import gymnasium as gym
 from gymnasium import spaces
+from collections import deque
 
 def extract_states(previous_state, current_state,  target_state):
     """
@@ -37,8 +38,12 @@ class ARC_Env(gym.Env):
         self.observation_space = spaces.Box(low=0, high=255, shape=self.observation_shape, dtype=np.uint8)
 
         # Define the state of the environment
-        self.state = np.zeros(self.observation_shape, dtype=np.uint8)
+        self.new_states = None
+        self.infos = None
+        
+        self.state = None
         self.done = False
+        self.info = None
 
     def get_random_challenge(self):
         """
@@ -57,11 +62,23 @@ class ARC_Env(gym.Env):
         training_grid = np.zeros(self.observation_shape, dtype=np.uint8)
         training_grid[:, :, :self.dim] = pad_grid(random_input)
         training_grid[:, :, self.dim:] = pad_grid(random_output)
-        return training_grid
+        return training_grid, challenge_key
     
     def reset(self):
-        self.state = self.get_random_challenge()
+        # Reset the enviroment variables
+        self.new_states = deque()
+        self.infos = deque()
         self.done = False
+
+        # Get a new challenge
+        new_state, new_key = self.get_random_challenge()
+        info = {'key': self.state_key, 'actions': [], 'num_actions': 0, 'solved': False}
+        
+        # Update the state of the environment
+        self.new_states.append(new_state)
+        self.infos.append(info)
+        self.state = self.new_states.popleft()
+        self.info = self.infos.popleft()
         return self.state
     
     def shape_reward(self, previous_state_unpadded, current_state_unpadded, target_state):
@@ -145,22 +162,63 @@ class ARC_Env(gym.Env):
         transformation = action[5:7]
         transformation_parameters = action[7:]
 
+    def step(self, action, info=None, max_states_per_action=3):
+        if info is None: # if the info dictionary is not provided, we use the default one
+            info = self.info # we add the info as a variable of the step function such that we can have different info dictionaries when actions have multiple results
         
-
-    def step(self, action):
+        # Update the info dictionary
+        info['actions'].append(action)
+        info['num_actions'] += 1
+        
+        # Extract the previous and target states
         previous_state = self.state[:, :self.dim] # make the current state into the previous state
-        current_state = self.act(previous_state, action) # apply the action to the previous state
         target_state = self.state[:, self.dim:] # get the target state
+        current_state_tensor = self.act(previous_state, action) # apply the action to the previous state
 
-        # Extract the states without padding
-        previous_state_not_padded, current_state_not_padded, target_state_not_padded = extract_states(previous_state, current_state, target_state)
-        reward, done = self.total_reward(previous_state_not_padded, current_state_not_padded, target_state_not_padded) # compute the reward
+        # Initialize the rewards, dones, and current states tensors to store the results of the step function
+        rewards = np.zeros(current_state_tensor.shape[0]) # initialize the rewards
+        current_states = np.zeros(current_state_tensor.shape) # initialize the current states
+        solveds = np.zeros(current_state_tensor.shape[0], dtype=bool) # initialize the successes
+
+        # Loop over the first dimension of the tensor
+        for i in range(current_state_tensor.shape[0]):
+            current_state = current_state_tensor[i, :, :] # get the current state
+            
+            # Extract the states without padding
+            previous_state_not_padded, current_state_not_padded, target_state_not_padded = extract_states(previous_state, current_state, target_state)
+            reward, solved = self.total_reward(previous_state_not_padded, current_state_not_padded, target_state_not_padded) # compute the reward
+            current_state_padded = pad_grid(current_state_not_padded) # pad the current state
+            
+            # Store the results
+            rewards[i] = reward # store the reward
+            solveds[i] = solved
+            current_states[i, :, :] = current_state_padded
+        
+        # TODO: check id using the maximum reward is the best approach. This could bias the agent to always choose actions
+        # with multiple results. This is because the expected value of the reward is probably higher when using a maximum.
+        num_states_to_evaluate = min(max_states_per_action, current_state_tensor.shape[0])
+        top_n_indices = np.argsort(rewards)[-num_states_to_evaluate:] # get the top n indices
+        reward = np.max(rewards[top_n_indices]) # get the maximum reward
+
+        # if the agent has completed the challenge, we update the info dictionary
+        done = np.any(solveds)
+        if done:
+            index_of_solved = np.where(solveds)[0][0]
+            self.state = current_states[index_of_solved, :, :]
+            info['solved'] = True
+            return self.state, reward, done, info
+            
+        # Add the top n states to the new states and infos
+        for i in top_n_indices:
+            self.new_states.append(current_states[i, :, :])
+            self.infos.append(info)
         
         # End the episode with a small probability if not ended already
-        if not done and random.random() < 0.01:
+        if not done and random.random() < 0.005:
             done = True
-    
-        # Update the state and done variables
-        self.state[:, :self.dim] = current_state
-        self.done = done
-        return self.state, reward, done, {}
+
+        # Update the state of the environment
+        self.state = self.new_states.popleft()
+        self.info = self.infos.popleft()
+
+        return self.state, reward, done, self.info
