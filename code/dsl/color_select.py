@@ -13,7 +13,7 @@ from scipy.ndimage import find_objects, label
 # - color_number(grid, color): Return the color number if the color is not in the grid. This method should only be used when the color is not in the grid.
 
 class ColorSelector:
-    def __init__(self, num_colors: int = 9):
+    def __init__(self, num_colors: int = 10):
         self.num_colors = num_colors
         self.all_colors = np.arange(num_colors)
         self.invalid_color = -10 # Return this value if the color is invalid so the selection doesn't select anything.
@@ -102,17 +102,17 @@ class ColorSelector:
             return self.invalid_color
         return color
 
-    def palette(self, grid: np.ndarray) -> set:
-        """Return the set of unique colors in the grid."""
-        return set(np.unique(grid))
-    
-    def numcolors(self, grid: np.ndarray) -> int:
-        """Return the number of unique colors in the grid."""
-        return len(palette(grid))
-    
-    def colorcount(self, grid: np.ndarray, value: int) -> int:
-        """Return the number of cells with the given color."""
-        return np.sum(grid == value)
+def palette(self, grid: np.ndarray) -> set:
+    """Return the set of unique colors in the grid."""
+    return set(np.unique(grid))
+
+def numcolors(self, grid: np.ndarray) -> int:
+    """Return the number of unique colors in the grid."""
+    return len(palette(grid))
+
+def colorcount(self, grid: np.ndarray, value: int) -> int:
+    """Return the number of cells with the given color."""
+    return np.sum(grid == value)
     
 
     
