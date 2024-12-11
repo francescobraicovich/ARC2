@@ -131,7 +131,7 @@ class ARC_Env(gym.Env):
 
         # Get a new challenge
         new_state, new_key = self.get_random_challenge(seed=seed)
-        info = {'key': new_key, 'actions': [], 'num_actions': 0, 'solved': False}
+        info = {'key': new_key, 'actions': [], 'action_strings':[], 'num_actions': 0, 'solved': False}
         
         # Update the state of the environment
         self.new_states.append(new_state)
@@ -298,6 +298,8 @@ class ARC_Env(gym.Env):
         # Update the info dictionary
         info = self.info
         info['actions'].append(action)
+        action_string = self.action_space.action_to_string(action)
+        info['action_strings'].append(action_string)
         info['num_actions'] += 1
         
         # Extract the previous and target states
