@@ -1,9 +1,17 @@
 import numpy as np
 import random
 from dsl.utilities.padding import pad_grid, unpad_grid
+from dsl.utilities.plot import plot_grid, plot_grid_3d
 import gymnasium as gym
 from gymnasium import spaces
 from collections import deque
+import trace
+
+def run_with_trace(func, *args, **kwargs):
+    tracer = trace.Trace(trace=True, count=False)  # Set trace=True to log execution
+    result = tracer.runfunc(func, *args, **kwargs)
+    return result
+
 
 def extract_states(previous_state, current_state,  target_state):
     """
@@ -75,7 +83,7 @@ class ARC_Env(gym.Env):
         self.observation_shape = (1, dim, 2*dim) # shape of the grid
 
         # reward variables
-        self.step_penalty = -1
+        self.step_penalty = 1
         self.maximum_similarity = 50
         self.completed_challenge_reward = 25
 
@@ -93,10 +101,13 @@ class ARC_Env(gym.Env):
         self.done = False
         self.info = None
 
-    def get_random_challenge(self):
+    def get_random_challenge(self, seed=None):
         """
         Get a random challenge from the challenge dictionary. 
         """
+        if seed is not None:
+            random.seed(seed)
+            np.random.seed(seed)
         challenge_key = random.choice(self.dictionary_keys) 
         challenge = self.challenge_dictionary[challenge_key]
         challenge_train = challenge['train']
@@ -112,14 +123,14 @@ class ARC_Env(gym.Env):
         training_grid[:, :, self.dim:] = pad_grid(random_output)
         return training_grid, challenge_key
     
-    def reset(self):
+    def reset(self, seed=None):
         # Reset the enviroment variables
         self.new_states = deque()
         self.infos = deque()
         self.done = False
 
         # Get a new challenge
-        new_state, new_key = self.get_random_challenge()
+        new_state, new_key = self.get_random_challenge(seed=seed)
         info = {'key': new_key, 'actions': [], 'num_actions': 0, 'solved': False}
         
         # Update the state of the environment
@@ -207,6 +218,7 @@ class ARC_Env(gym.Env):
         """
         num_cells_target_state = target_state_unpadded.size
         
+        
         # Calculate the overlap between the previous state and the target state
         best_overlap_previous, best_overlap_target_with_previous = maximum_overlap_regions(previous_state_unpadded, target_state_unpadded)
         previous_score = np.sum(previous_state_unpadded[best_overlap_previous] == target_state_unpadded[best_overlap_target_with_previous])
@@ -217,8 +229,20 @@ class ARC_Env(gym.Env):
         current_score = np.sum(current_state_unpadded[best_overlap_current] == target_state_unpadded[best_overlap_target_with_current])
         current_score = current_score / num_cells_target_state
 
-        reward = (current_score - previous_score) * self.maximum_similarity
-        return reward
+        step_penalty = self.step_penalty
+        curent_shape = current_state_unpadded.shape
+        target_shape = target_state_unpadded.shape
+        
+        if curent_shape != target_shape:
+            step_penalty += 1
+        else:
+            if np.all(current_state_unpadded == target_state_unpadded):
+                return self.completed_challenge_reward, True
+
+
+        similarity_reward = (current_score - previous_score) * self.maximum_similarity
+        reward = similarity_reward - step_penalty 
+        return reward, False
 
     
     def act(self, previous_state, action):
@@ -226,24 +250,46 @@ class ARC_Env(gym.Env):
         Apply the action to the previous state.
         """
         # Extract the color selection, selection, and transformation keys
-        # FIXME: Currently this works only for actions in the form of lists of integers
-        # We need to think of a better way to encode the actions, moreover we need to consider when there might be zeros in the action that reduce the length
-        color_selection_key =int("".join(map(str, action[:2])))
-        print(color_selection_key)
-        selection_key =int("".join(map(str, action[2:5])))
-        print(selection_key)
-        transformation_key = int("".join(map(str, action[5:])))
-        print(transformation_key)
+        color_selection_key = int(action[0])
+        selection_key = int(action[1])
+        transformation_key = int(action[2])
 
         # Extract the color selection, selection, and transformation
-        color_selection = self.action_space.selection_dict[color_selection_key]
+        color_selection = self.action_space.color_selection_dict[color_selection_key]
         selection = self.action_space.selection_dict[selection_key]
         transformation = self.action_space.transformation_dict[transformation_key]
 
         # Apply the color selection, selection, and transformation to the previous state
-        color = color_selection(grid = previous_state)
-        selection = selection(grid = previous_state, color = color)
-        transformed = transformation(grid = previous_state, selection = selection)
+        #NOTE: This is a debugging step to check if the color selection, selection, and transformation are working correctly
+        try:
+            color = color_selection(grid = previous_state)
+        except:
+            try:
+                print('\n\n\nDebugging starts here:') 
+                run_with_trace(color_selection, grid=previous_state)
+            except:
+                string = self.action_space.action_to_string(action, only_color=True)
+                raise AssertionError(f'The following color selection failed: {string}')
+        
+        try: 
+            selection = selection(grid = previous_state, color = color)
+        except:
+            try:
+                print('\n\n\nDebugging starts here:')
+                run_with_trace(selection, grid=previous_state, color=color)
+            except:
+                string = self.action_space.action_to_string(action, only_selection=True)
+                raise AssertionError(f'The following selection failed: {string}')
+        
+        try:
+            transformed = transformation(grid = previous_state, selection = selection)
+        except:
+            try:
+                print('\n\n\nDebugging starts here:')
+                run_with_trace(transformation, grid=previous_state, selection=selection)
+            except:
+                string = self.action_space.action_to_string(action, only_transformation=True)
+                raise AssertionError(f'The following transformation failed: {string}')
 
         return transformed
 
@@ -255,28 +301,33 @@ class ARC_Env(gym.Env):
         info['num_actions'] += 1
         
         # Extract the previous and target states
-        previous_state = self.state[:, :self.dim] # make the current state into the previous state
-        target_state = self.state[:, self.dim:] # get the target state
-        current_state_tensor = self.act(previous_state, action) # apply the action to the previous state
+        previous_state = self.state[:, :, :self.dim] # make the current state into the previous state
+        previous_state_not_padded = unpad_grid(previous_state) # remove the padding from the previous state
+        
+        # Extract the current and target states
+        target_state = self.state[:, :, self.dim:] # get the target state
+        target_state_not_padded = unpad_grid(target_state) # remove the padding from the target state
+
+        # Apply the action to the previous state
+        current_state_tensor = self.act(previous_state_not_padded, action) # apply the action to the previous state
+        assert len(current_state_tensor.shape) == 3, f'Expected a 3D tensor, got {current_state_tensor.shape} from the following transformation: {self.action_space.action_to_string(action, only_transformation=True)}'
 
         # Initialize the rewards, dones, and current states tensors to store the results of the step function
         rewards = np.zeros(current_state_tensor.shape[0]) # initialize the rewards
-        current_states = np.zeros(current_state_tensor.shape) # initialize the current states
+        current_states = np.zeros((current_state_tensor.shape[0], self.dim, self.dim*2)) # initialize the current states
         solveds = np.zeros(current_state_tensor.shape[0], dtype=bool) # initialize the successes
 
         # Loop over the first dimension of the tensor
         for i in range(current_state_tensor.shape[0]):
-            current_state = current_state_tensor[i, :, :] # get the current state
-            
-            # Extract the states without padding
-            previous_state_not_padded, current_state_not_padded, target_state_not_padded = extract_states(previous_state, current_state, target_state)
+            current_state_not_padded = current_state_tensor[i, :, :] # get the current state
             reward, solved = self.best_overlap_reward(previous_state_not_padded, current_state_not_padded, target_state_not_padded) # compute the reward
             current_state_padded = pad_grid(current_state_not_padded) # pad the current state
             
             # Store the results
             rewards[i] = reward # store the reward
             solveds[i] = solved
-            current_states[i, :, :] = current_state_padded
+            current_states[i, :, :self.dim] = current_state_padded
+            current_states[i, :, self.dim:] = target_state
         
         # TODO: check id using the maximum reward is the best approach. This could bias the agent to always choose actions
         # with multiple results. This is because the expected value of the reward is probably higher when using a maximum.
@@ -294,7 +345,9 @@ class ARC_Env(gym.Env):
             
         # Add the top n states to the new states and infos
         for i in top_n_indices:
-            self.new_states.append(current_states[i, :, :])
+            state_to_append = current_states[i, :, :]
+            state_to_append = np.expand_dims(state_to_append, axis=0)
+            self.new_states.append(state_to_append)
             self.infos.append(info)
         
         # End the episode with a small probability if not ended already
