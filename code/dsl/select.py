@@ -21,18 +21,16 @@ from scipy.ndimage import label, convolve
 
 
 class Selector():
-    def __init__(self, shape:tuple):
-        self.shape = shape # shape of the grid
-        self.nrows, self.ncols = shape # number of rows and columns
+    def __init__(self):
         self.selection_vocabulary = {} # store the selection vocabulary
-        self.no_selection = np.zeros((1, self.nrows, self.ncols), dtype=bool) # no selection mask
         self.minimum_geometry_size = 2 # minimum size of the geometry
 
     def select_color(self, grid:np.ndarray, color:int):
         if check_color(color) == False:
-            return self.no_selection
+            return np.expand_dims(np.zeros_like(grid), axis=0)
         mask = grid == color
-        mask = np.reshape(mask, (-1, self.nrows, self.ncols))
+        n_rows, n_cols = grid.shape
+        mask = np.reshape(mask, (-1, n_rows, n_cols))
         return mask
     
     def select_rectangles(self, grid, color, height, width):
@@ -51,16 +49,16 @@ class Selector():
         rows, cols = grid.shape
         rectangles = []
 
-        if check_integer(height, self.minimum_geometry_size, self.nrows) == False:
-            return self.no_selection
-        if check_integer(width, self.minimum_geometry_size, self.ncols) == False:
-            return self.no_selection
+        if check_integer(height, self.minimum_geometry_size, rows) == False:
+            return np.expand_dims(np.zeros_like(grid), axis=0)
+        if check_integer(width, self.minimum_geometry_size, cols) == False:
+            return np.expand_dims(np.zeros_like(grid), axis=0)
       
         color_mask = self.select_color(grid, color)
         
         # if there are no elements with the target color, we return the color mask (all false)
         if np.sum(color_mask) == 0:
-            return self.no_selection
+            return np.expand_dims(np.zeros_like(grid), axis=0)
         color_mask = color_mask[0, :, :] # remove the first dimension
 
         # Iterate over all possible starting points for the rectangle
@@ -88,7 +86,7 @@ class Selector():
     def select_connected_shapes(self, grid, color):
         color_mask = self.select_color(grid, color)
         if np.sum(color_mask) == 0:
-            return self.no_selection
+            return np.expand_dims(np.zeros_like(grid), axis=0)
         color_mask = color_mask[0, :, :] # remove the first dimension
 
         # Label connected components
@@ -107,7 +105,7 @@ class Selector():
     def select_connected_shapes_diag(self, grid, color):
         color_mask = self.select_color(grid, color)
         if np.sum(color_mask) == 0:
-            return self.no_selection
+            return np.expand_dims(np.zeros_like(grid), axis=0)
         color_mask = color_mask[0, :, :] # remove the first dimension
         
         # Label connected components
@@ -129,7 +127,9 @@ class Selector():
         Finds all cells in a 2D boolean array that have exactly `n` points of contact with `True` values.
         """
         if check_integer(points_of_contact, 1, 4) == False:
-            return self.no_selection
+            return np.expand_dims(np.zeros_like(grid), axis=0)
+        
+        nrows, ncols = grid.shape
         
         color_mask = self.select_color(grid, color)
         color_mask = color_mask[0, :, :] # remove the first dimension
@@ -145,7 +145,7 @@ class Selector():
         # Return a boolean array where contact count equals n
         selection_mask = contact_count == points_of_contact
         selection_mask = selection_mask & ~color_mask
-        selection_mask = np.reshape(selection_mask, (-1, self.nrows, self.ncols))
+        selection_mask = np.reshape(selection_mask, (-1, nrows, ncols))
         return selection_mask
     
     def select_adjacent_to_color_diag(self, grid, color, points_of_contact):
@@ -153,7 +153,9 @@ class Selector():
         Finds all cells in a 2D boolean array that have exactly `n` points of contact with `True` values.
         """
         if check_integer(points_of_contact, 1, 8) == False:
-            return self.no_selection
+            return np.expand_dims(np.zeros_like(grid), axis=0)
+        
+        nrows, ncols = grid.shape
         
         color_mask = self.select_color(grid, color)
         color_mask = color_mask[0, :, :] # remove the first dimension
@@ -167,7 +169,7 @@ class Selector():
         # Return a boolean array where contact count equals n
         selection_mask = contact_count == points_of_contact
         selection_mask = selection_mask & ~color_mask
-        selection_mask = np.reshape(selection_mask, (-1, self.nrows, self.ncols))
+        selection_mask = np.reshape(selection_mask, (-1, nrows, ncols))
         return selection_mask
 
     def select_outer_border(self, grid, color):
@@ -198,7 +200,6 @@ class Selector():
         return color_separated_shapes
     
     def select_inner_border_diag(self, grid, color):
-
         """
         Select the inner border of the elements with a specific color with diagonal connectivity.
         """
@@ -207,8 +208,9 @@ class Selector():
             color_separated_shapes[i] = find_boundaries(color_separated_shapes[i], mode = 'inner')
         return color_separated_shapes
     
-    def select_all_grid(self, grid):
+    def select_all_grid(self, grid, color = None):
         """
         Select the entire grid.
         """
-        return np.ones((1, self.nrows, self.ncols), dtype=bool)
+        nrows, ncols = grid.shape
+        return np.ones((1, nrows, ncols), dtype=bool)
