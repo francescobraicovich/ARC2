@@ -202,7 +202,7 @@ class ARCActionSpace(Space):
         transformation_dict[890] = partial(self.transformer.vupscale, scale_factor=2)
         transformation_dict[900] = partial(self.transformer.hupscale, scale_factor=3)
         transformation_dict[920] = partial(self.transformer.vupscale, scale_factor=2)
-        transformation_dict[940] = partial(self.transformer.hupscale, scale_factor=4)
+        transformation_dict[930] = partial(self.transformer.hupscale, scale_factor=3)
 
         # Deletion and cropping
         transformation_dict[970] = partial(self.transformer.crop)
@@ -225,3 +225,36 @@ class ARCActionSpace(Space):
 
         self.space = action_space
         return action_space
+    
+    def action_to_string(self, action, only_color=False, only_selection=False, only_transformation=False):
+        color_selection = int(action[0])
+        selection = int(action [1])
+        transformation = int(action[2])
+
+        # Convert the partial function to a string
+        color_selection_partial = self.color_selection_dict[color_selection]
+        func_name = color_selection_partial.func.__name__
+        args_str = ', '.join(f'{k}={v}' for k, v in color_selection_partial.keywords.items())
+        color_selection_string = f"{func_name}, {args_str}"
+
+        # Convert the partial function to a string
+        selection_partial = self.selection_dict[selection]
+        func_name = selection_partial.func.__name__
+        args_str = ', '.join(f'{k}={v}' for k, v in selection_partial.keywords.items())
+        selection_string = f"{func_name}, {args_str}"
+
+        # Convert the partial function to a string
+        transformation_partial = self.transformation_dict[transformation]
+        func_name = transformation_partial.func.__name__
+        args_str = ', '.join(f'{k}={v}' for k, v in transformation_partial.keywords.items())
+        transformation_string = f"{func_name}, {args_str}"
+
+        action_dict = {'color_selection': color_selection_string, 'selection': selection_string, 'transformation': transformation_string}
+
+        if only_color:
+            return action_dict['color_selection']
+        if only_selection:
+            return action_dict['selection']
+        if only_transformation:
+            return action_dict['transformation']
+        return action_dict
