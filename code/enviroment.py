@@ -16,8 +16,56 @@ def extract_states(previous_state, current_state,  target_state):
 
     return previous_state_not_padded, current_state_not_padded, target_state_not_padded
 
+def maximum_overlap_regions(array1, array2):
+        """
+        Vectorized calculation of maximum overlap between two 2D arrays.
+        """
+        shape1 = array1.shape
+        shape2 = array2.shape
+        
+        # Calculate possible positions for sliding array2 over array1
+        offsets_i = np.arange(-shape2[0] + 1, shape1[0])
+        offsets_j = np.arange(-shape2[1] + 1, shape1[1])
+        
+        # Create grids for all possible offsets
+        grid_i, grid_j = np.meshgrid(offsets_i, offsets_j, indexing='ij')
+        
+        # Calculate the valid overlap regions for each position
+        row_start1 = np.maximum(0, grid_i)
+        row_end1 = np.minimum(shape1[0], grid_i + shape2[0])
+        col_start1 = np.maximum(0, grid_j)
+        col_end1 = np.minimum(shape1[1], grid_j + shape2[1])
+        
+        row_start2 = np.maximum(0, -grid_i)
+        row_end2 = row_start2 + (row_end1 - row_start1)
+        col_start2 = np.maximum(0, -grid_j)
+        col_end2 = col_start2 + (col_end1 - col_start1)
+        
+        # Calculate overlap scores for all positions
+        max_overlap_score = 0
+        best_overlap1 = None
+        best_overlap2 = None
+        
+        for idx in np.ndindex(grid_i.shape):
+            r1s, r1e = row_start1[idx], row_end1[idx]
+            c1s, c1e = col_start1[idx], col_end1[idx]
+            r2s, r2e = row_start2[idx], row_end2[idx]
+            c2s, c2e = col_start2[idx], col_end2[idx]
+            
+            region1 = array1[r1s:r1e, c1s:c1e]
+            region2 = array2[r2s:r2e, c2s:c2e]
+            
+            overlap_score = np.sum(region1 == region2)
+            
+            if overlap_score > max_overlap_score:
+                max_overlap_score = overlap_score
+                best_overlap1 = (slice(r1s, r1e), slice(c1s, c1e))
+                best_overlap2 = (slice(r2s, r2e), slice(c2s, c2e))
+        
+        return best_overlap1, best_overlap2
+
 class ARC_Env(gym.Env):
-    def __init__(self, challenge_dictionary, dim=30):
+    def __init__(self, challenge_dictionary, action_space, dim=30):
         super(ARC_Env, self).__init__()
         
         self.challenge_dictionary = challenge_dictionary # dictionary of challenges
@@ -32,7 +80,7 @@ class ARC_Env(gym.Env):
         self.completed_challenge_reward = 25
 
         # Define the action space: a sequence of 9 integers
-        self.action_space = spaces.Box(low=0, high=255, shape=(9,), dtype=np.int32)
+        self.action_space = action_space
         
         # Define the observation space: a 60x30 image with pixel values between 0 and 255
         self.observation_space = spaces.Box(low=0, high=255, shape=self.observation_shape, dtype=np.uint8)
@@ -59,7 +107,7 @@ class ARC_Env(gym.Env):
         random_output = np.array(random_challenge['output'])
         
         # Pad the grids
-        training_grid = np.zeros(self.observation_shape, dtype=np.uint8)
+        training_grid = np.zeros(self.observation_shape, dtype=np.int32)
         training_grid[:, :, :self.dim] = pad_grid(random_input)
         training_grid[:, :, self.dim:] = pad_grid(random_output)
         return training_grid, challenge_key
@@ -72,7 +120,7 @@ class ARC_Env(gym.Env):
 
         # Get a new challenge
         new_state, new_key = self.get_random_challenge()
-        info = {'key': self.state_key, 'actions': [], 'num_actions': 0, 'solved': False}
+        info = {'key': new_key, 'actions': [], 'num_actions': 0, 'solved': False}
         
         # Update the state of the environment
         self.new_states.append(new_state)
@@ -152,21 +200,57 @@ class ARC_Env(gym.Env):
         # If the agent has not completed the challenge, we return the sum of the shape and similarity rewards
         return shape_reward + similarity_reward + self.step_penalty, False
     
+    
+    def best_overlap_reward(self, previous_state_unpadded, current_state_unpadded, target_state_unpadded):
+        """
+        Reward the agent based on the best overlap between the current state and the target state.
+        """
+        num_cells_target_state = target_state_unpadded.size
+        
+        # Calculate the overlap between the previous state and the target state
+        best_overlap_previous, best_overlap_target_with_previous = maximum_overlap_regions(previous_state_unpadded, target_state_unpadded)
+        previous_score = np.sum(previous_state_unpadded[best_overlap_previous] == target_state_unpadded[best_overlap_target_with_previous])
+        previous_score = previous_score / num_cells_target_state
+
+        # Calculate the overlap between the current state and the target state
+        best_overlap_current, best_overlap_target_with_current = maximum_overlap_regions(current_state_unpadded, target_state_unpadded)
+        current_score = np.sum(current_state_unpadded[best_overlap_current] == target_state_unpadded[best_overlap_target_with_current])
+        current_score = current_score / num_cells_target_state
+
+        reward = (current_score - previous_score) * self.maximum_similarity
+        return reward
+
+    
     def act(self, previous_state, action):
         """
         Apply the action to the previous state.
         """
-        color_selection = action[0]
-        selection = action[1:3]
-        selection_parameters = action[3:5]
-        transformation = action[5:7]
-        transformation_parameters = action[7:]
+        # Extract the color selection, selection, and transformation keys
+        # FIXME: Currently this works only for actions in the form of lists of integers
+        # We need to think of a better way to encode the actions, moreover we need to consider when there might be zeros in the action that reduce the length
+        color_selection_key =int("".join(map(str, action[:2])))
+        print(color_selection_key)
+        selection_key =int("".join(map(str, action[2:5])))
+        print(selection_key)
+        transformation_key = int("".join(map(str, action[5:])))
+        print(transformation_key)
 
-    def step(self, action, info=None, max_states_per_action=3):
-        if info is None: # if the info dictionary is not provided, we use the default one
-            info = self.info # we add the info as a variable of the step function such that we can have different info dictionaries when actions have multiple results
+        # Extract the color selection, selection, and transformation
+        color_selection = self.action_space.selection_dict[color_selection_key]
+        selection = self.action_space.selection_dict[selection_key]
+        transformation = self.action_space.transformation_dict[transformation_key]
+
+        # Apply the color selection, selection, and transformation to the previous state
+        color = color_selection(grid = previous_state)
+        selection = selection(grid = previous_state, color = color)
+        transformed = transformation(grid = previous_state, selection = selection)
+
+        return transformed
+
+    def step(self, action, max_states_per_action=3):
         
         # Update the info dictionary
+        info = self.info
         info['actions'].append(action)
         info['num_actions'] += 1
         
@@ -186,7 +270,7 @@ class ARC_Env(gym.Env):
             
             # Extract the states without padding
             previous_state_not_padded, current_state_not_padded, target_state_not_padded = extract_states(previous_state, current_state, target_state)
-            reward, solved = self.total_reward(previous_state_not_padded, current_state_not_padded, target_state_not_padded) # compute the reward
+            reward, solved = self.best_overlap_reward(previous_state_not_padded, current_state_not_padded, target_state_not_padded) # compute the reward
             current_state_padded = pad_grid(current_state_not_padded) # pad the current state
             
             # Store the results
