@@ -181,7 +181,7 @@ class Transformer:
 
 
     # Rotation transformations
-    def rotate(grid, selection, num_rotations):
+    def rotate(self, grid, selection, num_rotations):
         """
         Rotate the selected cells 90 degrees num_rotations times counterclockwise.
         """
