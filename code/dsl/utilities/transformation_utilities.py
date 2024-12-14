@@ -42,39 +42,43 @@ def find_bounding_rectangle(input_array):
 
 def find_bounding_square(mask):
     """
-    Find the smallest bounding square around non-zero regions in a binary mask.
+    Return a mask of the same shape as the input, with bounding squares
+    around non-zero regions set to 1 for each layer.
     """
     d, num_rows, num_cols = mask.shape
+    bounding_masks = np.zeros_like(mask, dtype=int)
+
     for i in range(d):
         # Find bounding slices of the non-zero region
         i_th_slice = mask[i]
         slices = find_objects(i_th_slice)
-        bounding_box = slices[0]  # Assuming a single connected component
-        row_start, row_end = bounding_box[0].start, bounding_box[0].stop
-        col_start, col_end = bounding_box[1].start, bounding_box[1].stop
 
-        # Calculate the size of the bounding box
-        height = row_end - row_start
-        width = col_end - col_start
+        if slices:  # If there are non-zero regions
+            bounding_box = slices[0]  # Assuming a single connected component
+            row_start, row_end = bounding_box[0].start, bounding_box[0].stop
+            col_start, col_end = bounding_box[1].start, bounding_box[1].stop
 
-        # Determine the side length of the bounding square
-        side_length = max(height, width)
+            # Calculate the size of the bounding box
+            height = row_end - row_start
+            width = col_end - col_start
 
-        # Calculate new bounds to create a square
-        row_center = (row_start + row_end) // 2
-        col_center = (col_start + col_end) // 2
+            # Determine the side length of the bounding square
+            side_length = max(height, width)
 
-        row_start_new = max(0, row_center - side_length // 2)
-        row_end_new = min(num_rows, row_start_new + side_length)
-        row_start_new = max(0, row_end_new - side_length)  # Adjust start if end exceeds bounds
+            # Calculate new bounds to create a square
+            row_center = (row_start + row_end) // 2
+            col_center = (col_start + col_end) // 2
 
-        col_start_new = max(0, col_center - side_length // 2)
-        col_end_new = min(num_cols, col_start_new + side_length)
-        col_start_new = max(0, col_end_new - side_length)  # Adjust start if end exceeds bounds
+            row_start_new = max(0, row_center - side_length // 2)
+            row_end_new = min(num_rows, row_start_new + side_length)
 
-        # Set the bounding square region to True
-        i_th_slice[row_start_new:row_end_new, col_start_new:col_end_new] = True
-    return mask 
+            col_start_new = max(0, col_center - side_length // 2)
+            col_end_new = min(num_cols, col_start_new + side_length)
+            
+            # Set the bounding square region to 1 in the result mask
+            bounding_masks[i, row_start_new:row_end_new, col_start_new:col_end_new] = 1
+
+    return bounding_masks
 
 def center_of_mass(bool_array):
     """

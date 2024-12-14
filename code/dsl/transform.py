@@ -181,16 +181,38 @@ class Transformer:
 
 
     # Rotation transformations
-    def rotate(self, grid, selection, num_rotations):
+    def rotate(grid, selection, num_rotations):
         """
-        Rotate the selected cells 90 degrees n times counterclockwise.
+        Rotate the selected cells 90 degrees num_rotations times counterclockwise.
         """
         grid_3d = create_grid3d(grid, selection)
-        if check_num_rotations(num_rotations) == False:
-            return grid_3d
-        bounding_square = find_bounding_square(selection)
-        rotated_bounding_square = np.rot90(bounding_square, num_rotations, axes=(1, 2))
-        grid_3d[bounding_square] = np.rot90(grid_3d, num_rotations, axes=(1, 2))[rotated_bounding_square]
+        bounding_masks = find_bounding_square(selection)
+
+        for i in range(bounding_masks.shape[0]):
+            # Get the bounding square mask for the current layer
+            bounding_mask = bounding_masks[i]
+
+            # Identify rows and columns of the bounding square
+            rows, cols = np.where(bounding_mask)
+            if rows.size == 0 or cols.size == 0:
+                continue  # Skip empty bounding squares
+            if rows.max() - rows.min() == cols.max() - cols.min():
+                
+                row_start, row_end = rows.min(), rows.max() + 1
+                col_start, col_end = cols.min(), cols.max() + 1
+
+                # Extract the sub-grid corresponding to the bounding square
+                sub_grid = grid_3d[i, row_start:row_end, col_start:col_end]
+
+                # Rotate the sub-grid
+                rotated_sub_grid = np.rot90(sub_grid, num_rotations)
+
+                # Place the rotated sub-grid back into the grid
+                grid_3d[i, row_start:row_end, col_start:col_end] = rotated_sub_grid
+
+            else:
+                continue # Skip non-square bounding regions
+
         return grid_3d
     
     def rotate_90(self, grid, selection):
