@@ -141,7 +141,7 @@ class Transformer:
         for i in range(grid_3d.shape[0]):  # Iterate through each selection slice
             mask = bounding_square[i]  # Mask for the current bounding square
             rows, cols = np.where(mask)  # Get the indices of the selected region
-            if len(rows) > 0 and len(cols) > 0:
+            if len(rows) > 0 and len(cols) > 0 and rows.max() - rows.min() == cols.max() - cols.min():
                 # Calculate the bounding square limits
                 min_row, max_row = rows.min(), rows.max()
                 min_col, max_col = cols.min(), cols.max()
@@ -165,7 +165,7 @@ class Transformer:
         for i in range(grid_3d.shape[0]):  # Iterate through each selection slice
             mask = bounding_square[i]  # Mask for the current bounding square
             rows, cols = np.where(mask)  # Get the indices of the selected region
-            if len(rows) > 0 and len(cols) > 0:
+            if len(rows) > 0 and len(cols) > 0 and rows.max() - rows.min() == cols.max() - cols.min():
                 # Calculate the bounding square limits
                 min_row, max_row = rows.min(), rows.max()
                 min_col, max_col = cols.min(), cols.max()

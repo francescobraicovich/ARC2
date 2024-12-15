@@ -43,7 +43,8 @@ def find_bounding_rectangle(input_array):
 def find_bounding_square(mask):
     """
     Return a mask of the same shape as the input, with bounding squares
-    around non-zero regions set to 1 for each layer.
+    around non-zero regions set to 1 for each layer. Ensures the square
+    is symmetric and aligned, truncating excess non-zero regions if necessary.
     """
     d, num_rows, num_cols = mask.shape
     bounding_masks = np.zeros_like(mask, dtype=int)
@@ -62,19 +63,23 @@ def find_bounding_square(mask):
             height = row_end - row_start
             width = col_end - col_start
 
-            # Determine the side length of the bounding square
+            # Determine the side length of the square (maximum of height and width)
             side_length = max(height, width)
 
-            # Calculate new bounds to create a square
+            # Center the square around the rectangle
             row_center = (row_start + row_end) // 2
             col_center = (col_start + col_end) // 2
 
+            # Adjust row bounds symmetrically
             row_start_new = max(0, row_center - side_length // 2)
             row_end_new = min(num_rows, row_start_new + side_length)
+            row_start_new = max(0, row_end_new - side_length)  # Adjust start if end exceeds bounds
 
+            # Adjust column bounds symmetrically
             col_start_new = max(0, col_center - side_length // 2)
             col_end_new = min(num_cols, col_start_new + side_length)
-            
+            col_start_new = max(0, col_end_new - side_length)  # Adjust start if end exceeds bounds
+
             # Set the bounding square region to 1 in the result mask
             bounding_masks[i, row_start_new:row_end_new, col_start_new:col_end_new] = 1
 
