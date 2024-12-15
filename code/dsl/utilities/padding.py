@@ -23,6 +23,8 @@ def unpad_grid(grid: np.ndarray) -> np.ndarray:
     grid_2d = grid[0]
     mask = (grid_2d != -1)
     rows, cols = np.where(mask)
+    if rows.size == 0 and cols.size == 0:
+        return np.zeros((0, 0), dtype=int)
     unpadded = np.zeros((max(rows)+1, max(cols)+1), dtype=int)
     unpadded[rows, cols] = grid_2d[mask]
     return unpadded
