@@ -1383,6 +1383,12 @@ class Transformer:
         """
         grid_3d = create_grid3d(grid, selection)
         bounding_rectangle = find_bounding_rectangle(selection)
+
+        # Handle cases where the bounding rectangle for a specific selection is just made of False values
+        for i in range(selection.shape[0]):  # Iterate over the batch dimension
+            if not bounding_rectangle[i].any():  # Check if the rectangle is entirely False
+                bounding_rectangle[i] = np.ones_like(grid_3d[i], dtype=bool)  # Mark the whole grid for this selection
+        
         grid_3d[~bounding_rectangle] = -1
         return grid_3d
     
