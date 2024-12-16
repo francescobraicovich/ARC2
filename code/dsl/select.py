@@ -131,6 +131,9 @@ class Selector():
         
         nrows, ncols = grid.shape
         
+        if nrows == 0 or ncols == 0:
+            return np.zeros((0, 0), dtype=bool)
+    
         color_mask = self.select_color(grid, color)
         color_mask = color_mask[0, :, :] # remove the first dimension
     
@@ -156,6 +159,9 @@ class Selector():
             return np.expand_dims(np.zeros_like(grid), axis=0)
         
         nrows, ncols = grid.shape
+
+        if nrows == 0 or ncols == 0:
+            return np.zeros((0, 0), dtype=bool)
         
         color_mask = self.select_color(grid, color)
         color_mask = color_mask[0, :, :] # remove the first dimension
