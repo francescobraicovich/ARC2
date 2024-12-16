@@ -55,18 +55,32 @@ class ColorSelector:
             labeled_grid, num_labels = label(copied_grid)
             unique, counts = np.unique(labeled_grid, return_counts=True)
             unique, counts = unique[1:], counts[1:] # Remove the 0 label (background)
-            biggest_count = np.max(counts)
+
+            # Handle empty components
+            if len(counts) > 0:
+                biggest_count = np.max(counts)  # Get the largest connected component
+            else:
+                biggest_count = 0  # No connected components
+                
             dimension_of_biggest_shape[i] = biggest_count
 
         sorted_indices = np.argsort(-dimension_of_biggest_shape)
-        index = sorted_indices[rank]
+
+        # Fall back to lower ranks if rank is out of bounds
+        fallback_rank = min(rank, len(sorted_indices) - 1)
+        index = sorted_indices[fallback_rank]
+         
         color = unique_colors[index]
         return color
 
     def rank_largest_shape_color_diag(self, grid: np.ndarray, rank: int) -> int:
         """ The color of the rank-th largest shape, considering diagonal connections """
+        
+        # Find the unique colors in the grid
         unique_colors = np.unique(grid)
         num_colors = len(unique_colors)
+        
+        # Ensure rank is valid
         if not check_integer(rank, 0, num_colors):
             return self.invalid_color
         
@@ -75,21 +89,32 @@ class ColorSelector:
         # Define connectivity for diagonal connections (8-connectivity for 2D grids)
         connectivity = np.ones((3, 3), dtype=int)  # A 3x3 grid of ones includes diagonals
         
+        # Loop over all unique colors and label the connected components
         for i, color in enumerate(unique_colors):
             copied_grid = np.copy(grid)
+            # Create a mask where the current color exists in the grid
             color_mask = copied_grid == color
             copied_grid[color_mask] = 1
             copied_grid[~color_mask] = 0
-            
             # Label connected regions with diagonal connectivity
             labeled_grid, num_labels = label(copied_grid, structure=connectivity)
             unique, counts = np.unique(labeled_grid, return_counts=True)
-            unique, counts = unique[1:], counts[1:]  # Remove the 0 label (background)
-            biggest_count = np.max(counts)
+            # Remove the background label (0) from the counts
+            unique, counts = unique[1:], counts[1:]
+            # Handle empty components
+            if len(counts) > 0:
+                biggest_count = np.max(counts)  # Get the largest connected component
+            else:
+                biggest_count = 0  # No connected components
+            # Store the size of the largest connected component for that color
             dimension_of_biggest_shape[i] = biggest_count
         
+        # Sort the colors based on the size of their largest connected component (descending order)
         sorted_indices = np.argsort(-dimension_of_biggest_shape)
-        index = sorted_indices[rank]
+        # Fall back to lower ranks if rank is out of bounds
+        fallback_rank = min(rank, len(sorted_indices) - 1)
+        index = sorted_indices[fallback_rank]
+        # Get the color corresponding to the rank-th largest shape
         color = unique_colors[index]
         return color
     
