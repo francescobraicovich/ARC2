@@ -94,7 +94,7 @@ class Transformer:
         color = select_color(grid, method, param)
         grid_3d = create_grid3d(grid, selection)
         bounding_rectangle = find_bounding_rectangle(selection)
-        grid_3d[bounding_rectangle & (~selection)] = color
+        grid_3d = np.where((bounding_rectangle & (bounding_rectangle & (1-selection))) == 1, color, grid_3d)
         return grid_3d
     
     def fill_bounding_square_with_color(self, grid, selection, method, param):
@@ -104,7 +104,7 @@ class Transformer:
         color = select_color(grid, method, param)
         grid_3d = create_grid3d(grid, selection)
         bounding_square = find_bounding_square(selection)
-        grid_3d[bounding_square & (~selection)] = color
+        grid_3d = np.where((bounding_square & (bounding_square & (1-selection))) == 1, color, grid_3d)
         return grid_3d
     
 
