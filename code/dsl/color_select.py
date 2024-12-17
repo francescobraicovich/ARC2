@@ -34,11 +34,22 @@ class ColorSelector:
     
     def rankcolor(self, grid: np.ndarray, rank: int) -> int:
         """ rank-th common color """
-        if check_color_rank(rank) == False:
+        if not isinstance(rank, int) or rank < 0:
             return self.invalid_color
         values = grid.flatten()
         counts = np.bincount(values, minlength=self.num_colors)
-        return np.argsort(-counts)[rank]
+        unique_colors = np.unique(grid)
+        real_num_colors = len(unique_colors)
+        sorted_indices = np.argsort(-counts)
+        # If the rank is within bounds, return the corresponding color
+        if rank < real_num_colors:
+            return sorted_indices[rank]
+        #Else return the least present color that is actually present
+        nonzero_counts = counts[counts > 0]
+        if len(nonzero_counts) == 0:
+            return 0
+        least_present_color = np.argmin(counts + (counts == 0) * np.max(counts))
+        return least_present_color
     
     def rank_largest_shape_color_nodiag(self, grid: np.ndarray, rank: int) -> int:
         """ the color of the rank-th largest shape """
