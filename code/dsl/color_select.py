@@ -55,7 +55,7 @@ class ColorSelector:
         """ the color of the rank-th largest shape """
         unique_colors = np.unique(grid)
         num_colors = len(unique_colors)
-        if check_integer(rank, 0, num_colors) == False:
+        if not isinstance(rank, int) or rank < 0:
             return self.invalid_color
         dimension_of_biggest_shape = np.zeros(num_colors, dtype=int)
         for i in range(num_colors):
@@ -68,21 +68,23 @@ class ColorSelector:
             unique, counts = unique[1:], counts[1:] # Remove the 0 label (background)
 
             # Handle empty components
-            if len(counts) > 0:
-                biggest_count = np.max(counts)  # Get the largest connected component
-            else:
-                biggest_count = 0  # No connected components
-                
+            biggest_count = np.max(counts) if len(counts) > 0 else 0
             dimension_of_biggest_shape[i] = biggest_count
 
+        # Sort indices of colors by the size of their largest shapes (descending)
         sorted_indices = np.argsort(-dimension_of_biggest_shape)
 
-        # Fall back to lower ranks if rank is out of bounds
-        fallback_rank = min(rank, len(sorted_indices) - 1)
-        index = sorted_indices[fallback_rank]
-         
-        color = unique_colors[index]
-        return color
+        # Handle out-of-bound ranks by falling back to the smallest non-zero shape
+        if rank >= len(sorted_indices):
+            non_zero_sizes = dimension_of_biggest_shape[dimension_of_biggest_shape > 0]
+            if len(non_zero_sizes) == 0:  # If no non-zero shapes exist
+                return 0
+            smallest_non_zero_index = np.argmin(dimension_of_biggest_shape + (dimension_of_biggest_shape == 0) * np.max(dimension_of_biggest_shape))
+            return unique_colors[smallest_non_zero_index]
+        
+        # Otherwise, return the color corresponding to the rank
+        index = sorted_indices[rank]
+        return unique_colors[index]
 
     def rank_largest_shape_color_diag(self, grid: np.ndarray, rank: int) -> int:
         """ The color of the rank-th largest shape, considering diagonal connections """
@@ -92,7 +94,7 @@ class ColorSelector:
         num_colors = len(unique_colors)
         
         # Ensure rank is valid
-        if not check_integer(rank, 0, num_colors):
+        if not isinstance(rank, int) or rank < 0:
             return self.invalid_color
         
         dimension_of_biggest_shape = np.zeros(num_colors, dtype=int)
@@ -113,21 +115,24 @@ class ColorSelector:
             # Remove the background label (0) from the counts
             unique, counts = unique[1:], counts[1:]
             # Handle empty components
-            if len(counts) > 0:
-                biggest_count = np.max(counts)  # Get the largest connected component
-            else:
-                biggest_count = 0  # No connected components
+            biggest_count = np.max(counts) if len(counts) > 0 else 0
             # Store the size of the largest connected component for that color
             dimension_of_biggest_shape[i] = biggest_count
         
         # Sort the colors based on the size of their largest connected component (descending order)
         sorted_indices = np.argsort(-dimension_of_biggest_shape)
-        # Fall back to lower ranks if rank is out of bounds
-        fallback_rank = min(rank, len(sorted_indices) - 1)
-        index = sorted_indices[fallback_rank]
-        # Get the color corresponding to the rank-th largest shape
-        color = unique_colors[index]
-        return color
+        
+        # Handle out-of-bound ranks by falling back to the smallest non-zero shape
+        if rank >= len(sorted_indices):
+            non_zero_sizes = dimension_of_biggest_shape[dimension_of_biggest_shape > 0]
+            if len(non_zero_sizes) == 0:  # If no non-zero shapes exist
+                return 0
+            smallest_non_zero_index = np.argmin(dimension_of_biggest_shape + (dimension_of_biggest_shape == 0) * np.max(dimension_of_biggest_shape))
+            return unique_colors[smallest_non_zero_index]
+
+        # Otherwise, return the color corresponding to the rank-th largest shape
+        index = sorted_indices[rank]
+        return unique_colors[index]
     
     def color_number(self, grid: np.ndarray, color: int) -> int:
         """ Select the number of cells with the given color only if the color is not in the grid """
