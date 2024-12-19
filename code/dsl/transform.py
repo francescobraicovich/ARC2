@@ -237,60 +237,88 @@ class Transformer:
     # Mirror and duplicate transformations
     def mirror_horizontally(self, grid, selection):
         '''
-        Mirrors the selection horizontally out of the original grid. Works only id columns < 15.
+        Mirrors the selection horizontally out of the original grid. Works only if columns < 15.
         '''
         d, rows, cols = np.shape(selection)
+        
         if cols > 15:
-            return grid
+            return create_grid3d(grid, selection)  # Return 3D grid form if columns exceed the limit
+        
         grid_3d = create_grid3d(grid, selection)
         new_grid_3d = np.zeros((d, rows, cols * 2))
+        
+        # Copy the original grid and its horizontally flipped version
         new_grid_3d[:, :, :cols] = grid_3d
         new_grid_3d[:, :, cols:] = np.flip(grid_3d, axis=2)
-        flipped_selection = np.flip(selection, axis=2)
+        
+        # Mask the flipped portion using the flipped selection
+        flipped_selection = np.flip(selection, axis=2).astype(bool)  # Ensure boolean type
         new_grid_3d[:, :, cols:][~flipped_selection] = 0
+        
         return new_grid_3d
-    
+
+
     def mirror_vertically(self, grid, selection):
         '''
-        Mirrors the selection vertically out of the original grid. Works only id rows < 15.
+        Mirrors the selection vertically out of the original grid. Works only if rows < 15.
+        If rows > 15, it simply returns the grid in 3D form without mirroring.
         '''
         d, rows, cols = np.shape(selection)
+        
         if rows > 15:
-            return grid
+            return create_grid3d(grid, selection)  # Return 3D grid form if rows exceed the limit
+        
         grid_3d = create_grid3d(grid, selection)
         new_grid_3d = np.zeros((d, rows * 2, cols))
+        
+        # Copy the original grid and its vertically flipped version
         new_grid_3d[:, :rows, :] = grid_3d
         new_grid_3d[:, rows:, :] = np.flip(grid_3d, axis=1)
-        flipped_selection = np.flip(selection, axis=1)
+        
+        # Mask the flipped portion using the flipped selection
+        flipped_selection = np.flip(selection, axis=1).astype(bool)  # Ensure boolean type
         new_grid_3d[:, rows:, :][~flipped_selection] = 0
+        
         return new_grid_3d
-    
+
+
+
     def duplicate_horizontally(self, grid, selection):
         """
         Duplicate the selection horizontally out of the original grid. Works only if columns < 15.
         """
         d, rows, cols = np.shape(selection)
+        
         if cols > 15:
-            return grid
+            return create_grid3d(grid, selection)  # Return 3D grid form if columns exceed the limit
+        
         grid_3d = create_grid3d(grid, selection)
         new_grid_3d = np.zeros((d, rows, cols * 2))
+        
+        # Copy the original grid and duplicate the selected part horizontally
         new_grid_3d[:, :, :cols] = grid_3d
-        new_grid_3d[:, :, cols:][selection] = grid_3d[selection]
+        new_grid_3d[:, :, cols:][selection.astype(bool)] = grid_3d[selection.astype(bool)]
+        
         return new_grid_3d
-    
+
+
     def duplicate_vertically(self, grid, selection):
         """
         Duplicate the selection vertically out of the original grid. Works only if rows < 15.
         """
         d, rows, cols = np.shape(selection)
+        
         if rows > 15:
-            return grid
+            return create_grid3d(grid, selection)  # Return 3D grid form if rows exceed the limit
+        
         grid_3d = create_grid3d(grid, selection)
         new_grid_3d = np.zeros((d, rows * 2, cols))
+        
+        # Copy the original grid and duplicate the selected part vertically
         new_grid_3d[:, :rows, :] = grid_3d
-        new_grid_3d[:, rows:, :][selection] = grid_3d[selection]
+        new_grid_3d[:, rows:, :][selection.astype(bool)] = grid_3d[selection.astype(bool)]
+        
         return new_grid_3d
-    
    
     # Copy-paste transformations
     def copy_paste_vertically(self, grid, selection):
