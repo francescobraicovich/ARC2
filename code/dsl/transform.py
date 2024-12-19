@@ -237,53 +237,7 @@ class Transformer:
     
     
     # Mirror and duplicate transformations
-    def mirror_horizontally(self, grid, selection):
-        '''
-        Mirrors the selection horizontally out of the original grid. Works only if columns <= 15.
-        '''
-        d, rows, cols = np.shape(selection)
-        
-        if cols > 15:
-            return create_grid3d(grid, selection)  # Return 3D grid form if columns exceed the limit
-        
-        grid_3d = create_grid3d(grid, selection)
-        new_grid_3d = np.zeros((d, rows, cols * 2))
-        
-        # Copy the original grid and its horizontally flipped version
-        new_grid_3d[:, :, :cols] = grid_3d
-        new_grid_3d[:, :, cols:] = np.flip(grid_3d, axis=2)
-        
-        # Mask the flipped portion using the flipped selection
-        flipped_selection = np.flip(selection, axis=2).astype(bool)  # Ensure boolean type
-        new_grid_3d[:, :, cols:][~flipped_selection] = 0
-        
-        return new_grid_3d
-
-
-    def mirror_vertically(self, grid, selection):
-        '''
-        Mirrors the selection vertically out of the original grid. Works only if rows <= 15.
-        If rows > 15, it simply returns the grid in 3D form without mirroring.
-        '''
-        d, rows, cols = np.shape(selection)
-        
-        if rows > 15:
-            return create_grid3d(grid, selection)  # Return 3D grid form if rows exceed the limit
-        
-        grid_3d = create_grid3d(grid, selection)
-        new_grid_3d = np.zeros((d, rows * 2, cols))
-        
-        # Copy the original grid and its vertically flipped version
-        new_grid_3d[:, :rows, :] = grid_3d
-        new_grid_3d[:, rows:, :] = np.flip(grid_3d, axis=1)
-        
-        # Mask the flipped portion using the flipped selection
-        flipped_selection = np.flip(selection, axis=1).astype(bool)  # Ensure boolean type
-        new_grid_3d[:, rows:, :][~flipped_selection] = 0
-        
-        return new_grid_3d
-
-    def mirror_down(grid, selection):
+    def mirror_down(self, grid, selection):
         """
         Mirrors the selection vertically below the original grid.
         Works only if rows <= 15. If rows > 15, returns the grid in 3D form.
@@ -301,7 +255,7 @@ class Transformer:
         new_grid_3d[:, rows:, :][~flipped_selection] = 0
         return new_grid_3d.astype(int)
 
-    def mirror_up(grid, selection):
+    def mirror_up(self, grid, selection):
         """
         Mirrors the selection vertically above the original grid.
         Works only if rows <= 15. If rows > 15, returns the grid in 3D form.
@@ -319,7 +273,7 @@ class Transformer:
         new_grid_3d[:, :rows, :][~flipped_selection] = 0
         return new_grid_3d.astype(int)
 
-    def mirror_right(grid, selection):
+    def mirror_right(self, grid, selection):
         """
         Mirrors the selection horizontally to the right of the original grid.
         Works only if columns <= 15. If columns > 15, returns the grid in 3D form.
@@ -337,7 +291,7 @@ class Transformer:
         new_grid_3d[:, :, cols:][~flipped_selection] = 0
         return new_grid_3d.astype(int)
 
-    def mirror_left(grid, selection):
+    def mirror_left(self, grid, selection):
         """
         Mirrors the selection horizontally to the left of the original grid.
         Works only if columns <= 15. If columns > 15, returns the grid in 3D form.

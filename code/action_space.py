@@ -164,8 +164,10 @@ class ARCActionSpace(Space):
         transformation_dict[290] = partial(self.transformer.rotate_270)
 
         # Mirroring and duplicating transformations
-        transformation_dict[320] = partial(self.transformer.mirror_horizontally)
-        transformation_dict[330] = partial(self.transformer.mirror_vertically)
+        transformation_dict[314] = partial(self.transformer.mirror_left)
+        transformation_dict[322] = partial(self.transformer.mirror_right)
+        transformation_dict[330] = partial(self.transformer.mirror_up)     
+        transformation_dict[338] = partial(self.transformer.mirror_down)                       
         transformation_dict[360] = partial(self.transformer.duplicate_horizontally)
         transformation_dict[370] = partial(self.transformer.duplicate_vertically)
 
