@@ -64,12 +64,13 @@ def maximum_overlap_regions(array1, array2):
         
         return best_overlap1, best_overlap2
 
+
 class ARC_Env(gym.Env):
     def __init__(self, challenge_dictionary, action_space, dim=30, seed=None):
         super(ARC_Env, self).__init__()
         
         # Set the seed
-        if seed:
+        if seed is not None:
             np.random.seed(seed)
 
         self.challenge_dictionary = challenge_dictionary # dictionary of challenges
@@ -79,9 +80,11 @@ class ARC_Env(gym.Env):
         self.observation_shape = (1, dim, 2*dim) # shape of the grid
 
         # reward variables
-        self.step_penalty = 1
-        self.maximum_similarity = 50
-        self.completed_challenge_reward = 25
+        self.STEP_PENALTY = 1
+        self.SHAPE_PENALTY = 1
+        self.MAXIMUM_SIMILARITY = 50
+        self.COMPLETION_REWARD = 25
+        self.SKIP_PROBABILITY = 0.005
 
         # Define the action space: a sequence of 9 integers
         self.action_space = action_space
@@ -134,81 +137,6 @@ class ARC_Env(gym.Env):
         self.info = self.infos.popleft()
         return self.state
     
-    def shape_reward(self, previous_state_unpadded, current_state_unpadded, target_state):
-        """
-        Reward the agent based on the shape of the grid.
-        Outputs:
-        - reward: the reward for the agent based on the shape of the grid
-        - shapes_agree: a boolean indicating if the shapes of the 3 grids agree
-        """
-        raise DeprecationWarning("This method is deprecated. Use best_overlap_reward instead.")
-        current_shape0 = np.shape(previous_state_unpadded)
-        current_shape1 = np.shape(current_state_unpadded)
-        target_shape = np.shape(target_state)
-        
-        # If the transformation does not change the shape of the grid
-        if np.any(current_shape0 == current_shape1):
-            # If the shape of the grid is different from the target shape: small penalty
-            # The agent did not change the shape of the grid, but it did not mistakely change it either
-            if np.any(current_shape1 != target_shape): 
-                return -1, False
-            
-            # If the shape of the grid is the same as the target shape: no reward
-            # The agent did not change the shape of the grid, and the shape is correct
-            else:
-                return 0, True
-        
-        # If the transformation changes the shape of the grid
-        if np.any(current_shape0 != current_shape1):
-            # If the shape of the starting grid is the same as the target shape: big penalty
-            # The agent changed a correct shape to an incorrect shape
-            if np.all(current_shape0 == target_shape):
-                return -5, False
-        
-            # If the shape of the grid is different from the target shape: medium penalty
-            # The agent changed the shape of the grid, and it is not the correct shape
-            if np.any(current_shape1 != target_shape):
-                return -2, False
-            
-            # If the shape of the grid is the same as the target shape: big reward
-            # The agent changed the shape of the grid, and it is the correct shape
-            else:
-                return 5, False
-          
-    def similarity_reward(self, previous_state_unpadded, current_state_unpadded, target_state):
-        """
-        Reward the agent based on the similarity of the grid.
-        """ 
-        raise DeprecationWarning("This method is deprecated. Use best_overlap_reward instead.")
-        size = np.size(target_state)
-        # If the shapes agree, we compute the similarity reward
-        similarity_0 = np.sum(previous_state_unpadded == target_state) / size
-        similarity_1 = np.sum(current_state_unpadded == target_state) / size
-
-        similarity_difference = similarity_1 - similarity_0
-        return self.maximum_similarity * similarity_difference
-
-    def total_reward(self, previous_state_unpadded, current_state_unpadded, target_state):
-        """
-        Compute the total reward for the agent.
-        """
-        raise DeprecationWarning("This method is deprecated. Use best_overlap_reward instead.")
-
-        shape_reward, shapes_agree = self.shape_reward(previous_state_unpadded, current_state_unpadded, target_state)
-        if not shapes_agree: # If the shapes do not agree, we return the shape reward
-            return shape_reward
-        
-        # If the shapes agree, we compute the similarity reward
-        similarity_reward = self.similarity_reward(previous_state_unpadded, current_state_unpadded, target_state)
-        
-        # If the agent has completed the challenge, we return the completed challenge reward
-        if np.all(current_state_unpadded == target_state):
-            return shape_reward + similarity_reward + self.completed_challenge_reward, True
-        
-        # If the agent has not completed the challenge, we return the sum of the shape and similarity rewards
-        return shape_reward + similarity_reward + self.step_penalty, False
-    
-    
     def best_overlap_reward(self, previous_state_unpadded, current_state_unpadded, target_state_unpadded):
         """
         Reward the agent based on the best overlap between the current state and the target state.
@@ -230,18 +158,18 @@ class ARC_Env(gym.Env):
             current_score = np.sum(current_state_unpadded[best_overlap_current] == target_state_unpadded[best_overlap_target_with_current])
         current_score = current_score / num_cells_target_state
 
-        step_penalty = self.step_penalty
-        curent_shape = current_state_unpadded.shape
+        step_penalty = self.STEP_PENALTY
+        current_shape = current_state_unpadded.shape
         target_shape = target_state_unpadded.shape
         
-        if curent_shape != target_shape:
-            step_penalty += 1
+        if current_shape != target_shape:
+            step_penalty += self.SHAPE_PENALTY
         else:
             if np.all(current_state_unpadded == target_state_unpadded):
-                return self.completed_challenge_reward, True
+                return self.COMPLETION_REWARD, True
 
 
-        similarity_reward = (current_score - previous_score) * self.maximum_similarity
+        similarity_reward = (current_score - previous_score) * self.MAXIMUM_SIMILARITY
         reward = similarity_reward - step_penalty 
         return reward, False
 
@@ -326,7 +254,7 @@ class ARC_Env(gym.Env):
             self.infos.append(info)
         
         # End the episode with a small probability if not ended already
-        if not done and np.random.random() < 0.005:
+        if not done and np.random.random() < self.SKIP_PROBABILITY:
             done = True
 
         # Update the state of the environment
@@ -334,3 +262,80 @@ class ARC_Env(gym.Env):
         self.info = self.infos.popleft()
 
         return self.state, reward, done, self.info
+
+
+
+def shape_reward(self, previous_state_unpadded, current_state_unpadded, target_state):
+    """
+    Reward the agent based on the shape of the grid.
+    Outputs:
+    - reward: the reward for the agent based on the shape of the grid
+    - shapes_agree: a boolean indicating if the shapes of the 3 grids agree
+    """
+    raise DeprecationWarning("This method is deprecated. Use best_overlap_reward instead.")
+    current_shape0 = np.shape(previous_state_unpadded)
+    current_shape1 = np.shape(current_state_unpadded)
+    target_shape = np.shape(target_state)
+    
+    # If the transformation does not change the shape of the grid
+    if np.any(current_shape0 == current_shape1):
+        # If the shape of the grid is different from the target shape: small penalty
+        # The agent did not change the shape of the grid, but it did not mistakely change it either
+        if np.any(current_shape1 != target_shape): 
+            return -1, False
+        
+        # If the shape of the grid is the same as the target shape: no reward
+        # The agent did not change the shape of the grid, and the shape is correct
+        else:
+            return 0, True
+    
+    # If the transformation changes the shape of the grid
+    if np.any(current_shape0 != current_shape1):
+        # If the shape of the starting grid is the same as the target shape: big penalty
+        # The agent changed a correct shape to an incorrect shape
+        if np.all(current_shape0 == target_shape):
+            return -5, False
+    
+        # If the shape of the grid is different from the target shape: medium penalty
+        # The agent changed the shape of the grid, and it is not the correct shape
+        if np.any(current_shape1 != target_shape):
+            return -2, False
+        
+        # If the shape of the grid is the same as the target shape: big reward
+        # The agent changed the shape of the grid, and it is the correct shape
+        else:
+            return 5, False
+          
+def similarity_reward(self, previous_state_unpadded, current_state_unpadded, target_state):
+    """
+    Reward the agent based on the similarity of the grid.
+    """ 
+    raise DeprecationWarning("This method is deprecated. Use best_overlap_reward instead.")
+    size = np.size(target_state)
+    # If the shapes agree, we compute the similarity reward
+    similarity_0 = np.sum(previous_state_unpadded == target_state) / size
+    similarity_1 = np.sum(current_state_unpadded == target_state) / size
+
+    similarity_difference = similarity_1 - similarity_0
+    return self.MAXIMUM_SIMILARITY * similarity_difference
+
+def total_reward(self, previous_state_unpadded, current_state_unpadded, target_state):
+    """
+    Compute the total reward for the agent.
+    """
+    raise DeprecationWarning("This method is deprecated. Use best_overlap_reward instead.")
+
+    shape_reward, shapes_agree = self.shape_reward(previous_state_unpadded, current_state_unpadded, target_state)
+    if not shapes_agree: # If the shapes do not agree, we return the shape reward
+        return shape_reward
+    
+    # If the shapes agree, we compute the similarity reward
+    similarity_reward = self.similarity_reward(previous_state_unpadded, current_state_unpadded, target_state)
+    
+    # If the agent has completed the challenge, we return the completed challenge reward
+    if np.all(current_state_unpadded == target_state):
+        return shape_reward + similarity_reward + self.COMPLETION_REWARD, True
+    
+    # If the agent has not completed the challenge, we return the sum of the shape and similarity rewards
+    return shape_reward + similarity_reward + self.STEP_PENALTY, False
+    
