@@ -95,15 +95,15 @@ def center_of_mass(bool_array):
     Returns:
         tuple: A tuple of integers representing the center of mass indices along each axis.
     """
+    
     # Ensure input is a numpy array
     bool_array = np.asarray(bool_array)
     
     # Get the indices of the True values
     indices = np.nonzero(bool_array)
-    
+
     # Calculate the center of mass as the mean of these indices
-    center = tuple(int(round(np.mean(axis))) for axis in indices)
-    
+    center = tuple(int(round(np.mean(axis))) for axis in indices)    
     return center
 
 def vectorized_center_of_mass(selection):
