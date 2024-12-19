@@ -1,17 +1,9 @@
 import numpy as np
-import random
 from dsl.utilities.padding import pad_grid, unpad_grid
-from dsl.utilities.plot import plot_grid, plot_grid_3d
+from dsl.utilities.plot import plot_grid, plot_grid_3d, plot_selection
 import gymnasium as gym
 from gymnasium import spaces
 from collections import deque
-import trace
-
-def run_with_trace(func, *args, **kwargs):
-    tracer = trace.Trace(trace=True, count=False)  # Set trace=True to log execution
-    result = tracer.runfunc(func, *args, **kwargs)
-    return result
-
 
 def extract_states(previous_state, current_state,  target_state):
     """
@@ -73,9 +65,13 @@ def maximum_overlap_regions(array1, array2):
         return best_overlap1, best_overlap2
 
 class ARC_Env(gym.Env):
-    def __init__(self, challenge_dictionary, action_space, dim=30):
+    def __init__(self, challenge_dictionary, action_space, dim=30, seed=None):
         super(ARC_Env, self).__init__()
         
+        # Set the seed
+        if seed:
+            np.random.seed(seed)
+
         self.challenge_dictionary = challenge_dictionary # dictionary of challenges
         self.dictionary_keys = list(challenge_dictionary.keys()) # list of keys in the dictionary
         self.num_challenges = len(challenge_dictionary) # number of challenges in the dictionary
@@ -101,18 +97,16 @@ class ARC_Env(gym.Env):
         self.done = False
         self.info = None
 
-    def get_random_challenge(self, seed=None):
+    def get_random_challenge(self):
         """
         Get a random challenge from the challenge dictionary. 
         """
-        if seed is not None:
-            random.seed(seed)
-            np.random.seed(seed)
-        challenge_key = random.choice(self.dictionary_keys) 
+
+        challenge_key = np.random.choice(self.dictionary_keys) 
         challenge = self.challenge_dictionary[challenge_key]
         challenge_train = challenge['train']
         challenge_length = len(challenge_train)
-        random_index = random.randint(0, challenge_length-1)
+        random_index = np.random.randint(0, challenge_length-1)
         random_challenge = challenge_train[random_index]
         random_input = np.array(random_challenge['input'])
         random_output = np.array(random_challenge['output'])
@@ -123,14 +117,14 @@ class ARC_Env(gym.Env):
         training_grid[:, :, self.dim:] = pad_grid(random_output)
         return training_grid, challenge_key
     
-    def reset(self, seed=None):
+    def reset(self):
         # Reset the enviroment variables
         self.new_states = deque()
         self.infos = deque()
         self.done = False
 
         # Get a new challenge
-        new_state, new_key = self.get_random_challenge(seed=seed)
+        new_state, new_key = self.get_random_challenge()
         info = {'key': new_key, 'actions': [], 'action_strings':[], 'num_actions': 0, 'solved': False}
         
         # Update the state of the environment
@@ -147,6 +141,7 @@ class ARC_Env(gym.Env):
         - reward: the reward for the agent based on the shape of the grid
         - shapes_agree: a boolean indicating if the shapes of the 3 grids agree
         """
+        raise DeprecationWarning("This method is deprecated. Use best_overlap_reward instead.")
         current_shape0 = np.shape(previous_state_unpadded)
         current_shape1 = np.shape(current_state_unpadded)
         target_shape = np.shape(target_state)
@@ -184,6 +179,7 @@ class ARC_Env(gym.Env):
         """
         Reward the agent based on the similarity of the grid.
         """ 
+        raise DeprecationWarning("This method is deprecated. Use best_overlap_reward instead.")
         size = np.size(target_state)
         # If the shapes agree, we compute the similarity reward
         similarity_0 = np.sum(previous_state_unpadded == target_state) / size
@@ -196,6 +192,7 @@ class ARC_Env(gym.Env):
         """
         Compute the total reward for the agent.
         """
+        raise DeprecationWarning("This method is deprecated. Use best_overlap_reward instead.")
 
         shape_reward, shapes_agree = self.shape_reward(previous_state_unpadded, current_state_unpadded, target_state)
         if not shapes_agree: # If the shapes do not agree, we return the shape reward
@@ -221,12 +218,16 @@ class ARC_Env(gym.Env):
         
         # Calculate the overlap between the previous state and the target state
         best_overlap_previous, best_overlap_target_with_previous = maximum_overlap_regions(previous_state_unpadded, target_state_unpadded)
-        previous_score = np.sum(previous_state_unpadded[best_overlap_previous] == target_state_unpadded[best_overlap_target_with_previous])
+        previous_score = 0
+        if np.any(best_overlap_previous) and np.any(best_overlap_target_with_previous):
+            previous_score = np.sum(previous_state_unpadded[best_overlap_previous] == target_state_unpadded[best_overlap_target_with_previous])
         previous_score = previous_score / num_cells_target_state
 
         # Calculate the overlap between the current state and the target state
         best_overlap_current, best_overlap_target_with_current = maximum_overlap_regions(current_state_unpadded, target_state_unpadded)
-        current_score = np.sum(current_state_unpadded[best_overlap_current] == target_state_unpadded[best_overlap_target_with_current])
+        current_score = 0
+        if np.any(best_overlap_current) and np.any(best_overlap_target_with_current):
+            current_score = np.sum(current_state_unpadded[best_overlap_current] == target_state_unpadded[best_overlap_target_with_current])
         current_score = current_score / num_cells_target_state
 
         step_penalty = self.step_penalty
@@ -260,37 +261,12 @@ class ARC_Env(gym.Env):
         transformation = self.action_space.transformation_dict[transformation_key]
 
         # Apply the color selection, selection, and transformation to the previous state
-        #NOTE: This is a debugging step to check if the color selection, selection, and transformation are working correctly
-        try:
-            color = color_selection(grid = previous_state)
-        except:
-            try:
-                print('\n\n\nDebugging starts here:') 
-                run_with_trace(color_selection, grid=previous_state)
-            except:
-                string = self.action_space.action_to_string(action, only_color=True)
-                raise AssertionError(f'The following color selection failed: {string}')
-        
-        try: 
-            selection = selection(grid = previous_state, color = color)
-        except:
-            try:
-                print('\n\n\nDebugging starts here:')
-                run_with_trace(selection, grid=previous_state, color=color)
-            except:
-                string = self.action_space.action_to_string(action, only_selection=True)
-                raise AssertionError(f'The following selection failed: {string}')
-        
-        try:
-            transformed = transformation(grid = previous_state, selection = selection)
-        except:
-            try:
-                print('\n\n\nDebugging starts here:')
-                run_with_trace(transformation, grid=previous_state, selection=selection)
-            except:
-                string = self.action_space.action_to_string(action, only_transformation=True)
-                raise AssertionError(f'The following transformation failed: {string}')
-
+        color = color_selection(grid = previous_state)
+        selected = selection(grid = previous_state, color = color)
+        if np.any(selected):
+            transformed = transformation(grid = previous_state, selection = selected)
+        else:
+            transformed = np.expand_dims(previous_state, axis=0)
         return transformed
 
     def step(self, action, max_states_per_action=3):
@@ -312,7 +288,6 @@ class ARC_Env(gym.Env):
 
         # Apply the action to the previous state
         current_state_tensor = self.act(previous_state_not_padded, action) # apply the action to the previous state
-        assert len(current_state_tensor.shape) == 3, f'Expected a 3D tensor, got {current_state_tensor.shape} from the following transformation: {self.action_space.action_to_string(action, only_transformation=True)}'
 
         # Initialize the rewards, dones, and current states tensors to store the results of the step function
         rewards = np.zeros(current_state_tensor.shape[0]) # initialize the rewards
@@ -331,8 +306,6 @@ class ARC_Env(gym.Env):
             current_states[i, :, :self.dim] = current_state_padded
             current_states[i, :, self.dim:] = target_state
         
-        # TODO: check id using the maximum reward is the best approach. This could bias the agent to always choose actions
-        # with multiple results. This is because the expected value of the reward is probably higher when using a maximum.
         num_states_to_evaluate = min(max_states_per_action, current_state_tensor.shape[0])
         top_n_indices = np.argsort(rewards)[-num_states_to_evaluate:] # get the top n indices
         reward = np.max(rewards[top_n_indices]) # get the maximum reward
@@ -353,7 +326,7 @@ class ARC_Env(gym.Env):
             self.infos.append(info)
         
         # End the episode with a small probability if not ended already
-        if not done and random.random() < 0.005:
+        if not done and np.random.random() < 0.005:
             done = True
 
         # Update the state of the environment
