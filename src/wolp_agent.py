@@ -4,19 +4,16 @@ from util import *
 import torch.nn as nn
 import torch
 criterion = nn.MSELoss()
+
 class WolpertingerAgent(DDPG):
-
-    def __init__(self, continuous, max_actions, action_low, action_high, nb_states, nb_actions, args, k_ratio=0.1):
+    def __init__(self, nb_states, nb_actions, args):
         super().__init__(args, nb_states, nb_actions)
+        
+        print('Initializing Wolpertinger Agent')
         self.experiment = args.id
+        
         # according to the papers, it can be scaled to hundreds of millions
-        if continuous:
-            self.action_space = action_space.Space(action_low, action_high, args.max_actions)
-            self.k_nearest_neighbors = max(1, int(args.max_actions * k_ratio))
-        else:
-            self.action_space = action_space.Discrete_space(max_actions)
-            self.k_nearest_neighbors = max(1, int(max_actions * k_ratio))
-
+        self.action_space = action_space.ARCActionSpace()
 
     def get_name(self):
         return 'Wolp3_{}k{}_{}'.format(self.action_space.get_number_of_actions(),
@@ -27,17 +24,29 @@ class WolpertingerAgent(DDPG):
 
     def wolp_action(self, s_t, proto_action):
         # get the proto_action's k nearest neighbors
-        raw_actions, actions = self.action_space.search_point(proto_action, self.k_nearest_neighbors)
+        distances, indices, actions = self.action_space.search_point(proto_action, k=5)
+        print("distances", distances)
+        print("indices", indices)
+        print("actions", actions)
 
         if not isinstance(s_t, np.ndarray):
            s_t = to_numpy(s_t, gpu_used=self.gpu_used)
         # make all the state, action pairs for the critic
         s_t = np.tile(s_t, [raw_actions.shape[1], 1])
+        print("s_t", s_t)
+        print('Shape of s_t:', s_t.shape)
 
         s_t = s_t.reshape(len(raw_actions), raw_actions.shape[1], s_t.shape[1]) if self.k_nearest_neighbors > 1 \
             else s_t.reshape(raw_actions.shape[0], s_t.shape[1])
+        print("s_t", s_t)
+        print('Shape of s_t:', s_t.shape)
+
         raw_actions = to_tensor(raw_actions, gpu_used=self.gpu_used, gpu_0=self.gpu_ids[0])
+        print("raw_actions", raw_actions)
+        print('Shape of raw_actions:', raw_actions.shape)
         s_t = to_tensor(s_t, gpu_used=self.gpu_used, gpu_0=self.gpu_ids[0])
+        print("s_t", s_t)
+        print('Shape of s_t:', s_t.shape)
 
         # evaluate each pair through the critic
         actions_evaluation = self.critic([s_t, raw_actions])
@@ -66,12 +75,18 @@ class WolpertingerAgent(DDPG):
 
     def random_action(self):
         proto_action = super().random_action()
-        raw_action, action = self.action_space.search_point(proto_action, 1)
-        raw_action = raw_action[0]
-        action = action[0]
-        assert isinstance(raw_action, np.ndarray)
-        self.a_t = raw_action
-        return action[0] # [i]
+        print("proto_action", proto_action)
+        distances, indices, actions = self.action_space.search_point(proto_action, 1)
+        print("distances", distances)
+        print("indices", indices)
+        print("actions", actions)
+        action = actions[0]
+        print("action", action)
+        if action not in self.action_space.space:
+            print('Action not in action space')
+            raise ValueError('Action not in action space')
+        assert isinstance(action, np.ndarray)
+        return action
 
     def select_target_action(self, s_t):
         proto_action = self.actor_target(s_t)
