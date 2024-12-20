@@ -64,6 +64,17 @@ class Transformer:
     
     # Coloring transformations
   # Coloring transformations
+    def new_color(self, grid, selection, color):
+        """
+        Change the color of the selected cells in the grid to the specified color.
+        """
+        grid_3d = create_grid3d(grid, selection)
+        if np.sum(grid == color) == 0:
+            grid_3d[selection == 1] = color
+            return grid_3d
+        else:
+            return np.expand_dims(grid, axis=0)
+  
     def color(self, grid, selection, method, param):
         """
         Apply a color transformation (color_selected) to the selected cells (selection) in the grid and return a new 3D grid.
