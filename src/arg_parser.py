@@ -5,7 +5,7 @@ def init_parser(alg):
     if alg == 'WOLP_DDPG':
 
         parser = argparse.ArgumentParser(description='WOLP_DDPG')
-
+        parser.add_argument('--env', default='ARC', metavar='ENV', help='environment to train on')
         parser.add_argument('--gamma', type=float, default=0.99, metavar='G', help='discount factor for rewards (default: 0.99)')
         parser.add_argument('--max-episode-length', type=int, default=1440, metavar='M', help='maximum length of an episode (default: 1440)')
         parser.add_argument('--load', default=False, metavar='L', help='load a trained model')
@@ -17,12 +17,11 @@ def init_parser(alg):
         parser.add_argument('--max-actions', default=200000, type=int, help='# max actions')
         parser.add_argument('--id', default='0', type=str, help='experiment id')
         parser.add_argument('--mode', default='train', type=str, help='support option: train/test')
-        parser.add_argument('--env', default='Pendulum-v0', type=str, help='Ride sharing')
         parser.add_argument('--hidden1', default=256, type=int, help='hidden num of first fully connect layer')
         parser.add_argument('--hidden2', default=128, type=int, help='hidden num of second fully connect layer')
         parser.add_argument('--c-lr', default=0.001, type=float, help='critic net learning rate')
         parser.add_argument('--p-lr', default=0.0001, type=float, help='policy net learning rate (only for DDPG)')
-        parser.add_argument('--warmup', default=128, type=int, help='time without training but only filling the replay memory')
+        parser.add_argument('--warmup', default=256, type=int, help='time without training but only filling the replay memory')
         parser.add_argument('--bsize', default=64, type=int, help='minibatch size')
         parser.add_argument('--rmsize', default=6000000, type=int, help='memory size')
         parser.add_argument('--window_length', default=1, type=int, help='')
