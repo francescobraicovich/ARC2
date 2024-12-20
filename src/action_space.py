@@ -163,6 +163,10 @@ class ARCActionSpace(Space):
         transformation_dict = {}
 
         # Coloring transformations
+        new_color_start = -50
+        for i in range(10):
+            transformation_dict[new_color_start + i*5] = partial(self.transformer.new_color, color=i)
+        
         color_start = 0
         fill_with_color_start = 50
         fill_bounding_rectangle_with_color_start = 100
