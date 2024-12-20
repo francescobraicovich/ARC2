@@ -2,7 +2,7 @@ import gymnasium as gym
 import numpy as np
 from gymnasium.spaces import Space
 from functools import partial
-
+import faiss
 
 class ARCActionSpace(Space):
     def __init__(self, ColorSelector, Selector, Transformer, low=[0, 0, 0], high=[99, 99, 999]):
@@ -36,8 +36,41 @@ class ARCActionSpace(Space):
         self.transformation_dict = None
         self.create_transformation_dict()
 
-        self.__space = None
+        self.space = None
         self.create_action_space()
+
+        # Initialize FAISS index
+        self.faiss_index = None
+        self.create_faiss_index(self.space)
+
+    def create_faiss_index(self, actions):
+        """
+        Initialize the FAISS index with the action space.
+        """
+        # Convert actions to float32 as required by FAISS
+        actions = np.array(actions, dtype=np.float32)
+        self.faiss_index = faiss.IndexFlatL2(actions.shape[1])  # L2 (Euclidean) distance
+        self.faiss_index.add(actions)
+
+    def search_point(self, query_action, k=5):
+        """
+        Find the k-nearest neighbors of a given query action in the action space.
+        
+        Args:
+            query_action (array-like): The query action to find neighbors for.
+            k (int): Number of nearest neighbors to retrieve.
+        
+        Returns:
+            distances (np.ndarray): Distances of the k-nearest neighbors.
+            indices (np.ndarray): Indices of the k-nearest neighbors.
+        """
+        if self.faiss_index is None:
+            raise ValueError("FAISS index is not initialized. Call create_faiss_index() first.")
+        
+        query_action = np.array(query_action, dtype=np.float32).reshape(1, -1)
+        distances, indices = self.faiss_index.search(query_action, k)
+        actions = self.space[indices, :]
+        return distances, indices, actions
 
     def __call__(self):
         return self.space
@@ -233,14 +266,14 @@ class ARCActionSpace(Space):
                     action[2] = transformation_key / (self._range[2]/2) - 1
                     action_space.append(action)
 
-        self.__space = np.array(action_space)
+        self.space = np.array(action_space)
         return action_space
     
     def get_space(self):
-        return self.__space
+        return self.space
 
     def shape(self):
-        return self.__space.shape
+        return self.space.shape
     
     def get_number_of_actions(self):
         return self.shape()[0]
