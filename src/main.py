@@ -6,14 +6,16 @@ import numpy as np
 import logging
 from train_test import train, test
 import warnings
+import json
 from arg_parser import init_parser
 from setproctitle import setproctitle as ptitle
 from enviroment import ARC_Env
-import gym
+import gymnasium as gym
+from action_space import ARCActionSpace
 
 if __name__ == "__main__":
     ptitle('WOLP_DDPG')
-    #warnings.filterwarnings('ignore')
+    warnings.filterwarnings('ignore')
     parser = init_parser('WOLP_DDPG')
     args = parser.parse_args()
 
@@ -24,13 +26,15 @@ if __name__ == "__main__":
 
     args.save_model_dir = get_output_folder('../output', args.env)
 
-    env = gym.make(args.env)
+    challenge_dictionary = json.load(open('data/RAW_DATA_DIR/arc-prize-2024/arc-agi_training_challenges.json'))
+    action_space = ARCActionSpace()
+    env = ARC_Env(challenge_dictionary, action_space)
     continuous = None
 
     # discrete action for 1 dimension
-    nb_states = env.observation_space.shape[0]
+    # TODO: change the nb_states to the shape of the grid
+    nb_states = 200
     nb_actions = 3  # the dimension of actions, usually it is 1. Depend on the environment.
-    max_actions = env.action_space.n
     continuous = False
 
     if args.seed > 0:
@@ -39,15 +43,12 @@ if __name__ == "__main__":
 
   
     agent_args = {
-        'continuous': continuous,
-        'max_actions': max_actions,
-        'action_low': None,
-        'action_high': None,
         'nb_states': nb_states,
         'nb_actions': nb_actions,
         'args': args,
     }
 
+    print('Going to build agent')
     agent = WolpertingerAgent(**agent_args)
 
     if args.load:
