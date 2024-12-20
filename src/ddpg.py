@@ -1,3 +1,4 @@
+import torch
 import torch.nn as nn
 from torch.optim import Adam
 
@@ -36,6 +37,8 @@ class DDPG(object):
         # Determine GPU usage based on availability and user settings
         self.gpu_ids = [i for i in range(args.gpu_nums)] if USE_CUDA and args.gpu_nums > 0 else [-1]
         self.gpu_used = True if self.gpu_ids[0] >= 0 else False
+        self.device = torch.device('cuda:0' if self.gpu_used else 'cpu')
+
 
         # Network configuration for the Actor and Critic networks
         net_cfg = {
@@ -45,17 +48,17 @@ class DDPG(object):
         }
 
         # Initialize Actor and Critic networks (both primary and target)
-        self.actor = Actor(self.nb_states, self.nb_actions, **net_cfg).double()
-        self.actor_target = Actor(self.nb_states, self.nb_actions, **net_cfg).double()
+        self.actor = Actor(self.nb_states, self.nb_actions, **net_cfg)
+        self.actor_target = Actor(self.nb_states, self.nb_actions, **net_cfg)
         self.actor_optim = Adam(self.actor.parameters(), lr=args.p_lr, weight_decay=args.weight_decay)
 
-        self.critic = Critic(self.nb_states, self.nb_actions, **net_cfg).double()
-        self.critic_target = Critic(self.nb_states, self.nb_actions, **net_cfg).double()
+        self.critic = Critic(self.nb_states, self.nb_actions, **net_cfg)
+        self.critic_target = Critic(self.nb_states, self.nb_actions, **net_cfg)
         self.critic_optim = Adam(self.critic.parameters(), lr=args.c_lr, weight_decay=args.weight_decay)
 
         # Synchronize target networks with the primary networks
-        hard_update(self.actor_target, self.actor)
-        hard_update(self.critic_target, self.critic)
+        hard_update(self.actor, self.actor_target)
+        hard_update(self.critic, self.critic_target)
 
         # Initialize replay buffer for experience replay
         self.memory = SequentialMemory(limit=args.rmsize, window_length=args.window_length)
