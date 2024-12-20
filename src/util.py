@@ -26,9 +26,22 @@ def soft_update(target, source, tau_update):
             target_param.data * (1.0 - tau_update) + param.data * tau_update
         )
 
-def hard_update(target, source):
-    for target_param, param in zip(target.parameters(), source.parameters()):
-            target_param.data.copy_(param.data)
+def hard_update(source_network, target_network):
+    for target_param, source_param in zip(target_network.parameters(), source_network.parameters()):
+        np_data = source_param.detach().cpu().numpy()  # Convert to NumPy
+        # NOTE:
+        # Converting the source tensor to a NumPy array before copying works because:
+        # 1. It ensures that the data is copied to a completely independent memory buffer,
+        #    avoiding any shared memory issues that might arise in PyTorch.
+        # 2. The NumPy conversion forces synchronization of operations, especially on GPUs,
+        #    resolving potential conflicts from PyTorch's asynchronous execution model.
+        # 3. It bypasses PyTorch's autograd mechanism and tensor metadata handling, which 
+        #    could cause segmentation faults if there are hidden issues with gradient tracking 
+        #    or tensor metadata inconsistencies.
+        # While effective, this approach involves additional overhead due to data transfer and 
+        # should only be used when other methods (e.g., .clone(), .detach()) fail to work.
+        target_param.data = torch.from_numpy(np_data).to(target_param.device)  # Convert back
+
 
 def get_output_folder(parent_dir, env_name):
     """Return save folder.
