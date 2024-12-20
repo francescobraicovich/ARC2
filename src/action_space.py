@@ -2,18 +2,21 @@ import gymnasium as gym
 import numpy as np
 from gymnasium.spaces import Space
 from functools import partial
+from dsl.color_select import ColorSelector
+from dsl.select import Selector
+from dsl.transform import Transformer
 import faiss
 
 class ARCActionSpace(Space):
-    def __init__(self, ColorSelector, Selector, Transformer, low=[0, 0, 0], high=[99, 99, 999]):
-        dtype = np.int32
+    def __init__(self, ColorSelector=ColorSelector, Selector=Selector, Transformer=Transformer, low=[0, 0, 0], high=[99, 99, 999]):
+        dtype = np.float32
         shape = (3,)
         super().__init__(shape, dtype)
         
         # Define the classes that will be used to create the action space
-        self.color_selector = ColorSelector
-        self.selector = Selector
-        self.transformer = Transformer
+        self.color_selector = ColorSelector()
+        self.selector = Selector()
+        self.transformer = Transformer()
 
         # Define some constants
         self._low = np.array(low)
@@ -70,6 +73,10 @@ class ARCActionSpace(Space):
         query_action = np.array(query_action, dtype=np.float32).reshape(1, -1)
         distances, indices = self.faiss_index.search(query_action, k)
         actions = self.space[indices][0]
+        # check that all the actions are in the action space
+        for action in actions:
+            if action not in self.space:
+                raise ValueError('Action not in action space')
         return distances, indices, actions
 
     def __call__(self):
@@ -124,12 +131,16 @@ class ARCActionSpace(Space):
             
             if i in ranks_to_consider:
                 # Use partial to fix the 'param' or 'color' parameter
-                color_selection_dict[50+i] = partial(self.color_selector.rankcolor, rank=param) # Select the color with the rank i
-                color_selection_dict[80+i] = partial(self.color_selector.rank_largest_shape_color_nodiag, rank=param) # Select the color of the rank-th largest shape
-                color_selection_dict[90+i] = partial(self.color_selector.rank_largest_shape_color_diag, rank=param) # Select the color of the rank-th largest shape considering diagonal connections
+                color_selection_dict[50 + i] = partial(self.color_selector.rankcolor, rank=param)
+                color_selection_dict[80 + i] = partial(self.color_selector.rank_largest_shape_color_nodiag, rank=param)
+                color_selection_dict[90 + i] = partial(self.color_selector.rank_largest_shape_color_diag, rank=param)
 
-        self.color_selection_dict = self.uniformise_density(color_selection_dict)
-        return color_selection_dict
+        # Create a new dictionary with keys divided by 2
+        
+        uniformised_dict = self.uniformise_density(color_selection_dict)
+        updated_dict = {np.float32(key / (self._range[0]/2) - 1): value for key, value in uniformised_dict.items()}
+        self.color_selection_dict = updated_dict
+        return updated_dict
     
     def create_selection_dict(self):
         selection_dict = {}
@@ -156,8 +167,12 @@ class ARCActionSpace(Space):
         selection_dict[99] = partial(self.selector.select_all_grid)
 
         #NOTE: This currently leaves out the selection of rectangles (only selection function with parameters)
-        self.selection_dict = self.uniformise_density(selection_dict)
-        return selection_dict
+
+        
+        uniformised_dict = self.uniformise_density(selection_dict)
+        updated_dict = {np.float32(key / (self._range[1]/2) - 1): value for key, value in uniformised_dict.items()}
+        self.selection_dict = updated_dict
+        return updated_dict
     
     def create_transformation_dict(self):
         transformation_dict = {}
@@ -255,8 +270,10 @@ class ARCActionSpace(Space):
         transformation_dict[970] = partial(self.transformer.crop)
         transformation_dict[999] = partial(self.transformer.delete)
 
-        self.transformation_dict = self.uniformise_density(transformation_dict)
-        return transformation_dict
+        uniformised_dict = self.uniformise_density(transformation_dict)
+        updated_dict = {np.float32(key / (self._range[2]/2) - 1): value for key, value in uniformised_dict.items()}
+        self.transformation_dict = updated_dict
+        return updated_dict
     
     def create_action_space(self):
         action_space = []
@@ -264,10 +281,10 @@ class ARCActionSpace(Space):
         for i, color_key in enumerate(self.color_selection_dict.keys()):
             for j, selection_key in enumerate(self.selection_dict.keys()):
                 for k, transformation_key in enumerate(self.transformation_dict.keys()):
-                    action = np.zeros(3, dtype=np.float64)
-                    action[0] = color_key / (self._range[0]/2) - 1
-                    action[1] = selection_key / (self._range[1]/2) - 1
-                    action[2] = transformation_key / (self._range[2]/2) - 1
+                    action = np.zeros(3, dtype=np.float32)
+                    action[0] = color_key
+                    action[1] = selection_key
+                    action[2] = transformation_key
                     action_space.append(action)
 
         self.space = np.array(action_space)
@@ -283,9 +300,9 @@ class ARCActionSpace(Space):
         return self.shape()[0]
     
     def action_to_string(self, action, only_color=False, only_selection=False, only_transformation=False):
-        color_selection = int(action[0])
-        selection = int(action [1])
-        transformation = int(action[2])
+        color_selection = np.float32(action[0])
+        selection = np.float32(action [1])
+        transformation = np.float32(action[2])
 
         # Convert the partial function to a string
         color_selection_partial = self.color_selection_dict[color_selection]
