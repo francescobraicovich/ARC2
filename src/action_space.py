@@ -20,6 +20,8 @@ class ARCActionSpace(Space):
         self._high = np.array(high)
         self._range = self._high - self._low
         self._dimensions = len(low)
+        self._low = -1
+        self._high = 1
 
         # Define the weights for the old keys when uniformising the density of the keys
         # Uniformising the density is important for Wolpertinger to learn the action space better
@@ -226,13 +228,22 @@ class ARCActionSpace(Space):
             for j, selection_key in enumerate(self.selection_dict.keys()):
                 for k, transformation_key in enumerate(self.transformation_dict.keys()):
                     action = np.zeros(3, dtype=np.float64)
-                    action[0] = color_key / self._range[0]
-                    action[1] = selection_key / self._range[1]
-                    action[2] = transformation_key / self._range[2]
+                    action[0] = color_key / (self._range[0]/2) - 1
+                    action[1] = selection_key / (self._range[1]/2) - 1
+                    action[2] = transformation_key / (self._range[2]/2) - 1
                     action_space.append(action)
 
-        self.space = action_space
+        self.__space = np.array(action_space)
         return action_space
+    
+    def get_space(self):
+        return self.__space
+
+    def shape(self):
+        return self.__space.shape
+    
+    def get_number_of_actions(self):
+        return self.shape()[0]
     
     def action_to_string(self, action, only_color=False, only_selection=False, only_transformation=False):
         color_selection = int(action[0])
