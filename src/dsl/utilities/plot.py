@@ -22,8 +22,8 @@ cmap = colors.ListedColormap(
 bounds = [-1.5, -0.5, 0.5, 1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5, 9.5]
 norm = colors.BoundaryNorm(boundaries=bounds, ncolors=cmap.N)
 
-training_challenge_dict = json.load(open('../data/RAW_DATA_DIR/arc-prize-2024/arc-agi_training_challenges.json'))
-training_solutions_dict = json.load(open('../data/RAW_DATA_DIR/arc-prize-2024/arc-agi_training_solutions.json'))
+#training_challenge_dict = json.load(open('../../../data/RAW_DATA_DIR/arc-prize-2024/arc-agi_training_challenges.json'))
+#training_solutions_dict = json.load(open('../../../data/RAW_DATA_DIR/arc-prize-2024/arc-agi_training_solutions.json'))
 
 def display_challenge(challenge_key, solution=None, color_map=cmap, transformations=None, kwargs=None):
     """
