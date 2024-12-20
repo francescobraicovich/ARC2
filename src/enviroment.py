@@ -179,9 +179,9 @@ class ARC_Env(gym.Env):
         Apply the action to the previous state.
         """
         # Extract the color selection, selection, and transformation keys
-        color_selection_key = int(action[0])
-        selection_key = int(action[1])
-        transformation_key = int(action[2])
+        color_selection_key = np.float32(action[0])
+        selection_key = np.float32(action[1])
+        transformation_key = np.float32(action[2])
 
         # Extract the color selection, selection, and transformation
         color_selection = self.action_space.color_selection_dict[color_selection_key]
@@ -189,6 +189,7 @@ class ARC_Env(gym.Env):
         transformation = self.action_space.transformation_dict[transformation_key]
 
         # Apply the color selection, selection, and transformation to the previous state
+        #print('Action in string: ', self.action_space.action_to_string(action))
         color = color_selection(grid = previous_state)
         selected = selection(grid = previous_state, color = color)
         if np.any(selected):
