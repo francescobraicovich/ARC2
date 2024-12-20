@@ -69,7 +69,7 @@ class ARCActionSpace(Space):
         
         query_action = np.array(query_action, dtype=np.float32).reshape(1, -1)
         distances, indices = self.faiss_index.search(query_action, k)
-        actions = self.space[indices, :]
+        actions = self.space[indices][0]
         return distances, indices, actions
 
     def __call__(self):
