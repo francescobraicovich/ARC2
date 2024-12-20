@@ -18,8 +18,6 @@ def train(continuous, env, agent, max_episode, warmup, save_model_dir, max_episo
                 action = agent.select_action(s_t)
 
             # env response with next_observation, reward, terminate_info
-            if not continuous:
-                action = action.reshape(1,).astype(int)[0]
             s_t1, r_t, done, _ = env.step(action)
 
             if max_episode_length and episode_steps >= max_episode_length - 1:
