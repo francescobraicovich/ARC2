@@ -5,7 +5,7 @@ from functools import partial
 
 
 class ARCActionSpace(Space):
-    def __init__(self, ColorSelector, Selector, Transformer):
+    def __init__(self, ColorSelector, Selector, Transformer, low=[0, 0, 0], high=[99, 99, 999]):
         dtype = np.int32
         shape = (3,)
         super().__init__(shape, dtype)
@@ -15,9 +15,15 @@ class ARCActionSpace(Space):
         self.selector = Selector
         self.transformer = Transformer
 
+        # Define some constants
+        self._low = np.array(low)
+        self._high = np.array(high)
+        self._range = self._high - self._low
+        self._dimensions = len(low)
+
         # Define the weights for the old keys when uniformising the density of the keys
         # Uniformising the density is important for Wolpertinger to learn the action space better
-        self.old_keys_weight = 1.5
+        self.OLD_KEYS_WIGHT = 1.5
 
         self.color_selection_dict = None
         self.create_color_selection_dict()
@@ -28,7 +34,7 @@ class ARCActionSpace(Space):
         self.transformation_dict = None
         self.create_transformation_dict()
 
-        self.space = None
+        self.__space = None
         self.create_action_space()
 
     def __call__(self):
@@ -57,7 +63,7 @@ class ARCActionSpace(Space):
 
         # create the linspace
         linspace = np.linspace(minimum, maximum, len(keys), dtype=int)
-        new_keys = (linspace + sorted_keys * self.old_keys_weight)/ (1 + self.old_keys_weight)
+        new_keys = (linspace + sorted_keys * self.OLD_KEYS_WIGHT)/ (1 + self.OLD_KEYS_WIGHT)
         new_keys = new_keys.astype(int)
 
         # create the new dictionary
@@ -219,10 +225,10 @@ class ARCActionSpace(Space):
         for i, color_key in enumerate(self.color_selection_dict.keys()):
             for j, selection_key in enumerate(self.selection_dict.keys()):
                 for k, transformation_key in enumerate(self.transformation_dict.keys()):
-                    action = np.zeros(3, dtype=int)
-                    action[0] = color_key
-                    action[1] = selection_key
-                    action[2] = transformation_key
+                    action = np.zeros(3, dtype=np.float64)
+                    action[0] = color_key / self._range[0]
+                    action[1] = selection_key / self._range[1]
+                    action[2] = transformation_key / self._range[2]
                     action_space.append(action)
 
         self.space = action_space
