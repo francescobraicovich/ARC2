@@ -80,6 +80,7 @@ class DDPG(object):
 
         # Placeholder for the current state and action
         self.s_t = None
+        self.shape = None
         self.a_t = None
         self.is_training = True
 
@@ -147,7 +148,7 @@ class DDPG(object):
         Store the most recent transition in the replay buffer.
         """
         if self.is_training:
-            self.memory.append(self.s_t, self.a_t, r_t, done)
+            self.memory.append(self.s_t, self.shape, self.a_t, r_t, done)
             self.s_t = s_t1
 
     def random_action(self):
@@ -157,7 +158,7 @@ class DDPG(object):
         action = np.random.uniform(-1., 1., self.nb_actions)
         return action
 
-    def select_action(self, s_t, decay_epsilon=True):
+    def select_action(self, s_t, shape, decay_epsilon=True):
         """
         Select an action based on the current state and exploration policy.
 
@@ -168,10 +169,9 @@ class DDPG(object):
         Returns:
             action: Selected action with added exploration noise.
         """
-        action = to_numpy(
-            self.actor(to_tensor(np.array([s_t]), gpu_used=self.gpu_used, gpu_0=self.gpu_ids[0])),
-            gpu_used=self.gpu_used
-        ).squeeze(0)
+        state_tensor = to_tensor(np.array([s_t]), gpu_used=self.gpu_used, gpu_0=self.gpu_ids[0])
+        shape_tensor = to_tensor(np.array([shape]), gpu_used=self.gpu_used, gpu_0=self.gpu_ids[0])
+        action = to_numpy(self.actor((state_tensor, shape_tensor))).squeeze(0)
         action += self.is_training * max(self.epsilon, 0) * self.random_process.sample()
         action = np.clip(action, -1., 1.)
 
@@ -180,11 +180,12 @@ class DDPG(object):
 
         return action
 
-    def reset(self, s_t):
+    def reset(self, s_t, shape):
         """
         Reset the state and noise process for a new episode.
         """
         self.s_t = s_t
+        self.shape = shape
         self.random_process.reset_states()
 
     def load_weights(self, dir):
