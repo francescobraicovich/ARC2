@@ -25,6 +25,7 @@ class Actor(nn.Module):
             init_w: Initialization range for the output layer.
         """
         super(Actor, self).__init__()
+        self.nb_states = nb_states
         self.fc1 = nn.Linear(nb_states, hidden1)
         self.fc2 = nn.Linear(hidden1, hidden2)
         self.fc3 = nn.Linear(hidden2, nb_actions)
@@ -44,6 +45,18 @@ class Actor(nn.Module):
         """
         Forward pass of the Actor network.
         """
+        state, shape = x
+        # NOTE: this is current implementation waiting to pass the state and shape into the encoder
+        state_flat = torch.reshape(state, (state.shape[0],self.nb_states - 5))
+        shape_flat = torch.reshape(shape, (shape.shape[0], 4))
+        # add a zero on the end of the shape tensor for each batch
+        shape_flat = torch.cat([shape_flat, torch.zeros((shape_flat.shape[0], 1))], dim=-1)
+        print('state shape:', state_flat.shape)
+        print('shape shape:', shape_flat.shape)
+        x = torch.cat([state_flat, shape_flat], dim=-1)
+        print('x shape:', x.shape)
+        
+        # print the dtype of x
         out = self.relu(self.fc1(x))
         out = self.relu(self.fc2(out))
         out = self.tanh(self.fc3(out))  # Use Tanh for bounded outputs
@@ -62,6 +75,7 @@ class Critic(nn.Module):
             init_w: Initialization range for the output layer.
         """
         super(Critic, self).__init__()
+        self.nb_states = nb_states
         self.fc1 = nn.Linear(nb_states, hidden1)
         self.fc2 = nn.Linear(hidden1 + nb_actions, hidden2)  # Combine state and action
         self.fc3 = nn.Linear(hidden2, 1)
@@ -83,6 +97,7 @@ class Critic(nn.Module):
             x: State input.
             a: Action input.
         """
+        x = torch.reshape(x, (x.shape[0],self.nb_states))
         out = self.relu(self.fc1(x))
         out = torch.cat([out, a], dim=-1)  # Concatenate state and action
         out = self.relu(self.fc2(out))
