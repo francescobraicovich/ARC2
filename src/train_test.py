@@ -7,18 +7,19 @@ def train(continuous, env, agent, max_episode, warmup, save_model_dir, max_episo
     while episode < max_episode:
         while True:
             if s_t is None:
-                s_t = env.reset()
-                agent.reset(s_t)
+                s_t, shape = env.reset()
+                agent.reset(s_t, shape)
 
             # agent pick action ...
             # args.warmup: time without training but only filling the memory
             if step <= warmup:
                 action = agent.random_action()
             else:
-                action = agent.select_action(s_t)
+                action = agent.select_action(s_t, shape)
 
             # env response with next_observation, reward, terminate_info
-            s_t1, r_t, done, _ = env.step(action)
+            state1, r_t, done, _ = env.step(action)
+            s_t1, shape1 = state1
 
             if max_episode_length and episode_steps >= max_episode_length - 1:
                 done = True
@@ -42,7 +43,8 @@ def train(continuous, env, agent, max_episode, warmup, save_model_dir, max_episo
 
                 agent.memory.append(
                     s_t,
-                    agent.select_action(s_t),
+                    shape,
+                    agent.select_action(s_t, shape),
                     0., True
                 )
 
