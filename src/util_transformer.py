@@ -1,28 +1,30 @@
 # util_transformer.py
 
+# Import necessary libraries
 import torch
 from dataclasses import dataclass, field
 from typing import Optional, Any
 
+# Configuration for a single Transformer layer
 @dataclass
 class TransformerLayerConfig:
     """Configuration for a single Transformer layer."""
-    num_heads: int = 8
-    emb_dim_per_head: int = 16
-    mlp_dim_factor: float = 4.0
-    dropout_rate: float = 0.0
-    attention_dropout_rate: float = 0.0
-    use_bias: bool = False
-    activation: str = "relu"  # or "silu"
-    dtype: Any = torch.float32  # Unused in PyTorch, but kept for consistency
+    num_heads: int = 8  # Number of attention heads
+    emb_dim_per_head: int = 16  # Embedding dimension per head
+    mlp_dim_factor: float = 4.0  # Factor to determine MLP dimension
+    dropout_rate: float = 0.0  # Dropout rate for the layer
+    attention_dropout_rate: float = 0.0  # Dropout rate for attention
+    use_bias: bool = False  # Whether to use bias in linear layers
+    activation: str = "relu"  # Activation function ("relu" or "silu")
+    dtype: Any = torch.float32  # Data type for tensors
 
-    emb_dim: int = field(init=False)
+    emb_dim: int = field(init=False)  # Total embedding dimension
 
     def __post_init__(self):
-        # emb_dim = num_heads * emb_dim_per_head
+        # Calculate total embedding dimension
         object.__setattr__(self, "emb_dim", self.num_heads * self.emb_dim_per_head)
 
-
+# Configuration for the entire Transformer Encoder
 @dataclass
 class EncoderTransformerConfig:
     """
@@ -31,39 +33,29 @@ class EncoderTransformerConfig:
     - You can pass `emb_dim` to override the default (128).
     - `transformer_layer` is optional; if None, a default is created.
     """
-    vocab_size: int = 10
-    output_vocab_size: int = 10  # not used in the encoder, but kept for parity
-    num_layers: int = 2
-    latent_dim: int = 32
-    variational: bool = False
-    max_rows: int = 30
-    max_cols: int = 30
-    latent_projection_bias: bool = False
-    scaled_position_embeddings: bool = False
-    transformer_dropout: float = 0.0
+    vocab_size: int = 10  # Size of the vocabulary
+    output_vocab_size: int = 10  # Output vocabulary size (unused in encoder)
+    num_layers: int = 2  # Number of Transformer layers
+    latent_dim: int = 32  # Dimension of the latent space
+    variational: bool = False  # Whether to use a variational approach
+    max_rows: int = 30  # Maximum number of rows
+    max_cols: int = 30  # Maximum number of columns
+    latent_projection_bias: bool = False  # Bias in latent projection
+    scaled_position_embeddings: bool = False  # Use scaled position embeddings
+    transformer_dropout: float = 0.0  # Dropout rate for the Transformer
 
-    # Let the user specify an emb_dim. If they don't, default = 128
-    emb_dim: int = 128
+    emb_dim: int = 128  # Embedding dimension
 
-    # Provide a default factory for the layer config,
-    # so we don't run into mutable default errors
     transformer_layer: Optional[TransformerLayerConfig] = field(
         default_factory=lambda: TransformerLayerConfig()
-    )
+    )  # Configuration for Transformer layers
 
-    # We'll compute max_len in __post_init__. We'll also sync
-    # emb_dim to the sub-layer if we want them to match.
-    max_len: int = field(init=False)
-    dtype: Any = field(init=False)  # store the final dtype if needed
+    max_len: int = field(init=False)  # Maximum sequence length
+    dtype: Any = field(init=False)  # Data type for tensors
 
     def __post_init__(self):
-        # If user didn't pass a custom transformer_layer, we have the default one from default_factory
-
-        # If you want to keep your `emb_dim` in sync with the transformer's config:
-        # compute emb_dim_per_head or just do a direct override. Example:
+        # Update embedding dimensions based on transformer layer config
         if self.transformer_layer is not None:
-            # We'll set emb_dim_per_head = emb_dim // num_heads
-            # so that emb_dim = num_heads * emb_dim_per_head
             emb_dim_per_head = max(1, self.emb_dim // self.transformer_layer.num_heads)
             object.__setattr__(self.transformer_layer, 'emb_dim_per_head', emb_dim_per_head)
             object.__setattr__(
@@ -71,9 +63,7 @@ class EncoderTransformerConfig:
                 'emb_dim',
                 self.transformer_layer.num_heads * emb_dim_per_head
             )
-
-        # mirror dtype
+        # Set the data type
         object.__setattr__(self, "dtype", self.transformer_layer.dtype)
-
-        # compute max_len
+        # Calculate the maximum sequence length
         object.__setattr__(self, "max_len", self.max_rows * self.max_cols)
