@@ -5,7 +5,8 @@ from functools import partial
 from dsl.color_select import ColorSelector
 from dsl.select import Selector
 from dsl.transform import Transformer
-import faiss
+from sklearn.neighbors import NearestNeighbors
+#import faiss
 
 class ARCActionSpace(Space):
     def __init__(self, ColorSelector=ColorSelector, Selector=Selector, Transformer=Transformer, low=[0, 0, 0], high=[99, 99, 999]):
@@ -42,18 +43,15 @@ class ARCActionSpace(Space):
         self.space = None
         self.create_action_space()
 
-        # Initialize FAISS index
-        self.faiss_index = None
-        self.create_faiss_index(self.space)
+        self.nearest_neighbors = None
+        self.create_nearest_neighbors()
 
-    def create_faiss_index(self, actions):
+    def create_nearest_neighbors(self):
         """
-        Initialize the FAISS index with the action space.
+        Create the NearestNeighbors model.
         """
-        # Convert actions to float32 as required by FAISS
-        actions = np.array(actions, dtype=np.float32)
-        self.faiss_index = faiss.IndexFlatL2(actions.shape[1])  # L2 (Euclidean) distance
-        self.faiss_index.add(actions)
+        self.nearest_neighbors = NearestNeighbors(n_neighbors=None, algorithm='auto')
+        self.nearest_neighbors.fit(self.space)
 
     def search_point(self, query_actions, k=5):
         """
@@ -68,14 +66,14 @@ class ARCActionSpace(Space):
             indices (np.ndarray): Indices of the k-nearest neighbors for each query action.
             actions (np.ndarray): Actions of the k-nearest neighbors for each query action.
         """
-        if self.faiss_index is None:
-            raise ValueError("FAISS index is not initialized. Call create_faiss_index() first.")
+        if self.nearest_neighbors is None:
+            raise ValueError("NearestNeighbors model is not initialized. Call create_nearest_neighbors() first.")
         
         query_actions = np.array(query_actions, dtype=np.float32)
         if query_actions.ndim == 1:
             query_actions = query_actions.reshape(1, -1)  # Handle single query action as a special case
         
-        distances, indices = self.faiss_index.search(query_actions, k)
+        distances, indices = self.nearest_neighbors.kneighbors(query_actions, n_neighbors=k)
         actions = np.array([self.space[indices[i]] for i in range(len(indices))])
         if query_actions.shape[0] == 1:
             actions = actions[0]
