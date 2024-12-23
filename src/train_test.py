@@ -25,7 +25,7 @@ def train(continuous, env, agent, max_episode, warmup, save_model_dir, max_episo
                 done = True
 
             # agent observe and update policy
-            agent.observe(r_t, s_t1, done)
+            agent.observe(r_t, s_t1, shape1, done)
             if step > warmup:
                 agent.update_policy()
 
