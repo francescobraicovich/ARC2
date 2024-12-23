@@ -3,20 +3,29 @@
 import os
 import torch
 import numpy as np
-from torch.autograd import Variable
 import logging
 
 
 def to_numpy(var, gpu_used=False):
     return var.cpu().data.numpy().astype(np.float64) if gpu_used else var.data.numpy().astype(np.float64)
 
-def to_tensor(ndarray, volatile=False, requires_grad=False, gpu_used=False, gpu_0=0):
-    if gpu_used:
-        return Variable(torch.from_numpy(ndarray).cuda(device=gpu_0).type(torch.cuda.FloatTensor),
-                        requires_grad=requires_grad)
-    else:
-        return Variable(torch.from_numpy(ndarray).type(torch.FloatTensor),
-                        requires_grad=requires_grad)
+def to_tensor(ndarray, requires_grad=False, device=None):
+    """
+    Converts a NumPy array to a PyTorch tensor with the specified gradient and device settings.
+
+    Args:
+        ndarray (numpy.ndarray): Input NumPy array to convert.
+        requires_grad (bool): If True, the resulting tensor requires gradient computation.
+        device (str or torch.device): The device to place the tensor on. Defaults to None (CPU).
+
+    Returns:
+        torch.Tensor: Converted PyTorch tensor.
+    """
+    tensor = torch.from_numpy(ndarray).float()  # Ensure tensor is of float type
+    if device:
+        tensor = tensor.to(device)  # Transfer tensor to the specified device
+    tensor.requires_grad = requires_grad
+    return tensor
 
 def soft_update(target, source, tau_update):
     for target_param, param in zip(target.parameters(), source.parameters()):
