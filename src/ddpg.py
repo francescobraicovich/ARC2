@@ -25,6 +25,7 @@ class DDPG(object):
             nb_states: Number of state variables in the environment.
             nb_actions: Number of action variables in the environment.
         """
+    
         USE_CUDA = torch.cuda.is_available()
 
         # Set the random seed for reproducibility
@@ -143,13 +144,14 @@ class DDPG(object):
         self.critic.to(device)
         self.critic_target.to(device)
 
-    def observe(self, r_t, s_t1, done):
+    def observe(self, r_t, s_t1, shape1, done):
         """
         Store the most recent transition in the replay buffer.
         """
         if self.is_training:
             self.memory.append(self.s_t, self.shape, self.a_t, r_t, done)
             self.s_t = s_t1
+            self.shape = shape1
 
     def random_action(self):
         """
@@ -169,8 +171,8 @@ class DDPG(object):
         Returns:
             action: Selected action with added exploration noise.
         """
-        state_tensor = to_tensor(np.array([s_t]), gpu_used=self.gpu_used, gpu_0=self.gpu_ids[0])
-        shape_tensor = to_tensor(np.array([shape]), gpu_used=self.gpu_used, gpu_0=self.gpu_ids[0])
+        state_tensor = to_tensor(np.array([s_t]))
+        shape_tensor = to_tensor(np.array([shape]))
         action = to_numpy(self.actor((state_tensor, shape_tensor))).squeeze(0)
         action += self.is_training * max(self.epsilon, 0) * self.random_process.sample()
         action = np.clip(action, -1., 1.)
