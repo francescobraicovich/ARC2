@@ -107,11 +107,9 @@ class EncoderTransformer(nn.Module):
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         # Embed the input grids
         x = self.embed_grids(pairs, grid_shapes, dropout_eval)
-        print("After embedding x.shape:", x.shape)  # Debug statement
 
         # Create padding mask for attention
         key_padding_mask = self.make_pad_mask(grid_shapes)  # [batch_size, seq_len]
-        print("key_padding_mask.shape:", key_padding_mask.shape)  # Debug statement
 
         # Pass through Transformer layers
         for layer in self.layers:
@@ -181,7 +179,5 @@ class EncoderTransformer(nn.Module):
         key_padding_mask = torch.zeros(batch_size, seq_len, dtype=torch.bool, device=grid_shapes.device)
 
         # Debug statements for verification
-        print(f"make_pad_mask - batch_size: {batch_size}, seq_len: {seq_len}")
-        print(f"make_pad_mask - key_padding_mask:\n{key_padding_mask}")
 
         return key_padding_mask
