@@ -2,6 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from util import to_tensor
 
 # Custom weight initialization function
 def fanin_init(size, fanin=None):
@@ -46,16 +47,17 @@ class Actor(nn.Module):
         Forward pass of the Actor network.
         """
         state, shape = x
-        # NOTE: this is current implementation waiting to pass the state and shape into the encoder
-        state_flat = torch.reshape(state, (state.shape[0],self.nb_states - 5))
-        shape_flat = torch.reshape(shape, (shape.shape[0], 4))
-        # add a zero on the end of the shape tensor for each batch
-        shape_flat = torch.cat([shape_flat, torch.zeros((shape_flat.shape[0], 1))], dim=-1)
-        print('state shape:', state_flat.shape)
-        print('shape shape:', shape_flat.shape)
+
+        # Reshape state and shape tensors
+        state_flat = state.reshape(state.shape[0], self.nb_states - 5)
+        shape_flat = shape.reshape(shape.shape[0], 4)
+
+        # Add a zero to the end of the shape tensor for each batch
+        shape_flat = torch.cat([shape_flat, torch.zeros((shape_flat.size(0), 1), device=shape.device)], dim=-1)
+
+        # Concatenate the tensors
         x = torch.cat([state_flat, shape_flat], dim=-1)
-        print('x shape:', x.shape)
-        
+
         # print the dtype of x
         out = self.relu(self.fc1(x))
         out = self.relu(self.fc2(out))
@@ -97,9 +99,20 @@ class Critic(nn.Module):
             x: State input.
             a: Action input.
         """
-        x = torch.reshape(x, (x.shape[0],self.nb_states))
+        state, shape = x
+        # Reshape state and shape tensors
+        state_flat = state.reshape(state.shape[0], state.shape[1], self.nb_states - 5)
+        shape_flat = shape.reshape(shape.shape[0], shape.shape[1], 4)
+
+        # add a zero to the end of the shape tensor for each batch
+        shape_flat = torch.cat([shape_flat, torch.zeros((shape_flat.size(0), shape_flat.size(1), 1), device=shape.device)], dim=-1)
+
+        # Concatenate the tensors
+        x = torch.cat([state_flat, shape_flat], dim=-1)
+
+
         out = self.relu(self.fc1(x))
-        out = torch.cat([out, a], dim=-1)  # Concatenate state and action
-        out = self.relu(self.fc2(out))
+        concatenated = torch.cat([out, a], dim=-1)  # Concatenate state and action
+        out = self.relu(self.fc2(concatenated))
         out = self.fc3(out)
         return out
