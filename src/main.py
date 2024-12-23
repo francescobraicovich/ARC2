@@ -1,6 +1,3 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-
 import os
 import numpy as np
 import logging
@@ -12,8 +9,11 @@ from setproctitle import setproctitle as ptitle
 from enviroment import ARC_Env
 import gymnasium as gym
 from action_space import ARCActionSpace
+import torch
 
 if __name__ == "__main__":
+
+
     ptitle('WOLP_DDPG')
     warnings.filterwarnings('ignore')
     parser = init_parser('WOLP_DDPG')
@@ -50,7 +50,8 @@ if __name__ == "__main__":
 
     print('Going to build agent')
     agent = WolpertingerAgent(**agent_args)
-
+    print('Agent built')
+    
     if args.load:
         agent.load_weights(args.load_model_dir)
 
@@ -78,6 +79,7 @@ if __name__ == "__main__":
         log['RS_log'].info('{0}: {1}'.format(k, d_args[k]))
 
     if args.mode == 'train':
+        print('Training')
 
         train_args = {
             'continuous': continuous,
