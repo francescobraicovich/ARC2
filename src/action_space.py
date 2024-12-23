@@ -55,28 +55,30 @@ class ARCActionSpace(Space):
         self.faiss_index = faiss.IndexFlatL2(actions.shape[1])  # L2 (Euclidean) distance
         self.faiss_index.add(actions)
 
-    def search_point(self, query_action, k=5):
+    def search_point(self, query_actions, k=5):
         """
-        Find the k-nearest neighbors of a given query action in the action space.
+        Find the k-nearest neighbors for multiple query actions in the action space.
         
         Args:
-            query_action (array-like): The query action to find neighbors for.
+            query_actions (array-like): 2D array of query actions to find neighbors for (shape: [n_queries, action_dim]).
             k (int): Number of nearest neighbors to retrieve.
         
         Returns:
-            distances (np.ndarray): Distances of the k-nearest neighbors.
-            indices (np.ndarray): Indices of the k-nearest neighbors.
+            distances (np.ndarray): Distances of the k-nearest neighbors for each query action.
+            indices (np.ndarray): Indices of the k-nearest neighbors for each query action.
+            actions (np.ndarray): Actions of the k-nearest neighbors for each query action.
         """
         if self.faiss_index is None:
             raise ValueError("FAISS index is not initialized. Call create_faiss_index() first.")
         
-        query_action = np.array(query_action, dtype=np.float32).reshape(1, -1)
-        distances, indices = self.faiss_index.search(query_action, k)
-        actions = self.space[indices][0]
-        # check that all the actions are in the action space
-        for action in actions:
-            if action not in self.space:
-                raise ValueError('Action not in action space')
+        query_actions = np.array(query_actions, dtype=np.float32)
+        if query_actions.ndim == 1:
+            query_actions = query_actions.reshape(1, -1)  # Handle single query action as a special case
+        
+        distances, indices = self.faiss_index.search(query_actions, k)
+        actions = np.array([self.space[indices[i]] for i in range(len(indices))])
+        if query_actions.shape[0] == 1:
+            actions = actions[0]
         return distances, indices, actions
 
     def __call__(self):

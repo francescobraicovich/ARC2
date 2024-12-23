@@ -10,7 +10,7 @@ import numpy as np
 
 # This is to be understood as a transition: Given `state0`, performing `action`
 # yields `reward` and results in `state1`, which might be `terminal`.
-Experience = namedtuple('Experience', 'state0, action, reward, state1, terminal1')
+Experience = namedtuple('Experience', 'state0, action, reward, state1, terminal1, shape')
 
 
 def sample_batch_indexes(low, high, size):
@@ -81,13 +81,15 @@ class Memory(object):
         self.ignore_episode_boundaries = ignore_episode_boundaries
 
         self.recent_observations = deque(maxlen=window_length)
+        self.recent_shapes = deque(maxlen=window_length)
         self.recent_terminals = deque(maxlen=window_length)
 
     def sample(self, batch_size, batch_idxs=None):
         raise NotImplementedError()
 
-    def append(self, observation, action, reward, terminal, training=True):
+    def append(self, observation, shape, action, reward, terminal, training=True):
         self.recent_observations.append(observation)
+        self.recent_shapes.append(shape)
         self.recent_terminals.append(terminal)
 
     def get_recent_state(self, current_observation):
@@ -127,6 +129,7 @@ class SequentialMemory(Memory):
         self.rewards = RingBuffer(limit)
         self.terminals = RingBuffer(limit)
         self.observations = RingBuffer(limit)
+        self.shapes = RingBuffer(limit)
 
     def sample(self, batch_size, batch_idxs=None):
         if batch_idxs is None:
@@ -166,6 +169,7 @@ class SequentialMemory(Memory):
             while len(state0) < self.window_length:
                 state0.insert(0, zeroed_observation(state0[0]))
             action = self.actions[idx - 1]
+            shape = self.shapes[idx - 1]
             reward = self.rewards[idx - 1]
             terminal1 = self.terminals[idx - 1]
 
@@ -178,7 +182,7 @@ class SequentialMemory(Memory):
             assert len(state0) == self.window_length
             assert len(state1) == len(state0)
             experiences.append(Experience(state0=state0, action=action, reward=reward,
-                                          state1=state1, terminal1=terminal1))
+                                          state1=state1, terminal1=terminal1, shape=shape))
         assert len(experiences) == batch_size
         return experiences
 
@@ -186,34 +190,38 @@ class SequentialMemory(Memory):
         experiences = self.sample(batch_size, batch_idxs)
 
         state0_batch = []
+        shape_batch = []
         reward_batch = []
         action_batch = []
         terminal1_batch = []
         state1_batch = []
         for e in experiences:
             state0_batch.append(e.state0)
+            shape_batch.append(e.shape)
             state1_batch.append(e.state1)
             reward_batch.append(e.reward)
             action_batch.append(e.action)
             terminal1_batch.append(0. if e.terminal1 else 1.)
 
         # Prepare and validate parameters.
-        state0_batch = np.array(state0_batch).reshape(batch_size,-1).astype(np.float64)
-        state1_batch = np.array(state1_batch).reshape(batch_size,-1).astype(np.float64)
-        terminal1_batch = np.array(terminal1_batch).reshape(batch_size,-1).astype(np.float64)
-        reward_batch = np.array(reward_batch).reshape(batch_size,-1).astype(np.float64)
-        action_batch = np.array(action_batch).reshape(batch_size,-1).astype(np.float64)
+        state0_batch = np.array(state0_batch).reshape(batch_size,-1)#.astype(np.float64)
+        shape_batch = np.array(shape_batch).reshape(batch_size,-1)#.astype(np.float64)
+        state1_batch = np.array(state1_batch).reshape(batch_size,-1)#.astype(np.float64)
+        terminal1_batch = np.array(terminal1_batch).reshape(batch_size,-1)#.astype(np.float64)
+        reward_batch = np.array(reward_batch).reshape(batch_size,-1)#.astype(np.float64)
+        action_batch = np.array(action_batch).reshape(batch_size,-1)#.astype(np.float64)
 
-        return state0_batch, action_batch, reward_batch, state1_batch, terminal1_batch
+        return state0_batch, shape_batch, action_batch, reward_batch, state1_batch, terminal1_batch
 
 
-    def append(self, observation, action, reward, terminal, training=True):
-        super(SequentialMemory, self).append(observation, action, reward, terminal, training=training)
+    def append(self, observation, shape, action, reward, terminal, training=True):
+        super(SequentialMemory, self).append(observation, shape, action, reward, terminal, training=training)
         
         # This needs to be understood as follows: in `observation`, take `action`, obtain `reward`
         # and weather the next state is `terminal` or not.
         if training:
             self.observations.append(observation)
+            self.shapes.append(shape)
             self.actions.append(action)
             self.rewards.append(reward)
             self.terminals.append(terminal)

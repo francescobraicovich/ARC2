@@ -33,7 +33,7 @@ if __name__ == "__main__":
 
     # discrete action for 1 dimension
     # TODO: change the nb_states to the shape of the grid
-    nb_states = 200
+    nb_states = 1805  # 60 x 30 grid ravels to 1800 + 4 for the dimensions of the grid + 1 for cls embedding
     nb_actions = 3  # the dimension of actions, usually it is 1. Depend on the environment.
     continuous = False
 
@@ -65,9 +65,11 @@ if __name__ == "__main__":
         setup_logger('RS_log', r'{}/RS_test_log'.format(args.save_model_dir))
     else:
         raise RuntimeError('undefined mode {}'.format(args.mode))
+    
     log['RS_log'] = logging.getLogger('RS_log')
     d_args = vars(args)
     d_args['max_actions'] = args.max_actions
+    
     for key in agent_args.keys():
         if key == 'args':
             continue

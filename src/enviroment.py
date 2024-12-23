@@ -77,7 +77,7 @@ class ARC_Env(gym.Env):
         self.dictionary_keys = list(challenge_dictionary.keys()) # list of keys in the dictionary
         self.num_challenges = len(challenge_dictionary) # number of challenges in the dictionary
         self.dim = dim # maximum dimension of the problem
-        self.observation_shape = (1, dim, 2*dim) # shape of the grid
+        self.observation_shape = (dim, dim, 2) # shape of the grid
 
         # reward variables
         self.STEP_PENALTY = 1
@@ -113,12 +113,16 @@ class ARC_Env(gym.Env):
         random_challenge = challenge_train[random_index]
         random_input = np.array(random_challenge['input'])
         random_output = np.array(random_challenge['output'])
+
+        nrows, ncols = random_input.shape
+        nrows_target, ncols_target = random_output.shape
+        shape = np.array([[nrows, nrows_target],[ncols, ncols_target]])
         
         # Pad the grids
-        training_grid = np.zeros(self.observation_shape, dtype=np.int32)
-        training_grid[:, :, :self.dim] = pad_grid(random_input)
-        training_grid[:, :, self.dim:] = pad_grid(random_output)
-        return training_grid, challenge_key
+        training_grid = np.zeros(self.observation_shape, dtype=np.float32)
+        training_grid[:, :, 0] = pad_grid(random_input)
+        training_grid[:, :, 1] = pad_grid(random_output)
+        return (training_grid, shape), challenge_key
     
     def reset(self):
         # Reset the enviroment variables
@@ -199,7 +203,7 @@ class ARC_Env(gym.Env):
         return transformed
 
     def step(self, action, max_states_per_action=3):
-        
+                
         # Update the info dictionary
         info = self.info
         info['actions'].append(action)
@@ -208,50 +212,58 @@ class ARC_Env(gym.Env):
         info['num_actions'] += 1
         
         # Extract the previous and target states
-        previous_state = self.state[:, :, :self.dim] # make the current state into the previous state
+        state, shape = self.state # make the current state into the previous state
+        previous_state = state[:, :, 0]
         previous_state_not_padded = unpad_grid(previous_state) # remove the padding from the previous state
         
         # Extract the current and target states
-        target_state = self.state[:, :, self.dim:] # get the target state
+        target_state = state[:, :, 1] # get the target state
         target_state_not_padded = unpad_grid(target_state) # remove the padding from the target state
+        target_rows, target_cols = target_state_not_padded.shape
 
         # Apply the action to the previous state
         current_state_tensor = self.act(previous_state_not_padded, action) # apply the action to the previous state
 
         # Initialize the rewards, dones, and current states tensors to store the results of the step function
         rewards = np.zeros(current_state_tensor.shape[0]) # initialize the rewards
-        current_states = np.zeros((current_state_tensor.shape[0], self.dim, self.dim*2)) # initialize the current states
+        current_states = np.zeros((current_state_tensor.shape[0], self.dim, self.dim, 2), dtype=np.float32) # initialize the current states
+        shapes = np.zeros((current_state_tensor.shape[0], 2, 2)) # initialize the shapes
         solveds = np.zeros(current_state_tensor.shape[0], dtype=bool) # initialize the successes
-
+        
         # Loop over the first dimension of the tensor
         for i in range(current_state_tensor.shape[0]):
             current_state_not_padded = current_state_tensor[i, :, :] # get the current state
+            nrows, ncols = current_state_not_padded.shape
             reward, solved = self.best_overlap_reward(previous_state_not_padded, current_state_not_padded, target_state_not_padded) # compute the reward
             current_state_padded = pad_grid(current_state_not_padded) # pad the current state
             
             # Store the results
             rewards[i] = reward # store the reward
             solveds[i] = solved
-            current_states[i, :, :self.dim] = current_state_padded
-            current_states[i, :, self.dim:] = target_state
+            current_states[i, :, :, 0] = current_state_padded
+            current_states[i, :, :, 1] = target_state
+            shapes[i, 0, 0] = nrows
+            shapes[i, 0, 1] = target_rows
+            shapes[i, 1, 0] = ncols
+            shapes[i, 1, 1] = target_cols
         
         num_states_to_evaluate = min(max_states_per_action, current_state_tensor.shape[0])
         top_n_indices = np.argsort(rewards)[-num_states_to_evaluate:] # get the top n indices
         reward = np.max(rewards[top_n_indices]) # get the maximum reward
 
         # if the agent has completed the challenge, we update the info dictionary
-        done = np.any(solveds)
+        done = bool(np.any(solveds))
         if done:
             index_of_solved = np.where(solveds)[0][0]
-            self.state = current_states[index_of_solved, :, :]
+            self.state = (current_states[index_of_solved, :, :], shapes[index_of_solved, :, :])
             info['solved'] = True
             return self.state, reward, done, info
             
         # Add the top n states to the new states and infos
         for i in top_n_indices:
-            state_to_append = current_states[i, :, :]
-            state_to_append = np.expand_dims(state_to_append, axis=0)
-            self.new_states.append(state_to_append)
+            state_to_append = current_states[i, :, :, :]
+            shape_to_append = shapes[i, :, :]
+            self.new_states.append((state_to_append, shape_to_append))
             self.infos.append(info)
         
         # End the episode with a small probability if not ended already
@@ -261,7 +273,6 @@ class ARC_Env(gym.Env):
         # Update the state of the environment
         self.state = self.new_states.popleft()
         self.info = self.infos.popleft()
-
         return self.state, reward, done, self.info
 
 
