@@ -12,13 +12,11 @@ class WolpertingerAgent(DDPG):
         # Automatically determine the device
         if torch.cuda.is_available():
             self.device = torch.device("cuda")
-            print("Using CUDA for WolpertingerAgent")
         elif torch.backends.mps.is_available():
             self.device = torch.device("mps")
-            print("Using MPS for WolpertingerAgent")
         else:
             self.device = torch.device("cpu")
-            print("Using CPU for WolpertingerAgent")
+        print("Using device: {} for Wolpertinger agent".format(self.device))
 
         self.experiment = args.id
         self.action_space = action_space.ARCActionSpace()
