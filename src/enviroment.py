@@ -4,6 +4,8 @@ from dsl.utilities.plot import plot_grid, plot_grid_3d, plot_selection
 import gymnasium as gym
 from gymnasium import spaces
 from collections import deque
+from util import *
+
 
 def extract_states(previous_state, current_state,  target_state):
     """
@@ -84,7 +86,8 @@ class ARC_Env(gym.Env):
         self.SHAPE_PENALTY = 1
         self.MAXIMUM_SIMILARITY = 50
         self.COMPLETION_REWARD = 25
-        self.SKIP_PROBABILITY = 0.005
+        self.SKIP_PROBABILITY = 0.005 #DEPRECATED
+        self.MAX_STATES_PER_ACTION = 1 #DEPRECATED
 
         # Define the action space: a sequence of 9 integers
         self.action_space = action_space
@@ -202,7 +205,7 @@ class ARC_Env(gym.Env):
             transformed = np.expand_dims(previous_state, axis=0)
         return transformed
 
-    def step(self, action, max_states_per_action=3):
+    def step(self, action):
                 
         # Update the info dictionary
         info = self.info
@@ -247,7 +250,7 @@ class ARC_Env(gym.Env):
             shapes[i, 1, 0] = ncols
             shapes[i, 1, 1] = target_cols
         
-        num_states_to_evaluate = min(max_states_per_action, current_state_tensor.shape[0])
+        num_states_to_evaluate = min(self.MAX_STATES_PER_ACTION, current_state_tensor.shape[0])
         top_n_indices = np.argsort(rewards)[-num_states_to_evaluate:] # get the top n indices
         reward = np.max(rewards[top_n_indices]) # get the maximum reward
 
@@ -267,8 +270,8 @@ class ARC_Env(gym.Env):
             self.infos.append(info)
         
         # End the episode with a small probability if not ended already
-        if not done and np.random.random() < self.SKIP_PROBABILITY:
-            done = True
+        #if not done and np.random.random() < self.SKIP_PROBABILITY:
+        #    done = True
 
         # Update the state of the environment
         self.state = self.new_states.popleft()
