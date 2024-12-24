@@ -170,3 +170,58 @@ class DDPG(object):
         torch.manual_seed(seed)
         if self.device.type == 'cuda':
             torch.cuda.manual_seed_all(seed)
+
+    def load_weights(self, dir):
+        """
+        Load the Actor and Critic model weights from the specified directory.
+
+        Args:
+            dir: Directory from which to load the model weights.
+        """
+        if dir is None:
+            return
+
+        # Construct paths for the weights
+        actor_path = f"../output/{dir}/actor.pt"
+        critic_path = f"../output/{dir}/critic.pt"
+
+        # Load Actor model
+        if hasattr(self.actor, 'module'):
+            # Load into the underlying model for DataParallel
+            self.actor.module.load_state_dict(torch.load(actor_path, map_location=self.device))
+        else:
+            self.actor.load_state_dict(torch.load(actor_path, map_location=self.device))
+
+        # Load Critic model
+        if hasattr(self.critic, 'module'):
+            # Load into the underlying model for DataParallel
+            self.critic.module.load_state_dict(torch.load(critic_path, map_location=self.device))
+        else:
+            self.critic.load_state_dict(torch.load(critic_path, map_location=self.device))
+
+        print(f"Actor and Critic models loaded from {dir}")
+
+
+    def save_model(self, output):
+        """
+        Save the Actor and Critic models to the specified output directory.
+
+        Args:
+            output: The directory where the model weights will be saved.
+        """
+        # Ensure the output directory exists
+        os.makedirs(output, exist_ok=True)
+
+        # Save the Actor model
+        actor_state_dict = (
+            self.actor.module.state_dict() if hasattr(self.actor, "module") else self.actor.state_dict()
+        )
+        torch.save(actor_state_dict, os.path.join(output, "actor.pt"))
+
+        # Save the Critic model
+        critic_state_dict = (
+            self.critic.module.state_dict() if hasattr(self.critic, "module") else self.critic.state_dict()
+        )
+        torch.save(critic_state_dict, os.path.join(output, "critic.pt"))
+
+        print(f"Models saved to {output}")
