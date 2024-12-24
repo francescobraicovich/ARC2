@@ -1,3 +1,4 @@
+from util import to_tensor
 
 def train(continuous, env, agent, max_episode, warmup, save_model_dir, max_episode_length, logger, save_per_epochs):
     agent.is_training = True
@@ -8,6 +9,8 @@ def train(continuous, env, agent, max_episode, warmup, save_model_dir, max_episo
         while True:
             if s_t is None:
                 s_t, shape = env.reset()
+                s_t = to_tensor(s_t, device=agent.device)
+                shape = to_tensor(shape, device=agent.device)
                 agent.reset(s_t, shape)
 
             # agent pick action ...
@@ -20,6 +23,7 @@ def train(continuous, env, agent, max_episode, warmup, save_model_dir, max_episo
             # env response with next_observation, reward, terminate_info
             state1, r_t, done, _ = env.step(action)
             s_t1, shape1 = state1
+            s_t1, shape1 = to_tensor(s_t1, device=agent.device), to_tensor(shape1, device=agent.device)
 
             if max_episode_length and episode_steps >= max_episode_length - 1:
                 done = True
@@ -38,7 +42,7 @@ def train(continuous, env, agent, max_episode, warmup, save_model_dir, max_episo
 
             if done:  # end of an episode
                 logger.info(
-                    "Ep:{0} | R:{1:.4f}".format(episode, episode_reward)
+                    "Ep:{0} | R:{1:.4f} | Steps: {2}".format(episode, episode_reward, episode_steps)
                 )
 
                 agent.memory.append(
@@ -58,7 +62,7 @@ def train(continuous, env, agent, max_episode, warmup, save_model_dir, max_episo
         # [optional] save intermideate model every run through of 32 episodes
         if step > warmup and episode > 0 and episode % save_per_epochs == 0:
             agent.save_model(save_model_dir)
-            logger.info("### Model Saved before Ep:{0} ###".format(episode))
+            logger.info(f"### Model Saved in {save_model_dir} before Ep:{episode} ###")
 
 def test(env, agent, model_path, test_episode, max_episode_length, logger):
 
