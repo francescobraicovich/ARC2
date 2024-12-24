@@ -6,24 +6,38 @@ import numpy as np
 import logging
 
 
-def to_numpy(var, gpu_used=False):
-    return var.cpu().data.numpy().astype(np.float64) if gpu_used else var.data.numpy().astype(np.float64)
+def to_numpy(var, device=None):
+    """
+    Convert a PyTorch tensor to a NumPy array, handling the device.
+
+    Args:
+        var (torch.Tensor): The PyTorch tensor to convert.
+        device (torch.device or None): The device type (e.g., 'cuda', 'mps', 'cpu').
+
+    Returns:
+        np.ndarray: The NumPy array.
+    """
+    if not isinstance(var, torch.Tensor):
+        raise TypeError("Input must be a PyTorch tensor.")
+
+    # Move tensor to the specified device if provided
+    if device is not None:
+        var = var.to(device)
+
+    # Ensure the tensor is on CPU before converting to NumPy
+    if var.device.type != 'cpu':
+        var = var.cpu()
+
+    # Detach from the computational graph and convert to NumPy
+    return var.detach().numpy()
 
 def to_tensor(ndarray, requires_grad=False, device=None):
     """
-    Converts a NumPy array to a PyTorch tensor with the specified gradient and device settings.
-
-    Args:
-        ndarray (numpy.ndarray): Input NumPy array to convert.
-        requires_grad (bool): If True, the resulting tensor requires gradient computation.
-        device (str or torch.device): The device to place the tensor on. Defaults to None (CPU).
-
-    Returns:
-        torch.Tensor: Converted PyTorch tensor.
+    Convert a NumPy array to a PyTorch tensor with the specified gradient and device settings.
     """
-    tensor = torch.from_numpy(ndarray).float()  # Ensure tensor is of float type
+    tensor = torch.from_numpy(ndarray).float()
     if device:
-        tensor = tensor.to(device)  # Transfer tensor to the specified device
+        tensor = tensor.to(device)
     tensor.requires_grad = requires_grad
     return tensor
 
@@ -86,6 +100,7 @@ def get_output_folder(parent_dir, env_name):
     parent_dir = parent_dir + '-run{}'.format(experiment_id)
     os.makedirs(parent_dir, exist_ok=True)
     return parent_dir
+
 
 def setup_logger(logger_name, log_file, level=logging.INFO):
     l = logging.getLogger(logger_name)
