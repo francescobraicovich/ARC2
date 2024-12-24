@@ -4,6 +4,15 @@ import torch.nn as nn
 import torch.nn.functional as F
 from util import to_tensor
 
+# Determine the device: CUDA -> MPS -> CPU
+if torch.cuda.is_available():
+    DEVICE = torch.device("cuda")
+elif torch.backends.mps.is_available():
+    DEVICE = torch.device("mps")
+else:
+    DEVICE = torch.device("cpu")
+print("Using device: {} for actor-critic model".format(DEVICE))
+
 # Custom weight initialization function
 def fanin_init(size, fanin=None):
     """
@@ -11,7 +20,8 @@ def fanin_init(size, fanin=None):
     """
     fanin = fanin or size[0]
     v = 1. / np.sqrt(fanin)
-    return torch.Tensor(size).uniform_(-v, v)
+    return torch.Tensor(size).uniform_(-v, v).to(DEVICE)
+
 
 # Actor Network
 class Actor(nn.Module):
@@ -33,6 +43,7 @@ class Actor(nn.Module):
         self.relu = nn.ReLU()
         self.tanh = nn.Tanh()  # For bounded action space
         self.init_weights(init_w)
+        self.to(DEVICE)  # Move the network to the selected device
     
     def init_weights(self, init_w):
         """
@@ -53,16 +64,16 @@ class Actor(nn.Module):
         shape_flat = shape.reshape(shape.shape[0], 4)
 
         # Add a zero to the end of the shape tensor for each batch
-        shape_flat = torch.cat([shape_flat, torch.zeros((shape_flat.size(0), 1), device=shape.device)], dim=-1)
+        shape_flat = torch.cat([shape_flat, torch.zeros((shape_flat.size(0), 1), device=DEVICE)], dim=-1)
 
         # Concatenate the tensors
         x = torch.cat([state_flat, shape_flat], dim=-1)
 
-        # print the dtype of x
         out = self.relu(self.fc1(x))
         out = self.relu(self.fc2(out))
         out = self.tanh(self.fc3(out))  # Use Tanh for bounded outputs
         return out
+
 
 # Critic Network
 class Critic(nn.Module):
@@ -83,6 +94,7 @@ class Critic(nn.Module):
         self.fc3 = nn.Linear(hidden2, 1)
         self.relu = nn.ReLU()
         self.init_weights(init_w)
+        self.to(DEVICE)  # Move the network to the selected device
     
     def init_weights(self, init_w):
         """
@@ -104,12 +116,11 @@ class Critic(nn.Module):
         state_flat = state.reshape(state.shape[0], state.shape[1], self.nb_states - 5)
         shape_flat = shape.reshape(shape.shape[0], shape.shape[1], 4)
 
-        # add a zero to the end of the shape tensor for each batch
-        shape_flat = torch.cat([shape_flat, torch.zeros((shape_flat.size(0), shape_flat.size(1), 1), device=shape.device)], dim=-1)
+        # Add a zero to the end of the shape tensor for each batch
+        shape_flat = torch.cat([shape_flat, torch.zeros((shape_flat.size(0), shape_flat.size(1), 1), device=DEVICE)], dim=-1)
 
         # Concatenate the tensors
         x = torch.cat([state_flat, shape_flat], dim=-1)
-
 
         out = self.relu(self.fc1(x))
         concatenated = torch.cat([out, a], dim=-1)  # Concatenate state and action
