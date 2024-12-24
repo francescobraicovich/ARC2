@@ -73,3 +73,5 @@ def cleaner():
 
     print(f"Found {len(ineffective_actions)} ineffective actions.")
     return ineffective_actions
+
+cleaner()
