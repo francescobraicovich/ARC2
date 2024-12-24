@@ -33,18 +33,17 @@ class EncoderTransformerConfig:
     - You can pass `emb_dim` to override the default (128).
     - `transformer_layer` is optional; if None, a default is created.
     """
-    vocab_size: int = 10  # Size of the vocabulary
-    output_vocab_size: int = 10  # Output vocabulary size (unused in encoder)
+    vocab_size: int = 11  # Size of the vocabulary (10 colors + 1 for padding)
+    #output_vocab_size: int = 10  # Output vocabulary size (unused in encoder)
     num_layers: int = 2  # Number of Transformer layers
-    latent_dim: int = 32  # Dimension of the latent space
+    latent_dim: int = 256  # Dimension of the latent space
     variational: bool = False  # Whether to use a variational approach
     max_rows: int = 30  # Maximum number of rows
     max_cols: int = 30  # Maximum number of columns
     latent_projection_bias: bool = False  # Bias in latent projection
     scaled_position_embeddings: bool = False  # Use scaled position embeddings
     transformer_dropout: float = 0.0  # Dropout rate for the Transformer
-
-    emb_dim: int = 128  # Embedding dimension
+    emb_dim: int = 96  # Embedding dimension
 
     transformer_layer: Optional[TransformerLayerConfig] = field(
         default_factory=lambda: TransformerLayerConfig()
