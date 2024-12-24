@@ -7,12 +7,12 @@ def init_parser(alg):
         parser = argparse.ArgumentParser(description='WOLP_DDPG')
         parser.add_argument('--env', default='ARC', metavar='ENV', help='environment to train on')
         parser.add_argument('--gamma', type=float, default=0.99, metavar='G', help='discount factor for rewards (default: 0.99)')
-        parser.add_argument('--max-episode-length', type=int, default=1440, metavar='M', help='maximum length of an episode (default: 1440)')
+        parser.add_argument('--max-episode-length', type=int, default=1440, metavar='M', help='maximum length of an episode (default: 1440)') #NOTE: changed from 1440 to 5
         parser.add_argument('--load', default=False, metavar='L', help='load a trained model')
         parser.add_argument('--load-model-dir', default='', metavar='LMD', help='folder to load trained models from')
         parser.add_argument('--gpu-ids', type=int, default=[1], nargs='+', help='GPUs to use [-1 CPU only]')
-        parser.add_argument('--gpu-nums', type=int, default=1, help='#GPUs to use (default: 1)')
-        parser.add_argument('--max-episode', type=int, default=200000, help='maximum #episode.')
+        parser.add_argument('--gpu-nums', type=int, default=8, help='#GPUs to use (default: 1)')
+        parser.add_argument('--max-episode', type=int, default=10, help='maximum #episode.') #NOTE: changed from 20000 to 10
         parser.add_argument('--test-episode', type=int, default=1000, help='maximum testing #episode.')
         parser.add_argument('--max-actions', default=200000, type=int, help='# max actions')
         parser.add_argument('--id', default='0', type=str, help='experiment id')
