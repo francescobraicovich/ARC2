@@ -13,6 +13,9 @@ else:
     DEVICE = torch.device("cpu")
 print("Using device: {} for actor-critic model".format(DEVICE))
 
+from util_transformer import EncoderTransformerConfig
+from transformer import EncoderTransformer
+
 # Custom weight initialization function
 def fanin_init(size, fanin=None):
     """
@@ -25,33 +28,28 @@ def fanin_init(size, fanin=None):
 
 # Actor Network
 class Actor(nn.Module):
-    def __init__(self, nb_states, nb_actions, hidden1=256, hidden2=128, init_w=3e-3):
+    def __init__(self, encoder_config: EncoderTransformerConfig, nb_actions=3, init_w=3e-3):
         """
-        Actor network for policy prediction.
+        Actor network using an EncoderTransformer for policy prediction.
+
         Args:
-            nb_states: Dimension of state space.
-            nb_actions: Dimension of action space.
-            hidden1: Number of neurons in the first hidden layer.
-            hidden2: Number of neurons in the second hidden layer.
-            init_w: Initialization range for the output layer.
+            encoder_config (EncoderTransformerConfig): Configuration for the EncoderTransformer.
+            nb_actions (int): Dimension of action space (e.g., 3 for 3D point).
+            init_w (float): Initialization range for the output layer.
         """
         super(Actor, self).__init__()
-        self.nb_states = nb_states
-        self.fc1 = nn.Linear(nb_states, hidden1)
-        self.fc2 = nn.Linear(hidden1, hidden2)
-        self.fc3 = nn.Linear(hidden2, nb_actions)
-        self.relu = nn.ReLU()
+        self.encoder = EncoderTransformer(encoder_config)
+        self.action_head = nn.Linear(encoder_config.latent_dim, nb_actions)
         self.tanh = nn.Tanh()  # For bounded action space
         self.init_weights(init_w)
         self.to(DEVICE)  # Move the network to the selected device
     
     def init_weights(self, init_w):
         """
-        Custom weight initialization for the layers.
+        Custom weight initialization for the output layer.
         """
-        nn.init.kaiming_uniform_(self.fc1.weight, nonlinearity='relu')
-        nn.init.kaiming_uniform_(self.fc2.weight, nonlinearity='relu')
-        self.fc3.weight.data.uniform_(-init_w, init_w)
+        nn.init.kaiming_uniform_(self.action_head.weight, nonlinearity='relu')
+        self.action_head.bias.data.uniform_(-init_w, init_w)
     
     def forward(self, x):
         """
