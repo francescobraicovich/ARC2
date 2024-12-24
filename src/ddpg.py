@@ -1,8 +1,6 @@
 import torch
 import torch.nn as nn
 from torch.optim import Adam
-
-# Importing custom modules for Actor-Critic models, memory management, and utilities
 from model import (Actor, Critic)
 from memory import SequentialMemory
 from random_process import OrnsteinUhlenbeckProcess
@@ -25,8 +23,16 @@ class DDPG(object):
             nb_states: Number of state variables in the environment.
             nb_actions: Number of action variables in the environment.
         """
-    
-        USE_CUDA = torch.cuda.is_available()
+
+        # Determine the appropriate device
+        if torch.cuda.is_available():
+            self.device = torch.device("cuda")
+        elif torch.backends.mps.is_available():
+            self.device = torch.device("mps")
+        else:
+            self.device = torch.device("cpu")
+        print("Using device: {} for ddpg".format(self.device))
+
 
         # Set the random seed for reproducibility
         if args.seed > 0:
@@ -34,12 +40,6 @@ class DDPG(object):
 
         self.nb_states = nb_states
         self.nb_actions = nb_actions
-
-        # Determine GPU usage based on availability and user settings
-        self.gpu_ids = [i for i in range(args.gpu_nums)] if USE_CUDA and args.gpu_nums > 0 else [-1]
-        self.gpu_used = True if self.gpu_ids[0] >= 0 else False
-        self.device = torch.device('cuda:0' if self.gpu_used else 'cpu')
-
 
         # Network configuration for the Actor and Critic networks
         net_cfg = {
@@ -49,12 +49,12 @@ class DDPG(object):
         }
 
         # Initialize Actor and Critic networks (both primary and target)
-        self.actor = Actor(self.nb_states, self.nb_actions, **net_cfg)
-        self.actor_target = Actor(self.nb_states, self.nb_actions, **net_cfg)
+        self.actor = Actor(self.nb_states, self.nb_actions, **net_cfg).to(self.device)
+        self.actor_target = Actor(self.nb_states, self.nb_actions, **net_cfg).to(self.device)
         self.actor_optim = Adam(self.actor.parameters(), lr=args.p_lr, weight_decay=args.weight_decay)
 
-        self.critic = Critic(self.nb_states, self.nb_actions, **net_cfg)
-        self.critic_target = Critic(self.nb_states, self.nb_actions, **net_cfg)
+        self.critic = Critic(self.nb_states, self.nb_actions, **net_cfg).to(self.device)
+        self.critic_target = Critic(self.nb_states, self.nb_actions, **net_cfg).to(self.device)
         self.critic_optim = Adam(self.critic.parameters(), lr=args.c_lr, weight_decay=args.weight_decay)
 
         # Synchronize target networks with the primary networks
@@ -93,20 +93,6 @@ class DDPG(object):
         """
         pass
 
-    def cuda_convert(self):
-        """
-        Convert the model to GPU(s) if available and specified.
-        """
-        if len(self.gpu_ids) == 1 and self.gpu_ids[0] >= 0:
-            with torch.cuda.device(self.gpu_ids[0]):
-                print('Model converted to CUDA.')
-                self.cuda()
-        elif len(self.gpu_ids) > 1:
-            self.data_parallel()
-            self.cuda()
-            self.to_device()
-            print('Model converted to CUDA and parallelized.')
-
     def eval(self):
         """
         Set the model to evaluation mode.
@@ -118,37 +104,19 @@ class DDPG(object):
 
     def cuda(self):
         """
-        Move all networks to GPU memory.
+        Move all networks to the determined device.
         """
-        self.actor.cuda()
-        self.actor_target.cuda()
-        self.critic.cuda()
-        self.critic_target.cuda()
-
-    def data_parallel(self):
-        """
-        Enable data parallelism for the model across multiple GPUs.
-        """
-        self.actor = nn.DataParallel(self.actor, device_ids=self.gpu_ids)
-        self.actor_target = nn.DataParallel(self.actor_target, device_ids=self.gpu_ids)
-        self.critic = nn.DataParallel(self.critic, device_ids=self.gpu_ids)
-        self.critic_target = nn.DataParallel(self.critic_target, device_ids=self.gpu_ids)
-
-    def to_device(self):
-        """
-        Move all networks to the primary GPU device.
-        """
-        device = torch.device(f'cuda:{self.gpu_ids[0]}')
-        self.actor.to(device)
-        self.actor_target.to(device)
-        self.critic.to(device)
-        self.critic_target.to(device)
+        self.actor.to(self.device)
+        self.actor_target.to(self.device)
+        self.critic.to(self.device)
+        self.critic_target.to(self.device)
 
     def observe(self, r_t, s_t1, shape1, done):
         """
         Store the most recent transition in the replay buffer.
         """
         if self.is_training:
+            assert isinstance(self.a_t, torch.Tensor)
             self.memory.append(self.s_t, self.shape, self.a_t, r_t, done)
             self.s_t = s_t1
             self.shape = shape1
@@ -158,6 +126,8 @@ class DDPG(object):
         Generate a random action within the action space bounds.
         """
         action = np.random.uniform(-1., 1., self.nb_actions)
+        #self.a_t = to_tensor(action, device=self.device)
+        #assert isinstance(self.a_t, torch.Tensor)
         return action
 
     def select_action(self, s_t, shape, decay_epsilon=True):
@@ -171,15 +141,15 @@ class DDPG(object):
         Returns:
             action: Selected action with added exploration noise.
         """
-        state_tensor = to_tensor(np.array([s_t]))
-        shape_tensor = to_tensor(np.array([shape]))
-        action = to_numpy(self.actor((state_tensor, shape_tensor))).squeeze(0)
+
+        action = to_numpy(self.actor((s_t.unsqueeze(0), shape.unsqueeze(0))), device=self.device).squeeze(0)
         action += self.is_training * max(self.epsilon, 0) * self.random_process.sample()
         action = np.clip(action, -1., 1.)
 
         if decay_epsilon:
             self.epsilon -= self.depsilon
-
+        #self.a_t = action
+        #assert isinstance(action, torch.Tensor)
         return action
 
     def reset(self, s_t, shape):
@@ -190,42 +160,6 @@ class DDPG(object):
         self.shape = shape
         self.random_process.reset_states()
 
-    def load_weights(self, dir):
-        """
-        Load model weights from the specified directory.
-
-        Args:
-            dir: Directory containing the saved weights.
-        """
-        if dir is None:
-            return
-
-        map_location = lambda storage, loc: storage.cuda(self.gpu_ids) if self.gpu_used else storage
-        self.actor.load_state_dict(torch.load(f'output/{dir}/actor.pkl', map_location=map_location))
-        self.critic.load_state_dict(torch.load(f'output/{dir}/critic.pkl', map_location=map_location))
-        print('Model weights loaded.')
-
-    def save_model(self, output):
-        """
-        Save the model weights to the specified directory.
-
-        Args:
-            output: Directory to save the weights.
-        """
-        save_actor = f'{output}/actor.pt'
-        save_critic = f'{output}/critic.pt'
-
-        if len(self.gpu_ids) == 1 and self.gpu_ids[0] > 0:
-            with torch.cuda.device(self.gpu_ids[0]):
-                torch.save(self.actor.state_dict(), save_actor)
-                torch.save(self.critic.state_dict(), save_critic)
-        elif len(self.gpu_ids) > 1:
-            torch.save(self.actor.module.state_dict(), save_actor)
-            torch.save(self.critic.module.state_dict(), save_critic)
-        else:
-            torch.save(self.actor.state_dict(), save_actor)
-            torch.save(self.critic.state_dict(), save_critic)
-
     def seed(self, seed):
         """
         Set the random seed for reproducibility.
@@ -234,5 +168,5 @@ class DDPG(object):
             seed: Seed value.
         """
         torch.manual_seed(seed)
-        if len(self.gpu_ids) > 0:
+        if self.device.type == 'cuda':
             torch.cuda.manual_seed_all(seed)
