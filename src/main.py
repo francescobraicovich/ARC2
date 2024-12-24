@@ -13,6 +13,14 @@ import torch
 
 if __name__ == "__main__":
 
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+    elif torch.backends.mps.is_available():
+        device = torch.device("mps")
+    else:
+        device = torch.device("cpu")
+    print('Using device: {}'.format(device))
+
 
     ptitle('WOLP_DDPG')
     warnings.filterwarnings('ignore')
@@ -48,14 +56,12 @@ if __name__ == "__main__":
         'args': args,
     }
 
-    print('Going to build agent')
     agent = WolpertingerAgent(**agent_args)
-    print('Agent built')
     
     if args.load:
         agent.load_weights(args.load_model_dir)
 
-    if args.gpu_ids[0] >= 0 and args.gpu_nums > 0:
+    if args.gpu_ids[0] >= 0 and args.gpu_nums > 0 and torch.cuda.is_available():
         agent.cuda_convert()
 
     # set logger, log args here
