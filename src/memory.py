@@ -1,24 +1,32 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
 from __future__ import absolute_import
 from collections import deque, namedtuple
 import warnings
 import random
 import numpy as np
+import torch
+from util import to_tensor
+
+# Determine the device: CUDA -> MPS -> CPU
+if torch.cuda.is_available():
+    DEVICE = torch.device("cuda")
+elif torch.backends.mps.is_available():
+    DEVICE = torch.device("mps")
+else:
+    DEVICE = torch.device("cpu")
+print("Using device: {} for memory".format(DEVICE))
+
 
 # [reference] https://github.com/matthiasplappert/keras-rl/blob/master/rl/memory.py
 
-# This is to be understood as a transition: Given `state0`, performing `action`
-# yields `reward` and results in `state1`, which might be `terminal`.
 Experience = namedtuple('Experience', 'state0, action, reward, state1, terminal1, shape0, shape1')
 
 
 def sample_batch_indexes(low, high, size):
     if high - low >= size:
         # We have enough data. Draw without replacement, that is each index is unique in the
-        # batch. We cannot use `np.random.choice` here because it is horribly inefficient as
+        # batch. We cannot use np.random.choice here because it is horribly inefficient as
         # the memory grows. See https://github.com/numpy/numpy/issues/2764 for a discussion.
-        # `random.sample` does the same thing (drawing without replacement) and is way faster.
+        # random.sample does the same thing (drawing without replacement) and is way faster.
         try:
             r = xrange(low, high)
         except NameError:
@@ -50,7 +58,7 @@ class RingBuffer(object):
         return self.data[(self.start + idx) % self.maxlen]
 
     def append(self, v):
-        assert isinstance(v, np.ndarray) or isinstance(v, float) or isinstance(v, bool), "v_type:{}".format(type(v))
+        #assert isinstance(v, np.ndarray) or isinstance(v, float) or isinstance(v, bool), "v_type:{}".format(type(v))
         if self.length < self.maxlen:
             # We have space, simply increase the length.
             self.length += 1
@@ -75,6 +83,14 @@ def zeroed_observation(observation):
         return 0.
 
 
+# Determine the device: CUDA -> MPS -> CPU
+if torch.cuda.is_available():
+    DEVICE = torch.device("cuda")
+elif torch.backends.mps.is_available():
+    DEVICE = torch.device("mps")
+else:
+    DEVICE = torch.device("cpu")
+print("Using device: {} for memory".format(DEVICE))
 class Memory(object):
     def __init__(self, window_length, ignore_episode_boundaries=False):
         self.window_length = window_length
@@ -157,7 +173,8 @@ class SequentialMemory(Memory):
             # This code is slightly complicated by the fact that subsequent observations might be
             # from different episodes. We ensure that an experience never spans multiple episodes.
             # This is probably not that important in practice but it seems cleaner.
-            state0 = [self.observations[idx - 1]]
+            state0 = self.observations[idx - 1]
+            
             for offset in range(0, self.window_length - 1):
                 current_idx = idx - 2 - offset
                 current_terminal = self.terminals[current_idx - 1] if current_idx - 1 > 0 else False
@@ -172,19 +189,13 @@ class SequentialMemory(Memory):
             shape0 = self.shapes[idx - 1]
             reward = self.rewards[idx - 1]
             terminal1 = self.terminals[idx - 1]
-            #print('State0 has type:', type(state0), ' and is:', state0)
-            #print('Shape0 has type:', type(shape0), ' and is:', shape0)
-
+            
             # Okay, now we need to create the follow-up state. This is state0 shifted on timestep
             # to the right. Again, we need to be careful to not include an observation from the next
             # episode if the last state is terminal.
-            state1 = [np.copy(x) for x in state0[1:]]
+            state1 = self.observations[idx]
             shape1 = self.shapes[idx]
-
-            state1.append(self.observations[idx])
-
-            assert len(state0) == self.window_length
-            assert len(state1) == len(state0)
+            
             experiences.append(Experience(state0=state0, action=action, reward=reward,
                                           state1=state1, terminal1=terminal1, shape0=shape0, shape1=shape1))
         assert len(experiences) == batch_size
@@ -210,22 +221,23 @@ class SequentialMemory(Memory):
             terminal1_batch.append(0. if e.terminal1 else 1.)
 
         # Prepare and validate parameters.
-        state0_batch = np.array(state0_batch).squeeze(1)#.reshape(batch_size,-1)#.astype(np.float64)
-        shape0_batch = np.array(shape_batch)#.reshape(batch_size,-1)#.astype(np.float64)
-        state1_batch = np.array(state1_batch).squeeze(1)#.reshape(batch_size,-1)#.astype(np.float64)
-        shape1_batch = np.array(shape1_batch)#.reshape(batch_size,-1)#.astype(np.float64)
-        terminal1_batch = np.array(terminal1_batch).reshape(batch_size,-1)#.astype(np.float64)
-        reward_batch = np.array(reward_batch).reshape(batch_size,-1)#.astype(np.float64)
-        action_batch = np.array(action_batch).reshape(batch_size,-1)#.astype(np.float64)
-
+       
+        #state0_batch = torch.stack(state0_batch)
+        state0_batch = torch.stack(state0_batch).squeeze(1)
+        shape0_batch = torch.stack(shape_batch)
+        state1_batch = torch.stack(state1_batch).squeeze(1)
+        shape1_batch = torch.stack(shape1_batch)
+        terminal1_batch = torch.tensor(terminal1_batch, dtype=torch.bool).reshape(batch_size,-1).to(DEVICE)
+        reward_batch = torch.tensor(reward_batch, dtype=torch.float).reshape(batch_size,-1).to(DEVICE)
+        action_batch = torch.stack(action_batch).reshape(batch_size,-1).to(DEVICE)
         return state0_batch, shape0_batch, action_batch, reward_batch, state1_batch, shape1_batch, terminal1_batch
 
 
     def append(self, observation, shape, action, reward, terminal, training=True):
         super(SequentialMemory, self).append(observation, shape, action, reward, terminal, training=training)
         
-        # This needs to be understood as follows: in `observation`, take `action`, obtain `reward`
-        # and weather the next state is `terminal` or not.
+        # This needs to be understood as follows: in observation, take action, obtain reward
+        # and weather the next state is terminal or not.
         if training:
             self.observations.append(observation)
             self.shapes.append(shape)
@@ -236,48 +248,6 @@ class SequentialMemory(Memory):
     @property
     def nb_entries(self):
         return len(self.observations)
-
-    def get_config(self):
-        config = super(SequentialMemory, self).get_config()
-        config['limit'] = self.limit
-        return config
-
-
-class EpisodeParameterMemory(Memory):
-    def __init__(self, limit, **kwargs):
-        super(EpisodeParameterMemory, self).__init__(**kwargs)
-        self.limit = limit
-
-        self.params = RingBuffer(limit)
-        self.intermediate_rewards = []
-        self.total_rewards = RingBuffer(limit)
-
-    def sample(self, batch_size, batch_idxs=None):
-        if batch_idxs is None:
-            batch_idxs = sample_batch_indexes(0, self.nb_entries, size=batch_size)
-        assert len(batch_idxs) == batch_size
-
-        batch_params = []
-        batch_total_rewards = []
-        for idx in batch_idxs:
-            batch_params.append(self.params[idx])
-            batch_total_rewards.append(self.total_rewards[idx])
-        return batch_params, batch_total_rewards
-
-    def append(self, observation, action, reward, terminal, training=True):
-        super(EpisodeParameterMemory, self).append(observation, action, reward, terminal, training=training)
-        if training:
-            self.intermediate_rewards.append(reward)
-
-    def finalize_episode(self, params):
-        total_reward = sum(self.intermediate_rewards)
-        self.total_rewards.append(total_reward)
-        self.params.append(params)
-        self.intermediate_rewards = []
-
-    @property
-    def nb_entries(self):
-        return len(self.total_rewards)
 
     def get_config(self):
         config = super(SequentialMemory, self).get_config()
