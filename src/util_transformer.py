@@ -9,7 +9,7 @@ from typing import Optional, Any
 @dataclass
 class TransformerLayerConfig:
     """Configuration for a single Transformer layer."""
-    num_heads: int = 8  # Number of attention heads
+    num_heads: int = 1 # Number of attention heads
     emb_dim_per_head: int = 16  # Embedding dimension per head
     mlp_dim_factor: float = 4.0  # Factor to determine MLP dimension
     dropout_rate: float = 0.0  # Dropout rate for the layer
@@ -35,7 +35,7 @@ class EncoderTransformerConfig:
     """
     vocab_size: int = 11  # Size of the vocabulary (10 colors + 1 for padding)
     #output_vocab_size: int = 10  # Output vocabulary size (unused in encoder)
-    num_layers: int = 2  # Number of Transformer layers
+    num_layers: int = 1  # Number of Transformer layers
     latent_dim: int = 256  # Dimension of the latent space
     variational: bool = False  # Whether to use a variational approach
     max_rows: int = 30  # Maximum number of rows
@@ -43,7 +43,7 @@ class EncoderTransformerConfig:
     latent_projection_bias: bool = False  # Bias in latent projection
     scaled_position_embeddings: bool = False  # Use scaled position embeddings
     transformer_dropout: float = 0.0  # Dropout rate for the Transformer
-    emb_dim: int = 96  # Embedding dimension
+    emb_dim: int = 64  # Embedding dimension
 
     transformer_layer: Optional[TransformerLayerConfig] = field(
         default_factory=lambda: TransformerLayerConfig()
