@@ -27,6 +27,97 @@ class TransformerLayer(nn.Module):
         # Dropout layer
         self.dropout = nn.Dropout(config.dropout_rate)
 
+    def forward(
+        self,
+        embeddings: torch.Tensor,
+        pad_mask: Optional[torch.Tensor] = None,
+        dropout_eval: bool = False
+    ) -> torch.Tensor:
+        """
+        Forward pass of the Transformer layer that supports both:
+        - embeddings of shape [B, T, emb_dim], or
+        - embeddings of shape [N, B, T, emb_dim],
+        and similarly for any number of leading dims (*leading_dims, T, emb_dim).
+
+        Args:
+            embeddings: input tensor of shape [*leading_dims, T, emb_dim].
+            pad_mask:   optional mask tensor of shape [*leading_dims, 1, T, T] or [*leading_dims, T], etc.
+            dropout_eval: if True, skip dropout; if False, apply dropout.
+
+        Returns:
+            Tensor of shape [*leading_dims, T, emb_dim], same as the input shape.
+        """
+
+        # ------------------------------------------------
+        # 1) Flatten all leading dims for MultiheadAttention
+        # ------------------------------------------------
+        orig_shape = embeddings.shape  # e.g. [N, B, T, emb_dim] or [B, T, emb_dim]
+        leading_dims = orig_shape[:-2]  # everything except the last 2 dims (T, emb_dim)
+        seq_len, emb_dim = orig_shape[-2], orig_shape[-1]
+
+        # Compute 'combined_batch_size' by multiplying all leading dims
+        combined_batch_size = 1
+        for d in leading_dims:
+            combined_batch_size *= d
+
+        # Reshape embeddings => [combined_batch_size, T, emb_dim]
+        embeddings_2d = embeddings.view(combined_batch_size, seq_len, emb_dim)
+
+        # ------------------------------------------------
+        # 2) Handle pad_mask (flatten if it exists)
+        # ------------------------------------------------
+        attn_mask = None
+        key_padding_mask = None
+        if pad_mask is not None:
+            # pad_mask might be e.g. [*leading_dims, 1, T, T] or [*leading_dims, T] etc.
+            # Flatten the leading dims as well.
+            pm_shape = pad_mask.shape
+            pad_leading_dims = pm_shape[:-2]  # everything except the last 2 dims (T, T) if 4D
+            combined_pm_batch_size = 1
+            for d in pad_leading_dims:
+                combined_pm_batch_size *= d
+
+            # Example: if pad_mask is [N, B, 1, T, T], reshape => [N*B, 1, T, T].
+            # Then pass it as attn_mask or key_padding_mask. 
+            # You’ll need to adapt this to your MHA usage. Below is a placeholder:
+            pad_mask_2d = pad_mask.view(combined_pm_batch_size, *pm_shape[-2:])
+
+            # For simplicity, we won’t convert pad_mask_2d further, but typically:
+            #   - if using `key_padding_mask` (shape [batch_size, seq_len]), 
+            #     you'd reduce the [1, T, T] to [T] somehow, etc.
+            #   - if using `attn_mask` (shape [batch_size, T, T]),
+            #     you can pass it directly as `attn_mask=pad_mask_2d.squeeze(1)`.
+            #
+            # We'll just demonstrate passing it as an attention mask:
+            attn_mask = pad_mask_2d.squeeze(1)  # shape => [combined_pm_batch_size, T, T]
+
+            # If you need a key_padding_mask: you'd create something like
+            #   key_padding_mask = ~pad_mask_2d.all(dim=-2)  # or some custom logic
+
+        # ------------------------------------------------
+        # 3) Run self-attention
+        # ------------------------------------------------
+        attn_out, _ = self.attn(
+            query=embeddings_2d,
+            key=embeddings_2d,
+            value=embeddings_2d,
+            attn_mask=attn_mask,          # or None
+            key_padding_mask=key_padding_mask  # or None
+        )
+
+        # Dropout + residual
+        if not dropout_eval:
+            attn_out = self.dropout(attn_out)
+
+        embeddings_2d = embeddings_2d + attn_out
+        embeddings_2d = self.norm(embeddings_2d)
+
+        # ------------------------------------------------
+        # 4) Reshape back to original shape
+        # ------------------------------------------------
+        out = embeddings_2d.view(*leading_dims, seq_len, emb_dim)
+        return out
+
     def forward(self, embeddings, pad_mask=None, dropout_eval=False):
         """
         Forward pass of the Transformer layer.
@@ -49,6 +140,7 @@ class TransformerLayer(nn.Module):
             attn_mask = None
             key_padding_mask = None
 
+        print('Attention input shape: ', embeddings.shape)
         # Self-attention
         attn_out, _ = self.attn(
             query=embeddings,
@@ -57,6 +149,7 @@ class TransformerLayer(nn.Module):
             attn_mask=attn_mask,
             key_padding_mask=key_padding_mask,
         )
+        print('Attention output shape: ', attn_out.shape)
         # Residual + dropout
         if not dropout_eval:
             attn_out = self.dropout(attn_out)
@@ -68,42 +161,67 @@ class TransformerLayer(nn.Module):
 class EncoderTransformer(nn.Module):
     def __init__(self, config: EncoderTransformerConfig):
         super().__init__()
-        # Automatically determine the device
-        if torch.cuda.is_available():
-            self.device = torch.device("cuda")
-        elif torch.backends.mps.is_available():
-            self.device = torch.device("mps")
-        else:
-            self.device = torch.device("cpu")
-        print("Using device: {} for Transformer".format(self.device))
-        self.config = config
-        # Embedding layers
-        self.colors_embed = nn.Embedding(config.vocab_size, config.emb_dim)
-        self.channels_embed = nn.Embedding(2, config.emb_dim)
-        self.pos_row_embed = nn.Embedding(
-            1 if config.scaled_position_embeddings else config.max_rows, config.emb_dim
-        )
-        self.pos_col_embed = nn.Embedding(
-            1 if config.scaled_position_embeddings else config.max_cols, config.emb_dim
-        )
-        self.grid_shapes_row_embed = nn.Embedding(config.max_rows, config.emb_dim)
-        self.grid_shapes_col_embed = nn.Embedding(config.max_cols, config.emb_dim)
-        self.cls_token = nn.Embedding(1, config.emb_dim)
+        # Initialize device
+        self.device = self._get_device()
+        print(f"Using device: {self.device} for Transformer")
 
-        # Transformer layers
+        self.config = config
+
+        # Initialize embedding layers
+        self._initialize_embedding_layers()
+
+        # Initialize transformer layers
         self.transformer_layers = nn.ModuleList(
             [TransformerLayer(config.transformer_layer) for _ in range(config.num_layers)]
         )
-        # Layer normalization for CLS token
-        self.cls_layer_norm = nn.LayerNorm(config.emb_dim, elementwise_affine=config.transformer_layer.use_bias)
-        # Linear layers for latent space
-        self.latent_mu = nn.Linear(config.emb_dim, config.latent_dim, bias=config.latent_projection_bias)
-        self.latent_logvar = (
-            nn.Linear(config.emb_dim, config.latent_dim, bias=config.latent_projection_bias)
-            if config.variational else None
+
+        # Initialize CLS token layer normalization
+        self.cls_layer_norm = nn.LayerNorm(
+            config.emb_dim, elementwise_affine=config.transformer_layer.use_bias
         )
-        # Dropout layer
+
+        # Initialize latent space layers
+        self.latent_mu, self.latent_logvar = self._initialize_latent_layers()
+
+        # Initialize dropout
         self.dropout = nn.Dropout(config.transformer_dropout)
+
+    def _get_device(self) -> torch.device:
+        """Automatically determine and return the device to use."""
+        if torch.cuda.is_available():
+            return torch.device("cuda")
+        elif torch.backends.mps.is_available():
+            return torch.device("mps")
+        else:
+            return torch.device("cpu")
+
+    def _initialize_embedding_layers(self):
+        """Initialize embedding layers."""
+        self.colors_embed = nn.Embedding(self.config.vocab_size, self.config.emb_dim)
+        self.channels_embed = nn.Embedding(2, self.config.emb_dim)
+        self.pos_row_embed = nn.Embedding(
+            1 if self.config.scaled_position_embeddings else self.config.max_rows,
+            self.config.emb_dim
+        )
+        self.pos_col_embed = nn.Embedding(
+            1 if self.config.scaled_position_embeddings else self.config.max_cols,
+            self.config.emb_dim
+        )
+        self.grid_shapes_row_embed = nn.Embedding(self.config.max_rows, self.config.emb_dim)
+        self.grid_shapes_col_embed = nn.Embedding(self.config.max_cols, self.config.emb_dim)
+        self.cls_token = nn.Embedding(1, self.config.emb_dim)
+
+    def _initialize_latent_layers(self):
+        """Initialize layers for latent space projections."""
+        latent_mu = nn.Linear(
+            self.config.emb_dim, self.config.latent_dim, bias=self.config.latent_projection_bias
+        )
+        latent_logvar = (
+            nn.Linear(
+                self.config.emb_dim, self.config.latent_dim, bias=self.config.latent_projection_bias
+            ) if self.config.variational else None
+        )
+        return latent_mu, latent_logvar
 
     def forward(
         self,
@@ -131,13 +249,21 @@ class EncoderTransformer(nn.Module):
         """
         # 1) Embed
         x = self.embed_grids(pairs, grid_shapes, dropout_eval)
+        
+        squeeze = False
+        if x.dim() == 4:
+            original_size0, original_size1, original_size2, original_size3 = x.size()
+            x = x.view(original_size0 * original_size1, original_size2, original_size3)
+            squeeze = True
 
         # 2) Make pad mask
-        pad_mask = self.make_pad_mask(grid_shapes)
+        #pad_mask = self.make_pad_mask(grid_shapes)
+        pad_mask = None
 
         # 3) Pass through Transformer layers
         for layer in self.transformer_layers:
             x = layer(embeddings=x, dropout_eval=self.dropout, pad_mask=pad_mask)
+            print("After transformer layer, x shape: ", x.shape)
 
         # 4) Extract the CLS embedding (x[..., 0, :] => shape [*B, emb_dim])
         cls_embed = x[..., 0, :]
@@ -148,34 +274,11 @@ class EncoderTransformer(nn.Module):
         # 6) Project to latent space (mu, logvar if variational)
         latent_mu = self.latent_mu(cls_embed).float()  # shape [*B, latent_dim]
 
+        if squeeze:
+            latent_mu = latent_mu.view(original_size0, original_size1, -1)
+
         return latent_mu
-
-    def old_forward(
-        self,
-        pairs: torch.Tensor,
-        grid_shapes: torch.Tensor,
-        dropout_eval: bool = False
-    ) -> torch.Tensor:
-        raise DeprecationWarning('This function is deprecated. Use forward instead.')
-        
-        # Embed the input grids
-        x = self.embed_grids(pairs, grid_shapes, dropout_eval)
-
-        # Create padding mask for attention
-        key_padding_mask = self.make_pad_mask(grid_shapes)
-        print('Key padding mask shape: ', key_padding_mask.shape)
-
-        # Pass through Transformer layers
-        for layer in self.layers:
-            x = layer(x, key_padding_mask=key_padding_mask, dropout_eval=dropout_eval)
-
-        # Extract CLS token and project to latent space
-        cls_embed = x[..., 0, :]
-        cls_embed = self.cls_layer_norm(cls_embed)
-        latent_mu = self.latent_mu(cls_embed).float()
-        #latent_logvar = self.latent_logvar(cls_embed).float() if self.latent_logvar else None
-        return latent_mu
-    
+  
     def embed_grids(self, pairs: torch.Tensor, grid_shapes: torch.Tensor, dropout_eval: bool) -> torch.Tensor:
         """
         Args:
@@ -192,15 +295,15 @@ class EncoderTransformer(nn.Module):
             dropout_eval: If True, do not apply dropout; if False, apply dropout.
         """
         config = self.config
-        print("\nDebugging embed_grids:")
-        print("Pairs shape: ", pairs.shape)
-        print("Grid shapes shape: ", grid_shapes.shape)
+        #print("\nDebugging embed_grids:")
+        #print("Pairs shape: ", pairs.shape)
+        #print("Grid shapes shape: ", grid_shapes.shape)
 
         # ---------------------------------------------------------------------
         # 1. Position Embeddings
         # ---------------------------------------------------------------------
         if config.scaled_position_embeddings:
-            print("Performing scaled position embeddings")
+            #print("Performing scaled position embeddings")
             pos_row_embed_layer = nn.Embedding(num_embeddings=1, embedding_dim=config.emb_dim).to(self.device)
             # shape: [max_rows, emb_dim]
             pos_row_embeds = pos_row_embed_layer(
@@ -223,7 +326,7 @@ class EncoderTransformer(nn.Module):
             pos_col_embeds = pos_col_embeds.view(1, config.max_cols, 1, config.emb_dim)
             pos_embed = pos_row_embeds + pos_col_embeds  # [max_rows, max_cols, 1, emb_dim]
         else:
-            print("Performing non-scaled position embeddings")
+            #print("Performing non-scaled position embeddings")
             pos_row_embed_layer = nn.Embedding(num_embeddings=config.max_rows, embedding_dim=config.emb_dim).to(self.device)
             row_indices = torch.arange(config.max_rows, dtype=torch.long, device=self.device)  # [max_rows]
             pos_row_embeds = pos_row_embed_layer(row_indices)  # [max_rows, emb_dim]
@@ -237,8 +340,8 @@ class EncoderTransformer(nn.Module):
             pos_col_embeds = pos_col_embeds.view(1, config.max_cols, 1, config.emb_dim)
             pos_embed = pos_row_embeds + pos_col_embeds  # [max_rows, max_cols, 1, emb_dim]
 
-        print("After position embeddings:")
-        print("Position embeddings shape: ", pos_embed.shape)
+        #print("After position embeddings:")
+        #print("Position embeddings shape: ", pos_embed.shape)
 
         # ---------------------------------------------------------------------
         # 2. Colors Embedding
@@ -246,8 +349,8 @@ class EncoderTransformer(nn.Module):
         colors_embed_layer = nn.Embedding(num_embeddings=config.vocab_size, embedding_dim=config.emb_dim).to(self.device)
         colors_embed = colors_embed_layer(pairs.to(self.device).long())
         # shape: [*leading_dims, R, C, 2, emb_dim]
-        print("After colors embeddings:")
-        print("Colors embeddings shape: ", colors_embed.shape)
+        #print("After colors embeddings:")
+        #print("Colors embeddings shape: ", colors_embed.shape)
 
         # ---------------------------------------------------------------------
         # 3. Channels Embedding
@@ -258,8 +361,8 @@ class EncoderTransformer(nn.Module):
         channels_embed_raw = channels_embed_layer(channels_base)
         # We'll reshape for broadcast-add later.
 
-        print("After channels embeddings:")
-        print("Channels embeddings shape: ", channels_embed_raw.shape, "(unreshaped)")
+        #print("After channels embeddings:")
+        #print("Channels embeddings shape: ", channels_embed_raw.shape, "(unreshaped)")
 
         # ---------------------------------------------------------------------
         # 4. Combine colors + positions + channels
@@ -279,7 +382,7 @@ class EncoderTransformer(nn.Module):
         channels_embed_broadcast = channels_embed_raw.view(
             *([1] * (colors_embed.dim() - 2)), 2, config.emb_dim
         )
-        print("Channels embeddings shape: ", channels_embed_broadcast.shape)
+        #print("Channels embeddings shape: ", channels_embed_broadcast.shape)
         # Now channels_embed_broadcast has shape [1, ..., 1, 2, emb_dim]
         # matching the rank of colors_embed.
 
@@ -296,8 +399,8 @@ class EncoderTransformer(nn.Module):
         # 2) Flatten (R*C*2) into one dimension, keep emb_dim as is.
         x = x.view(*leading_dims, -1, x.shape[-1])
 
-        print("After combining colors + positions + channels:")
-        print("Combined embeddings shape: ", x.shape)
+        #print("After combining colors + positions + channels:")
+        #print("Combined embeddings shape: ", x.shape)
 
         # ---------------------------------------------------------------------
         # 5. Embed the grid shape tokens
@@ -325,10 +428,10 @@ class EncoderTransformer(nn.Module):
         grid_shapes_row_embed = row_embed + channels_embed_grid
         grid_shapes_col_embed = col_embed + channels_embed_grid
 
-        print("After row embeddings:")
-        print("Row embeddings shape: ", grid_shapes_row_embed.shape)
-        print("After column embeddings:")
-        print("Column embeddings shape: ", grid_shapes_col_embed.shape)
+        #print("After row embeddings:")
+        #print("Row embeddings shape: ", grid_shapes_row_embed.shape)
+        #print("After column embeddings:")
+        #print("Column embeddings shape: ", grid_shapes_col_embed.shape)
 
         # Concatenate rows+cols => [*leading_dims, 4, emb_dim]
         grid_shapes_embed = torch.cat([grid_shapes_row_embed, grid_shapes_col_embed], dim=-2)
@@ -336,8 +439,8 @@ class EncoderTransformer(nn.Module):
         # Now cat with x => [*leading_dims, 4 + R*C*2, emb_dim]
         x = torch.cat([grid_shapes_embed, x], dim=-2)
 
-        print("After combining grid shape embeddings:")
-        print("Combined embeddings shape: ", x.shape)
+        #print("After combining grid shape embeddings:")
+        #print("Combined embeddings shape: ", x.shape)
 
         # ---------------------------------------------------------------------
         # 6. Add the cls token => shape [*leading_dims, 1 + 4 + R*C*2, emb_dim]
@@ -361,6 +464,49 @@ class EncoderTransformer(nn.Module):
             out = self.dropout(x)
 
         return out
+    
+    def make_pad_mask(self, grid_shapes: torch.Tensor) -> torch.Tensor:
+        """
+        Make the pad mask False outside of the grid shapes and True inside.
+
+        Args:
+            grid_shapes: shapes of the grids. Shape can be (B, 2, 2) or (n, B, 2, 2).
+                The last two dimensions represent (rows, columns) of two channels, e.g. 
+                [[R_input, R_output], [C_input, C_output]].
+
+        Returns:
+            pad mask of shape (*grid_shapes.shape[:-2], 1, T, T) with 
+            T = 1 + 4 + 2 * max_rows * max_cols.
+        """
+        batch_ndims = len(grid_shapes.shape[:-2])  # Account for batch dimensions
+        
+        # Generate row mask
+        row_arange_broadcast = torch.arange(self.config.max_rows, device=grid_shapes.device).view(
+            *([1] * batch_ndims), self.config.max_rows, 1
+        )
+        row_mask = row_arange_broadcast < grid_shapes[..., 0:1, :]
+        
+        # Generate column mask
+        col_arange_broadcast = torch.arange(self.config.max_cols, device=grid_shapes.device).view(
+            *([1] * batch_ndims), self.config.max_cols, 1
+        )
+        col_mask = col_arange_broadcast < grid_shapes[..., 1:2, :]
+        
+        # Combine row and column masks
+        pad_mask = row_mask[..., :, None, :] & col_mask[..., None, :, :]
+        
+        # Flatten rows, columns, and channels
+        pad_mask = pad_mask.view(*pad_mask.shape[:-3], 1, -1)
+        
+        # Add the masks corresponding to the cls token and grid shape tokens
+        additional_tokens = torch.ones((*pad_mask.shape[:-1], 1 + 4), dtype=torch.bool, device=grid_shapes.device)
+        pad_mask = torch.cat([additional_tokens, pad_mask], dim=-1)
+        
+        # Outer product to create the self-attention mask
+        pad_mask = pad_mask.unsqueeze(-1) & pad_mask.unsqueeze(-2)
+        
+        return pad_mask
+
     
     def embed_grids_non_adapted(self, pairs: torch.Tensor, grid_shapes: torch.Tensor, dropout_eval: bool) -> torch.Tensor:
         """
@@ -482,7 +628,32 @@ class EncoderTransformer(nn.Module):
 
         return out
 
+    def old_forward(
+        self,
+        pairs: torch.Tensor,
+        grid_shapes: torch.Tensor,
+        dropout_eval: bool = False
+    ) -> torch.Tensor:
+        raise DeprecationWarning('This function is deprecated. Use forward instead.')
+        
+        # Embed the input grids
+        x = self.embed_grids(pairs, grid_shapes, dropout_eval)
 
+        # Create padding mask for attention
+        key_padding_mask = self.make_pad_mask(grid_shapes)
+        print('Key padding mask shape: ', key_padding_mask.shape)
+
+        # Pass through Transformer layers
+        for layer in self.layers:
+            x = layer(x, key_padding_mask=key_padding_mask, dropout_eval=dropout_eval)
+
+        # Extract CLS token and project to latent space
+        cls_embed = x[..., 0, :]
+        cls_embed = self.cls_layer_norm(cls_embed)
+        latent_mu = self.latent_mu(cls_embed).float()
+        #latent_logvar = self.latent_logvar(cls_embed).float() if self.latent_logvar else None
+        return latent_mu
+    
 
     def embed_grids_old(self, pairs, grid_shapes, dropout_eval):
         raise DeprecationWarning('This function is deprecated. Use embed_grids instead.')
@@ -529,48 +700,7 @@ class EncoderTransformer(nn.Module):
         x = self.dropout(x) if not dropout_eval else x
         return x
     
-    def make_pad_mask(self, grid_shapes: torch.Tensor) -> torch.Tensor:
-        """
-        Make the pad mask False outside of the grid shapes and True inside.
-
-        Args:
-            grid_shapes: shapes of the grids. Shape can be (B, 2, 2) or (n, B, 2, 2).
-                The last two dimensions represent (rows, columns) of two channels, e.g. 
-                [[R_input, R_output], [C_input, C_output]].
-
-        Returns:
-            pad mask of shape (*grid_shapes.shape[:-2], 1, T, T) with 
-            T = 1 + 4 + 2 * max_rows * max_cols.
-        """
-        batch_ndims = len(grid_shapes.shape[:-2])  # Account for batch dimensions
-        
-        # Generate row mask
-        row_arange_broadcast = torch.arange(self.config.max_rows, device=grid_shapes.device).view(
-            *([1] * batch_ndims), self.config.max_rows, 1
-        )
-        row_mask = row_arange_broadcast < grid_shapes[..., 0:1, :]
-        
-        # Generate column mask
-        col_arange_broadcast = torch.arange(self.config.max_cols, device=grid_shapes.device).view(
-            *([1] * batch_ndims), self.config.max_cols, 1
-        )
-        col_mask = col_arange_broadcast < grid_shapes[..., 1:2, :]
-        
-        # Combine row and column masks
-        pad_mask = row_mask[..., :, None, :] & col_mask[..., None, :, :]
-        
-        # Flatten rows, columns, and channels
-        pad_mask = pad_mask.view(*pad_mask.shape[:-3], 1, -1)
-        
-        # Add the masks corresponding to the cls token and grid shape tokens
-        additional_tokens = torch.ones((*pad_mask.shape[:-1], 1 + 4), dtype=torch.bool, device=grid_shapes.device)
-        pad_mask = torch.cat([additional_tokens, pad_mask], dim=-1)
-        
-        # Outer product to create the self-attention mask
-        pad_mask = pad_mask.unsqueeze(-1) & pad_mask.unsqueeze(-2)
-        
-        return pad_mask
-
+    
     def make_pad_mask_old(self, grid_shapes):
         """
         Creates a padding mask for the attention mechanism.
