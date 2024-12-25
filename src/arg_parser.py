@@ -12,7 +12,7 @@ def init_parser(alg):
         parser.add_argument('--load-model-dir', default='ARC-run120', metavar='LMD', help='folder to load trained models from')
         parser.add_argument('--gpu-ids', type=int, default=[1], nargs='+', help='GPUs to use [-1 CPU only]')
         parser.add_argument('--gpu-nums', type=int, default=8, help='#GPUs to use (default: 1)')
-        parser.add_argument('--max-episode', type=int, default=3, help='maximum #episode.') #NOTE: changed from 20000 to 10
+        parser.add_argument('--max-episode', type=int, default=20000, help='maximum #episode.')
         parser.add_argument('--test-episode', type=int, default=1000, help='maximum testing #episode.')
         parser.add_argument('--max-actions', default=200000, type=int, help='# max actions')
         parser.add_argument('--id', default='0', type=str, help='experiment id')
@@ -35,7 +35,8 @@ def init_parser(alg):
         parser.add_argument('--seed', default=-1, type=int, help='')
         parser.add_argument('--weight-decay', default=0.0001, type=float, help='weight decay for L2 Regularization loss')
         parser.add_argument('--save_per_epochs', default=15, type=int, help='save model every X epochs')
-
+        parser.add_argument('--actor_critic_type', default='cnn', type=str, help='type of model to use (lpn, cnn, mlp)')
+        parser.add_argument('--k_neighbors', default=100, type=int, help='number of neighbors to consider')
         return parser
 
     else:
