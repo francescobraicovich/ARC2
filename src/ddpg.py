@@ -45,7 +45,8 @@ class DDPG(object):
         net_cfg = {
             'hidden1': args.hidden1,
             'hidden2': args.hidden2,
-            'init_w': args.init_w
+            'init_w': args.init_w,
+            'type': args.actor_critic_type
         }
 
         # Initialize Actor and Critic networks (both primary and target)
