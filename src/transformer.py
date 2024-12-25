@@ -21,14 +21,6 @@ class TransformerLayer(nn.Module):
             batch_first=True
         )
 
-        # NOTE: The feed-forward network is not used in the current implementation
-        # NOTE: The feed-forward part is included in the actor and critic networks
-        # First linear layer in the feed-forward network
-        #self.ff1 = nn.Linear(config.emb_dim, config.mlp_dim_factor * config.emb_dim, bias=config.use_bias)
-        # Second linear layer in the feed-forward network
-        #self.ff2 = nn.Linear(config.mlp_dim_factor * config.emb_dim, config.emb_dim, bias=config.use_bias)
-
-
         # Layer normalization after attention
         self.norm = nn.LayerNorm(config.emb_dim)
         
@@ -70,14 +62,6 @@ class TransformerLayer(nn.Module):
             attn_out = self.dropout(attn_out)
         embeddings = embeddings + attn_out
         embeddings = self.norm(embeddings)
-
-        # Feed-forward sub-block
-        #ff_out = self.feed_forward(embeddings)
-        #if not dropout_eval:
-        #    ff_out = self.dropout(ff_out)
-
-        # Residual + norm
-        #embeddings = embeddings + ff_out
         return embeddings
 
 # Define the Encoder Transformer
@@ -163,12 +147,8 @@ class EncoderTransformer(nn.Module):
 
         # 6) Project to latent space (mu, logvar if variational)
         latent_mu = self.latent_mu(cls_embed).float()  # shape [*B, latent_dim]
-        if self.config.variational:
-            latent_logvar = self.latent_logvar(cls_embed).float()  # shape [*B, latent_dim]
-        else:
-            latent_logvar = None
 
-        return latent_mu #latent_logvar
+        return latent_mu
 
     def old_forward(
         self,
@@ -197,6 +177,192 @@ class EncoderTransformer(nn.Module):
         return latent_mu
     
     def embed_grids(self, pairs: torch.Tensor, grid_shapes: torch.Tensor, dropout_eval: bool) -> torch.Tensor:
+        """
+        Args:
+            pairs: Input data as tokens. 
+                - Case A: shape (B, R, C, 2)
+                - Case B: shape (N, B, R, C, 2)
+                More generally, (*leading_dims, R, C, 2).
+            grid_shapes: Shapes of the grids (e.g. 30x30). 
+                - Case A: shape (B, 2, 2)
+                - Case B: shape (N, B, 2, 2)
+                More generally, (*leading_dims, 2, 2).
+                The last two dims represent (rows, columns) for two channels 
+                (e.g. [[R_in, R_out], [C_in, C_out]]).
+            dropout_eval: If True, do not apply dropout; if False, apply dropout.
+        """
+        config = self.config
+        print("\nDebugging embed_grids:")
+        print("Pairs shape: ", pairs.shape)
+        print("Grid shapes shape: ", grid_shapes.shape)
+
+        # ---------------------------------------------------------------------
+        # 1. Position Embeddings
+        # ---------------------------------------------------------------------
+        if config.scaled_position_embeddings:
+            print("Performing scaled position embeddings")
+            pos_row_embed_layer = nn.Embedding(num_embeddings=1, embedding_dim=config.emb_dim).to(self.device)
+            # shape: [max_rows, emb_dim]
+            pos_row_embeds = pos_row_embed_layer(
+                torch.zeros(config.max_rows, dtype=torch.long, device=self.device)
+            )
+            # multiply each row embedding by its 1..max_rows index
+            row_range = torch.arange(1, config.max_rows + 1, device=self.device).unsqueeze(-1)
+            pos_row_embeds = pos_row_embeds * row_range  # [max_rows, emb_dim]
+
+            pos_col_embed_layer = nn.Embedding(num_embeddings=1, embedding_dim=config.emb_dim).to(self.device)
+            # shape: [max_cols, emb_dim]
+            pos_col_embeds = pos_col_embed_layer(
+                torch.zeros(config.max_cols, dtype=torch.long, device=self.device)
+            )
+            col_range = torch.arange(1, config.max_cols + 1, device=self.device).unsqueeze(-1)
+            pos_col_embeds = pos_col_embeds * col_range  # [max_cols, emb_dim]
+
+            # Reshape to broadcast: [max_rows, 1, 1, emb_dim] + [1, max_cols, 1, emb_dim]
+            pos_row_embeds = pos_row_embeds.view(config.max_rows, 1, 1, config.emb_dim)
+            pos_col_embeds = pos_col_embeds.view(1, config.max_cols, 1, config.emb_dim)
+            pos_embed = pos_row_embeds + pos_col_embeds  # [max_rows, max_cols, 1, emb_dim]
+        else:
+            print("Performing non-scaled position embeddings")
+            pos_row_embed_layer = nn.Embedding(num_embeddings=config.max_rows, embedding_dim=config.emb_dim).to(self.device)
+            row_indices = torch.arange(config.max_rows, dtype=torch.long, device=self.device)  # [max_rows]
+            pos_row_embeds = pos_row_embed_layer(row_indices)  # [max_rows, emb_dim]
+
+            pos_col_embed_layer = nn.Embedding(num_embeddings=config.max_cols, embedding_dim=config.emb_dim).to(self.device)
+            col_indices = torch.arange(config.max_cols, dtype=torch.long, device=self.device)  # [max_cols]
+            pos_col_embeds = pos_col_embed_layer(col_indices)  # [max_cols, emb_dim]
+
+            # Reshape for broadcast
+            pos_row_embeds = pos_row_embeds.view(config.max_rows, 1, 1, config.emb_dim)
+            pos_col_embeds = pos_col_embeds.view(1, config.max_cols, 1, config.emb_dim)
+            pos_embed = pos_row_embeds + pos_col_embeds  # [max_rows, max_cols, 1, emb_dim]
+
+        print("After position embeddings:")
+        print("Position embeddings shape: ", pos_embed.shape)
+
+        # ---------------------------------------------------------------------
+        # 2. Colors Embedding
+        # ---------------------------------------------------------------------
+        colors_embed_layer = nn.Embedding(num_embeddings=config.vocab_size, embedding_dim=config.emb_dim).to(self.device)
+        colors_embed = colors_embed_layer(pairs.to(self.device).long())
+        # shape: [*leading_dims, R, C, 2, emb_dim]
+        print("After colors embeddings:")
+        print("Colors embeddings shape: ", colors_embed.shape)
+
+        # ---------------------------------------------------------------------
+        # 3. Channels Embedding
+        # ---------------------------------------------------------------------
+        channels_embed_layer = nn.Embedding(num_embeddings=2, embedding_dim=config.emb_dim).to(self.device)
+        channels_base = torch.arange(2, dtype=torch.long, device=self.device)
+        # shape: [2, emb_dim]
+        channels_embed_raw = channels_embed_layer(channels_base)
+        # We'll reshape for broadcast-add later.
+
+        print("After channels embeddings:")
+        print("Channels embeddings shape: ", channels_embed_raw.shape, "(unreshaped)")
+
+        # ---------------------------------------------------------------------
+        # 4. Combine colors + positions + channels
+        #    - Slice pos_embed for the actual R, C
+        #    - Add them up with broadcast
+        #    - Flatten (R*C*2) into one dimension
+        # ---------------------------------------------------------------------
+        R, C = pairs.shape[-3], pairs.shape[-2]  # actual row, col from input
+        # pos_embed: [max_rows, max_cols, 1, emb_dim] => slice to [R, C, 1, emb_dim]
+        pos_embed_slice = pos_embed[:R, :C, :, :]
+
+        # channels_embed_raw => shape [1,1,1,2,emb_dim] for broadcast
+        # We'll insert enough leading dims to match colors_embed
+        # E.g. if colors_embed is [N, B, R, C, 2, emb_dim], we want
+        # channels_embed_raw to be [1, 1, 1, 1, 2, emb_dim].
+        # So let's do:
+        channels_embed_broadcast = channels_embed_raw.view(
+            *([1] * (colors_embed.dim() - 2)), 2, config.emb_dim
+        )
+        print("Channels embeddings shape: ", channels_embed_broadcast.shape)
+        # Now channels_embed_broadcast has shape [1, ..., 1, 2, emb_dim]
+        # matching the rank of colors_embed.
+
+        # Now do the broadcast add:
+        # colors: [*leading_dims, R, C, 2, emb_dim]
+        # pos:    [       R,       C,   1, emb_dim] => broadcast on leading_dims & 2
+        # channel:[... 1, 2, emb_dim]
+        x = colors_embed + pos_embed_slice + channels_embed_broadcast
+        # shape => [*leading_dims, R, C, 2, emb_dim]
+
+        # 1) Identify leading dimensions (everything before R, C, 2, emb_dim).
+        leading_dims = x.shape[:-4]
+
+        # 2) Flatten (R*C*2) into one dimension, keep emb_dim as is.
+        x = x.view(*leading_dims, -1, x.shape[-1])
+
+        print("After combining colors + positions + channels:")
+        print("Combined embeddings shape: ", x.shape)
+
+        # ---------------------------------------------------------------------
+        # 5. Embed the grid shape tokens
+        #    (e.g. rows in [*leading_dims, 2], columns in [*leading_dims, 2])
+        # ---------------------------------------------------------------------
+        grid_shapes_row_embed_layer = nn.Embedding(num_embeddings=config.max_rows, embedding_dim=config.emb_dim).to(self.device)
+        # row_indices => shape [*leading_dims, 2]
+        row_indices = (grid_shapes[..., 0, :].long().to(self.device)) - 1
+        # embed => [*leading_dims, 2, emb_dim]
+        row_embed = grid_shapes_row_embed_layer(row_indices)
+
+        # Similarly for columns
+        grid_shapes_col_embed_layer = nn.Embedding(num_embeddings=config.max_cols, embedding_dim=config.emb_dim).to(self.device)
+        col_indices = (grid_shapes[..., 1, :].long().to(self.device)) - 1
+        col_embed = grid_shapes_col_embed_layer(col_indices)
+
+        # We also want to add the channel embeddings to row/col embeddings.
+        # row_embed: [*leading_dims, 2, emb_dim]
+        # channels_embed_raw: [2, emb_dim]. We'll shape it => [1,...,1,2,emb_dim]
+        # so it broadcasts with row_embed.
+        channels_embed_grid = channels_embed_raw.view(
+            *([1] * (row_embed.dim() - 2)), 2, config.emb_dim
+        )
+        # Add
+        grid_shapes_row_embed = row_embed + channels_embed_grid
+        grid_shapes_col_embed = col_embed + channels_embed_grid
+
+        print("After row embeddings:")
+        print("Row embeddings shape: ", grid_shapes_row_embed.shape)
+        print("After column embeddings:")
+        print("Column embeddings shape: ", grid_shapes_col_embed.shape)
+
+        # Concatenate rows+cols => [*leading_dims, 4, emb_dim]
+        grid_shapes_embed = torch.cat([grid_shapes_row_embed, grid_shapes_col_embed], dim=-2)
+
+        # Now cat with x => [*leading_dims, 4 + R*C*2, emb_dim]
+        x = torch.cat([grid_shapes_embed, x], dim=-2)
+
+        print("After combining grid shape embeddings:")
+        print("Combined embeddings shape: ", x.shape)
+
+        # ---------------------------------------------------------------------
+        # 6. Add the cls token => shape [*leading_dims, 1 + 4 + R*C*2, emb_dim]
+        # ---------------------------------------------------------------------
+        cls_token_layer = nn.Embedding(num_embeddings=1, embedding_dim=config.emb_dim).to(self.device)
+
+        # shape [*leading_dims, 1]
+        cls_index = torch.zeros_like(x[..., 0:1, 0], dtype=torch.long, device=self.device)
+        # embed => [*leading_dims, 1, emb_dim]
+        cls_token = cls_token_layer(cls_index)
+
+        x = torch.cat([cls_token, x], dim=-2)
+
+        # ---------------------------------------------------------------------
+        # 7. Apply Dropout
+        # ---------------------------------------------------------------------
+        if dropout_eval:
+            with torch.no_grad():
+                out = x
+        else:
+            out = self.dropout(x)
+
+        return out
+    
+    def embed_grids_non_adapted(self, pairs: torch.Tensor, grid_shapes: torch.Tensor, dropout_eval: bool) -> torch.Tensor:
         """
         Args:
             pairs: Input data as tokens. Shape (*B, R, C, 2).
