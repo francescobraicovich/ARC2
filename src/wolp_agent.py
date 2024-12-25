@@ -6,7 +6,7 @@ import torch
 criterion = nn.MSELoss()
 
 class WolpertingerAgent(DDPG):
-    def __init__(self, nb_states, nb_actions, args, k=10):
+    def __init__(self, nb_states, nb_actions, args, k):
         super().__init__(args, nb_states, nb_actions)
 
         # Automatically determine the device
@@ -21,6 +21,7 @@ class WolpertingerAgent(DDPG):
         self.experiment = args.id
         self.action_space = action_space.ARCActionSpace()
         self.k_nearest_neighbors = k
+        print("Using {} nearest neighbors for Wolpertinger agent".format(self.k_nearest_neighbors))
 
         # Move all networks to the determined device
         self.actor.to(self.device)
