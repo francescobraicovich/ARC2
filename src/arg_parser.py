@@ -22,7 +22,7 @@ def init_parser(alg):
         parser.add_argument('--c-lr', default=0.001, type=float, help='critic net learning rate')
         parser.add_argument('--p-lr', default=0.0001, type=float, help='policy net learning rate (only for DDPG)')
         parser.add_argument('--warmup', default=256, type=int, help='time without training but only filling the replay memory')
-        parser.add_argument('--bsize', default=64, type=int, help='minibatch size')
+        parser.add_argument('--bsize', default=32, type=int, help='minibatch size')
         parser.add_argument('--rmsize', default=25000, type=int, help='memory size')
         parser.add_argument('--window_length', default=1, type=int, help='')
         parser.add_argument('--tau-update', default=0.001, type=float, help='moving average for target network')
