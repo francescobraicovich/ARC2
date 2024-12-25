@@ -30,12 +30,12 @@ class TransformerLayer(nn.Module):
 
 
         # Layer normalization after attention
-        self.norm1 = nn.LayerNorm(config.emb_dim)
+        self.norm = nn.LayerNorm(config.emb_dim)
         
         # Dropout layer
         self.dropout = nn.Dropout(config.dropout_rate)
 
-    def forward(self, x, pad_mask=None, dropout_eval=False):
+    def forward(self, embeddings, pad_mask=None, dropout_eval=False):
         """
         Forward pass of the Transformer layer.
         
@@ -56,7 +56,7 @@ class TransformerLayer(nn.Module):
         else:
             attn_mask = None
             key_padding_mask = None
-        
+
         # Self-attention
         attn_out, _ = self.attn(
             query=embeddings,
@@ -69,17 +69,15 @@ class TransformerLayer(nn.Module):
         if not dropout_eval:
             attn_out = self.dropout(attn_out)
         embeddings = embeddings + attn_out
-        embeddings = self.norm1(embeddings)
-
-        # Feed-forward sub-block
-        ff_out = self.feed_forward(embeddings)
-        if not dropout_eval:
-            ff_out = self.dropout(ff_out)
-
-        # Residual + norm
-        embeddings = embeddings + ff_out
         embeddings = self.norm(embeddings)
 
+        # Feed-forward sub-block
+        #ff_out = self.feed_forward(embeddings)
+        #if not dropout_eval:
+        #    ff_out = self.dropout(ff_out)
+
+        # Residual + norm
+        #embeddings = embeddings + ff_out
         return embeddings
 
 # Define the Encoder Transformer
@@ -155,7 +153,7 @@ class EncoderTransformer(nn.Module):
 
         # 3) Pass through Transformer layers
         for layer in self.transformer_layers:
-            x = layer(x=x, dropout_eval=self.dropout, pad_mask=pad_mask)
+            x = layer(embeddings=x, dropout_eval=self.dropout, pad_mask=pad_mask)
 
         # 4) Extract the CLS embedding (x[..., 0, :] => shape [*B, emb_dim])
         cls_embed = x[..., 0, :]
@@ -276,7 +274,6 @@ class EncoderTransformer(nn.Module):
         x = colors_embed + pos_embed_slice + channels_embed_raw
         num_batch_dims = x.dim() - 3  # how many leading batch dims
         x = x.view(x.shape[0], -1, x.shape[-1])
-        #x = x.view(*x.shape[:-3], -1, x.shape[-1])
         print('After combining colors + positions + channels:')
         print('Combined embeddings shape: ', x.shape)
 
