@@ -99,6 +99,7 @@ class Actor(nn.Module):
         state, shape = x
         print('Actor passing to encoder:')
         latent = self.encoder(state, shape)
+        print('Latent shape: ', latent.shape)
         print('Actor passed to encoder')
 
         # Reshape state and shape tensors
@@ -172,13 +173,14 @@ class Critic(nn.Module):
                 - nb_action: action space dimension.
         """
         state, shape = x
-        print('Critic dimensions:')
+        print('\nCritic dimensions:')
         print('State shape: ', state.shape)
         print('Shape shape: ', shape.shape)
         print('Action shape: ', a.shape)
 
         latent = self.encoder(state, shape)
         print('Latent shape: ', latent.shape)
+        #print('Latent shape: ', latent.shape)
         # Reshape state and shape tensors
         #state_flat = state.reshape(state.shape[0], state.shape[1], self.nb_states - 5)
         #shape_flat = shape.reshape(shape.shape[0], shape.shape[1], 4)
@@ -189,7 +191,6 @@ class Critic(nn.Module):
         # Concatenate the tensors
         #x = torch.cat([state_flat, shape_flat], dim=-1)
 
-        out = self.relu(self.fc1(x))
         concatenated = torch.cat([latent, a], dim=-1)  # Concatenate state and action
         print('Concatenated shape: ', concatenated.shape)
         out = self.relu(self.fc2(concatenated))
