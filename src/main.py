@@ -54,6 +54,7 @@ if __name__ == "__main__":
         'nb_states': nb_states,
         'nb_actions': nb_actions,
         'args': args,
+        'k': args.k_neighbors,
     }
 
     agent = WolpertingerAgent(**agent_args)
