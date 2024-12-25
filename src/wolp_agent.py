@@ -6,7 +6,7 @@ import torch
 criterion = nn.MSELoss()
 
 class WolpertingerAgent(DDPG):
-    def __init__(self, nb_states, nb_actions, args, k=100):
+    def __init__(self, nb_states, nb_actions, args, k=10):
         super().__init__(args, nb_states, nb_actions)
 
         # Automatically determine the device
