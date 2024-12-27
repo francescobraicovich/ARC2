@@ -96,8 +96,6 @@ class WolpertingerAgent(DDPG):
             next_state_batch, next_shape_batch, terminal_batch = self.memory.sample_and_split(self.batch_size)
         
         # Prepare for the target q batch
-        #next_state_batch = to_tensor(next_state_batch, device=self.device)
-        #next_shape_batch = to_tensor(next_shape_batch, device=self.device)
         next_wolp_action_batch = self.select_target_action(next_state_batch, next_shape_batch)
 
         next_states_expanded = next_state_batch.unsqueeze(0)
