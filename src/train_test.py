@@ -1,8 +1,10 @@
 from util import to_tensor
+import numpy as np
 
 def train(continuous, env, agent, max_episode, warmup, save_model_dir, max_episode_length, logger, save_per_epochs):
     agent.is_training = True
     step = episode = episode_steps = episode_positive_rewards = 0
+    actions = np.zeros((max_episode_length, 3))
     episode_reward = 0.
     s_t = None
     while episode < max_episode:
@@ -19,6 +21,7 @@ def train(continuous, env, agent, max_episode, warmup, save_model_dir, max_episo
                 action = agent.random_action()
             else:
                 action = agent.select_action(s_t, shape)
+            actions[episode_steps] = action
 
             # env response with next_observation, reward, terminate_info
             state1, r_t, done, _ = env.step(action)
@@ -44,8 +47,9 @@ def train(continuous, env, agent, max_episode, warmup, save_model_dir, max_episo
             # s_t = deepcopy(s_t1)
 
             if done:  # end of an episode
+                average_action = np.mean(actions[:episode_steps], axis=0)
                 logger.info(
-                    "Ep:{0} | R:{1:.4f} | Steps: {2} | Number of positive rewards: {3} | Epsilon: {4}".format(episode, episode_reward, episode_steps, episode_positive_rewards, agent.epsilon)
+                    "Ep:{0} | R:{1:.4f} | Steps: {2} | N positive Rs: {3} | Epsilon: {4:.4f} | Average action: {5}".format(episode, episode_reward, episode_steps, episode_positive_rewards, agent.epsilon, average_action)
                 )
 
                 agent.memory.append(
@@ -61,6 +65,7 @@ def train(continuous, env, agent, max_episode, warmup, save_model_dir, max_episo
                 episode_positive_rewards = 0
                 episode_reward = 0.
                 episode += 1
+                actions = np.zeros((max_episode_length, 3))
                 # break to next episode
                 break
         # [optional] save intermideate model every run through of 32 episodes
