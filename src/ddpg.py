@@ -146,11 +146,8 @@ class DDPG(object):
         action = to_numpy(self.actor((s_t.unsqueeze(0), shape.unsqueeze(0))), device=self.device).squeeze(0)
         action += self.is_training * max(self.epsilon, 0) * self.random_process.sample()
         action = np.clip(action, -1., 1.)
-
         if decay_epsilon:
             self.epsilon -= self.depsilon
-        #self.a_t = action
-        #assert isinstance(action, torch.Tensor)
         return action
 
     def reset(self, s_t, shape):
