@@ -2,7 +2,7 @@ from util import to_tensor
 
 def train(continuous, env, agent, max_episode, warmup, save_model_dir, max_episode_length, logger, save_per_epochs):
     agent.is_training = True
-    step = episode = episode_steps = 0
+    step = episode = episode_steps = episode_positive_rewards = 0
     episode_reward = 0.
     s_t = None
     while episode < max_episode:
@@ -25,6 +25,9 @@ def train(continuous, env, agent, max_episode, warmup, save_model_dir, max_episo
             s_t1, shape1 = state1
             s_t1, shape1 = to_tensor(s_t1, device=agent.device), to_tensor(shape1, device=agent.device)
 
+            if r_t > 0:
+                episode_positive_rewards += 1
+
             if max_episode_length and episode_steps >= max_episode_length - 1:
                 done = True
 
@@ -42,7 +45,7 @@ def train(continuous, env, agent, max_episode, warmup, save_model_dir, max_episo
 
             if done:  # end of an episode
                 logger.info(
-                    "Ep:{0} | R:{1:.4f} | Steps: {2}".format(episode, episode_reward, episode_steps)
+                    "Ep:{0} | R:{1:.4f} | Steps: {2} | Number of positive rewards: {3} | Epsilon: {4}".format(episode, episode_reward, episode_steps, episode_positive_rewards, agent.epsilon)
                 )
 
                 agent.memory.append(
@@ -55,6 +58,7 @@ def train(continuous, env, agent, max_episode, warmup, save_model_dir, max_episo
                 # reset
                 s_t = None
                 episode_steps =  0
+                episode_positive_rewards = 0
                 episode_reward = 0.
                 episode += 1
                 # break to next episode
