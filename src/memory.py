@@ -219,8 +219,6 @@ class SequentialMemory(Memory):
             reward_batch.append(e.reward)
             action_batch.append(e.action)
             terminal1_batch.append(0. if e.terminal1 else 1.)
-
-        # Prepare and validate parameters.
        
         #state0_batch = torch.stack(state0_batch)
         state0_batch = torch.stack(state0_batch).squeeze(1)
@@ -229,8 +227,16 @@ class SequentialMemory(Memory):
         shape1_batch = torch.stack(shape1_batch)
         terminal1_batch = torch.tensor(terminal1_batch, dtype=torch.bool).reshape(batch_size,-1).to(DEVICE)
         reward_batch = torch.tensor(reward_batch, dtype=torch.float).reshape(batch_size,-1).to(DEVICE)
-        action_batch = torch.stack(action_batch).reshape(batch_size,-1).to(DEVICE)
-        return state0_batch, shape0_batch, action_batch, reward_batch, state1_batch, shape1_batch, terminal1_batch
+        try:
+            action_batch_new = torch.stack(action_batch).reshape(batch_size,-1).to(DEVICE)
+        except:
+            print('len of action_batch: ', len(action_batch))
+            print('type of action_batch:', type(action_batch))
+            print('type of elements in action_batch: ', [type(x) for x in action_batch])
+            for i in range(len(action_batch)):
+                print('action_batch[{0}]: {1}'.format(i), action_batch[i])
+
+        return state0_batch, shape0_batch, action_batch_new, reward_batch, state1_batch, shape1_batch, terminal1_batch
 
 
     def append(self, observation, shape, action, reward, terminal, training=True):
