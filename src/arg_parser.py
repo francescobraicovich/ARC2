@@ -7,9 +7,9 @@ def init_parser(alg):
         parser = argparse.ArgumentParser(description='WOLP_DDPG')
         parser.add_argument('--env', default='ARC', metavar='ENV', help='environment to train on')
         parser.add_argument('--gamma', type=float, default=0.99, metavar='G', help='discount factor for rewards (default: 0.99)')
-        parser.add_argument('--max-episode-length', type=int, default=250, metavar='M', help='maximum length of an episode (default: 1440)') #NOTE: changed from 1440 to 5
-        parser.add_argument('--load', default=False, metavar='L', help='load a trained model')
-        parser.add_argument('--load-model-dir', default='ARC-run230', metavar='LMD', help='folder to load trained models from')
+        parser.add_argument('--max-episode-length', type=int, default=50, metavar='M', help='maximum length of an episode (default: 1440)') #NOTE: changed from 1440 to 5
+        parser.add_argument('--load', default=True, metavar='L', help='load a trained model')
+        parser.add_argument('--load-model-dir', default='ARC-run255', metavar='LMD', help='folder to load trained models from')
         parser.add_argument('--gpu-ids', type=int, default=[1], nargs='+', help='GPUs to use [-1 CPU only]')
         parser.add_argument('--gpu-nums', type=int, default=8, help='#GPUs to use (default: 1)')
         parser.add_argument('--max-episode', type=int, default=20000, help='maximum #episode.')
@@ -26,7 +26,7 @@ def init_parser(alg):
         parser.add_argument('--rmsize', default=25000, type=int, help='memory size')
         parser.add_argument('--window_length', default=1, type=int, help='')
         parser.add_argument('--tau-update', default=0.001, type=float, help='moving average for target network')
-        parser.add_argument('--ou_theta', default=0.15, type=float, help='noise theta')
+        parser.add_argument('--ou_theta', default=0.5, type=float, help='noise theta')
         parser.add_argument('--ou_sigma', default=0.2, type=float, help='noise sigma')
         parser.add_argument('--ou_mu', default=0.0, type=float, help='noise mu')
         parser.add_argument('--max_episode_length', default=500, type=int, help='')
