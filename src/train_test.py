@@ -48,8 +48,9 @@ def train(continuous, env, agent, max_episode, warmup, save_model_dir, max_episo
 
             if done:  # end of an episode
                 average_action = np.mean(actions[:episode_steps], axis=0)
+                action_std = np.std(actions[:episode_steps], axis=0)
                 logger.info(
-                    "Ep:{0} | R:{1:.4f} | Steps: {2} | N positive Rs: {3} | Epsilon: {4:.4f} | Average action: {5}".format(episode, episode_reward, episode_steps, episode_positive_rewards, agent.epsilon, average_action)
+                    "Ep:{0} | R:{1:.2f} | Steps: {2} | Rs>0: {3} | eps: {4:.4f} | mean: {5} | std: {6}".format(episode, episode_reward, episode_steps, episode_positive_rewards, agent.epsilon, average_action, action_std)
                 )
 
                 agent.memory.append(
