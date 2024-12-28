@@ -5,6 +5,7 @@ from model import (Actor, Critic)
 from memory import SequentialMemory
 from random_process import OrnsteinUhlenbeckProcess
 from util import *
+import random
 
 # Loss function for the Critic network
 criterion = nn.MSELoss()
@@ -142,12 +143,14 @@ class DDPG(object):
         Returns:
             action: Selected action with added exploration noise.
         """
-
-        action = to_numpy(self.actor((s_t.unsqueeze(0), shape.unsqueeze(0))), device=self.device).squeeze(0)
-        action += self.is_training * max(self.epsilon, 0) * self.random_process.sample()
-        action = np.clip(action, -1., 1.)
         if decay_epsilon:
             self.epsilon -= self.depsilon
+        if random.random() < self.epsilon:
+            action = self.random_action()
+            return action
+        action = to_numpy(self.actor((s_t.unsqueeze(0), shape.unsqueeze(0))), device=self.device).squeeze(0)
+        #action += self.is_training * max(self.epsilon, 0) * self.random_process.sample()
+        #action = np.clip(action, -1., 1.)
         return action
 
     def reset(self, s_t, shape):
