@@ -1,0 +1,25 @@
+import numpy as np
+from sklearn.manifold import MDS
+
+#S = np.load("")
+
+def run_mds_on_large_matrix(S, n_components=2):
+    """
+    run MDS and return the embedded coordinates in 'n_components' dimensions.
+    """
+    # Convert similarity to distance
+    D = 1.0 - S  # or another transform if appropriate
+
+    mds = MDS(
+        n_components=n_components,
+        dissimilarity='precomputed',
+        random_state=42
+    )
+
+    # Fit-transform
+    X_embedded = mds.fit_transform(D)
+    return X_embedded
+
+if __name__ == "__main__":
+    X_2d = run_mds_on_large_matrix(S, n_components=2)
+    print("Embedded shape:", X_2d.shape)
