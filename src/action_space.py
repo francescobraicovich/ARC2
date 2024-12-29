@@ -118,7 +118,7 @@ class ARCActionSpace(Space):
 
     def create_color_selection_dict(self):
         color_selection_dict = {}
-        ranks_to_consider = [0, 1, 2, 9]
+        ranks_to_consider = [0, 1, 2, 3, 9]
 
         for i in range(10):
             param = i
@@ -131,9 +131,9 @@ class ARCActionSpace(Space):
             
             if i in ranks_to_consider:
                 # Use partial to fix the 'param' or 'color' parameter
-                color_selection_dict[50 + i] = partial(self.color_selector.rankcolor, rank=param)
+                color_selection_dict[10 + i] = partial(self.color_selector.rankcolor, rank=param)
                 color_selection_dict[80 + i] = partial(self.color_selector.rank_largest_shape_color_nodiag, rank=param)
-                color_selection_dict[90 + i] = partial(self.color_selector.rank_largest_shape_color_diag, rank=param)
+                #color_selection_dict[90 + i] = partial(self.color_selector.rank_largest_shape_color_diag, rank=param)
 
         # Create a new dictionary with keys divided by 2
         
@@ -152,10 +152,10 @@ class ARCActionSpace(Space):
         selection_dict[40] = partial(self.selector.select_outer_border_diag) # Select the outer border with diagonal connectivity
         selection_dict[50] = partial(self.selector.select_inner_border) # Select the inner border
         selection_dict[55] = partial(self.selector.select_inner_border_diag) # Select the inner border with diagonal connectivity
-        selection_dict[65] = partial(self.selector.select_adjacent_to_color, points_of_contact=1) # Select the elements adjacent to the color
-        selection_dict[67] = partial(self.selector.select_adjacent_to_color, points_of_contact=2) 
-        selection_dict[69] = partial(self.selector.select_adjacent_to_color, points_of_contact=3) 
-        selection_dict[71] = partial(self.selector.select_adjacent_to_color, points_of_contact=4) 
+        #selection_dict[65] = partial(self.selector.select_adjacent_to_color, points_of_contact=1) # Select the elements adjacent to the color
+        #selection_dict[67] = partial(self.selector.select_adjacent_to_color, points_of_contact=2) 
+        #selection_dict[69] = partial(self.selector.select_adjacent_to_color, points_of_contact=3) 
+        #selection_dict[71] = partial(self.selector.select_adjacent_to_color, points_of_contact=4) 
         selection_dict[73] = partial(self.selector.select_adjacent_to_color_diag, points_of_contact=1) # Select the elements adjacent to the color with diagonal connectivity
         selection_dict[80] = partial(self.selector.select_adjacent_to_color_diag, points_of_contact=2)
         selection_dict[82] = partial(self.selector.select_adjacent_to_color_diag, points_of_contact=3)
@@ -167,6 +167,7 @@ class ARCActionSpace(Space):
         selection_dict[99] = partial(self.selector.select_all_grid)
 
         #NOTE: This currently leaves out the selection of rectangles (only selection function with parameters)
+        #NOTE: This currently leaves out selection of adjacent shapes with no diagonal connectivity
 
         
         uniformised_dict = self.uniformise_density(selection_dict)
@@ -239,8 +240,10 @@ class ARCActionSpace(Space):
         cut_paste_start = 480
         copy_sum_start = 540
         cut_sum_start = 600
-        for i in range(1, 5):
-            for j in range(1, 5):
+
+        # NOTE: The shift values are hardcoded for now, steps of 2 to avoid too many transformations
+        for i in range(1, 5, 2):
+            for j in range(1, 5, 2):
                 transformation_dict[copy_paste_start + (i * j  * 3)] = partial(self.transformer.copy_paste, shift_x=i, shift_y=j)
                 transformation_dict[cut_paste_start + (i * j  * 3)] = partial(self.transformer.cut_paste, shift_x=i, shift_y=j)
                 transformation_dict[copy_sum_start + (i * j  * 3)] = partial(self.transformer.copy_sum, shift_x=i, shift_y=j)
@@ -287,6 +290,7 @@ class ARCActionSpace(Space):
                     action[2] = transformation_key
                     action_space.append(action)
 
+        print(f"Number of actions: {len(action_space)}")
         self.space = np.array(action_space)
         return action_space
     
