@@ -76,6 +76,6 @@ def save_similarity_matrix_np(s_matrix, base_filename="similarity_matrix"):
     print(f"Similarity matrix saved as {filename}")
 
 if __name__ == "__main__":
-    similarity_matrix = build_action_action_similarity_matrix_experiments(num_experiments=1, alpha=1)
+    similarity_matrix = build_action_action_similarity_matrix_experiments(num_experiments=100, alpha=0.7)
     print(similarity_matrix)
     save_similarity_matrix_np(similarity_matrix)
