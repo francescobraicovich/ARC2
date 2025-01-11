@@ -1,4 +1,4 @@
-from util import to_tensor
+from utils.util import to_tensor
 import numpy as np
 
 def train(continuous, env, agent, max_episode, warmup, save_model_dir, max_episode_length, logger, save_per_epochs):
