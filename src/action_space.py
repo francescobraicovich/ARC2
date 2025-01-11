@@ -6,10 +6,11 @@ from dsl.color_select import ColorSelector
 from dsl.select import Selector
 from dsl.transform import Transformer
 from sklearn.neighbors import NearestNeighbors
+from utils.action_space_embedding import create_approximate_similarity_matrix, mds_embed
 #import faiss
 
 class ARCActionSpace(Space):
-    def __init__(self, ColorSelector=ColorSelector, Selector=Selector, Transformer=Transformer, low=[0, 0, 0], high=[99, 99, 999]):
+    def __init__(self, ColorSelector=ColorSelector, Selector=Selector, Transformer=Transformer, low=[0, 0, 0], high=[99, 99, 999], load=True):
         dtype = np.float32
         shape = (3,)
         super().__init__(shape, dtype)
@@ -43,15 +44,36 @@ class ARCActionSpace(Space):
         self.space = None
         self.create_action_space()
 
+        if load:
+            embedding = np.load('src/embedded_space/embedded_actions.npy')
+        else:
+            embedding = self.embed_actions()
+        
+
         self.nearest_neighbors = None
         self.create_nearest_neighbors()
+    
+    def embed_actions(self):
+
+        # Create an approximate similarity matrix
+        similarity_matrix = create_approximate_similarity_matrix(self, num_experiments=500)
+        distance_matrix = 1 - similarity_matrix
+
+        # Embed the actions using MDS
+        embedded_actions = mds_embed(distance_matrix)
+
+        # save the embedded actions in the embedded_space folder
+        np.save('src/embedded_space/embedded_actions.npy', embedded_actions)
+
+        return embedded_actions
+
 
     def create_nearest_neighbors(self):
         """
         Create the NearestNeighbors model.
         """
         self.nearest_neighbors = NearestNeighbors(n_neighbors=None, algorithm='auto')
-        self.nearest_neighbors.fit(self.space)
+        self.nearest_neighbors.fit(self.embedding)
 
     def search_point(self, query_actions, k=5):
         """
@@ -335,3 +357,4 @@ class ARCActionSpace(Space):
         if only_transformation:
             return action_dict['transformation']
         return action_dict
+    
