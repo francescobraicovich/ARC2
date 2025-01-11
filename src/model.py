@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from util import to_tensor
+from utils.util import to_tensor
 
 # Determine the device: CUDA -> MPS -> CPU
 if torch.cuda.is_available():
@@ -13,7 +13,7 @@ else:
     DEVICE = torch.device("cpu")
 print("Using device: {} for actor-critic model".format(DEVICE))
 
-from util_transformer import EncoderTransformerConfig
+from utils.util_transformer import EncoderTransformerConfig
 from transformer import EncoderTransformer
 
 # Custom weight initialization function
