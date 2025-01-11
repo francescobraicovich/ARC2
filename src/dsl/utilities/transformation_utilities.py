@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.ndimage import find_objects
+from scipy.ndimage import center_of_mass as scipy_com
 from skimage.measure import regionprops
 
 # Implemented utility methods:
@@ -95,15 +96,12 @@ def center_of_mass(bool_array):
     Returns:
         tuple: A tuple of integers representing the center of mass indices along each axis.
     """
-    
     # Ensure input is a numpy array
     bool_array = np.asarray(bool_array)
-    
-    # Get the indices of the True values
-    indices = np.nonzero(bool_array)
-
     # Calculate the center of mass as the mean of these indices
-    center = tuple(int(round(np.mean(axis))) for axis in indices)    
+    center = scipy_com(bool_array)
+    # Replace NaN with 0 and convert to integers
+    center = tuple(int(np.nan_to_num(c, nan=0)) for c in center)
     return center
 
 def vectorized_center_of_mass(selection):
