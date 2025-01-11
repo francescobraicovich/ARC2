@@ -4,7 +4,7 @@ from torch.optim import Adam
 from model import (Actor, Critic)
 from memory import SequentialMemory
 from random_process import OrnsteinUhlenbeckProcess
-from util import *
+from utils.util import *
 import random
 
 # Loss function for the Critic network
