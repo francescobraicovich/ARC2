@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from typing import Optional, Tuple
 
-from util_transformer import TransformerLayerConfig, EncoderTransformerConfig
+from utils.util_transformer import TransformerLayerConfig, EncoderTransformerConfig
 
 # Define a single Transformer layer
 class TransformerLayer(nn.Module):
