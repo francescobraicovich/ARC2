@@ -4,7 +4,7 @@ import warnings
 import random
 import numpy as np
 import torch
-from util import to_tensor
+from utils.util import to_tensor
 
 # Determine the device: CUDA -> MPS -> CPU
 if torch.cuda.is_available():
