@@ -1,6 +1,6 @@
 from ddpg import DDPG
 import action_space
-from util import *
+from utils.util import *
 import torch.nn as nn
 import torch
 criterion = nn.MSELoss()
