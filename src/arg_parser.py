@@ -37,6 +37,7 @@ def init_parser(alg):
         parser.add_argument('--save_per_epochs', default=15, type=int, help='save model every X epochs')
         parser.add_argument('--actor_critic_type', default='cnn', type=str, help='type of model to use (lpn, cnn, mlp)')
         parser.add_argument('--k_neighbors', default=100, type=int, help='number of neighbors to consider')
+        parser.add_argument('--load_action_embedding', default=True, type=bool, help='load action embedding or not')
         return parser
 
     else:
