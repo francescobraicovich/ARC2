@@ -27,6 +27,7 @@ class Selector():
 
     def select_color(self, grid:np.ndarray, color:int):
         if check_color(color) == False:
+            raise Warning("Invalid color")
             return np.expand_dims(np.zeros_like(grid), axis=0)
         mask = grid == color
         n_rows, n_cols = grid.shape
