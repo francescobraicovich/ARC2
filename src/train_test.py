@@ -1,10 +1,12 @@
 from utils.util import to_tensor
 import numpy as np
+import torch
+from dsl.utilities.plot import plot_step
 
 def train(continuous, env, agent, max_episode, warmup, save_model_dir, max_episode_length, logger, save_per_epochs):
     agent.is_training = True
-    step = episode = episode_steps = episode_positive_rewards = 0
-    actions = np.zeros((max_episode_length, 3))
+    step = episode = episode_steps = episode_positive_rewards = num_equal = 0
+    #actions = np.zeros((max_episode_length, 3))
     episode_reward = 0.
     s_t = None
     while episode < max_episode:
@@ -21,13 +23,18 @@ def train(continuous, env, agent, max_episode, warmup, save_model_dir, max_episo
                 action, embedded_action = agent.random_action()
             else:
                 action, embedded_action = agent.select_action(s_t, shape)
-            actions[episode_steps] = action
+            #actions[episode_steps] = action
 
             # env response with next_observation, reward, terminate_info
-            state1, r_t, done, _ = env.step(action)
+            state1, r_t, done, truncated, info = env.step(action)
             s_t1, shape1 = state1
             s_t1, shape1 = to_tensor(s_t1, device=agent.device), to_tensor(shape1, device=agent.device)
-
+            
+            if torch.equal(shape, shape1):
+                if torch.equal(s_t, s_t1):
+                    num_equal += 1
+                    #plot_step(s_t, s_t1, shape, shape1, r_t, info)
+        
             if r_t > 0:
                 episode_positive_rewards += 1
 
@@ -44,16 +51,18 @@ def train(continuous, env, agent, max_episode, warmup, save_model_dir, max_episo
             episode_steps += 1
             episode_reward += r_t
             s_t = s_t1
-            # s_t = deepcopy(s_t1)
+            shape = shape1
 
-            if done:  # end of an episode
-                average_action = np.mean(actions[:episode_steps], axis=0)
-                average_action = np.round(average_action, 3)
-                action_std = np.std(actions[:episode_steps], axis=0)
-                action_std = np.round(action_std, 3)
+            if done or truncated:  # end of an episode
+                #average_action = np.mean(actions[:episode_steps], axis=0)
+                #average_action = np.round(average_action, 3)
+                #action_std = np.std(actions[:episode_steps], axis=0)
+                #action_std = np.round(action_std, 3)
                 episode_reward = round(episode_reward, 2)
                 logger.info(
-                    "Ep:{0} | R:{1:.2f} | Steps: {2} | Rs>0: {3} | eps: {4:.3f} | mean: {5} | std: {6}".format(episode, episode_reward, episode_steps, episode_positive_rewards, agent.epsilon, average_action, action_std)
+                    "Ep:{:<4} | R:{:>7.2f} | Steps:{:>5} | Equal:{:>5} | Rs>0:{:>5} | eps:{:>6.3f}".format(
+                        episode, episode_reward, episode_steps, num_equal, episode_positive_rewards, agent.epsilon
+                    )
                 )
 
                 agent.memory.append(
@@ -66,10 +75,11 @@ def train(continuous, env, agent, max_episode, warmup, save_model_dir, max_episo
                 # reset
                 s_t = None
                 episode_steps =  0
+                num_equal = 0
                 episode_positive_rewards = 0
                 episode_reward = 0.
                 episode += 1
-                actions = np.zeros((max_episode_length, 3))
+                #actions = np.zeros((max_episode_length, 3))
                 # break to next episode
                 break
         # [optional] save intermideate model every run through of 32 episodes
