@@ -8,8 +8,8 @@ def init_parser(alg):
         parser.add_argument('--env', default='ARC', metavar='ENV', help='environment to train on')
         parser.add_argument('--gamma', type=float, default=0.99, metavar='G', help='discount factor for rewards (default: 0.99)')
         parser.add_argument('--max-episode-length', type=int, default=50, metavar='M', help='maximum length of an episode (default: 1440)') #NOTE: changed from 1440 to 5
-        parser.add_argument('--load', default=True, metavar='L', help='load a trained model')
-        parser.add_argument('--load-model-dir', default='ARC-run465', metavar='LMD', help='folder to load trained models from')
+        parser.add_argument('--load', default=False, metavar='L', help='load a trained model')
+        parser.add_argument('--load-model-dir', default='ARC-run507', metavar='LMD', help='folder to load trained models from')
         parser.add_argument('--gpu-ids', type=int, default=[1], nargs='+', help='GPUs to use [-1 CPU only]')
         parser.add_argument('--gpu-nums', type=int, default=8, help='#GPUs to use (default: 1)')
         parser.add_argument('--max-episode', type=int, default=20000, help='maximum #episode.')
@@ -36,10 +36,10 @@ def init_parser(alg):
         parser.add_argument('--weight-decay', default=0.00001, type=float, help='weight decay for L2 Regularization loss')
         parser.add_argument('--save_per_epochs', default=15, type=int, help='save model every X epochs')
         parser.add_argument('--actor_critic_type', default='cnn', type=str, help='type of model to use (lpn, cnn, mlp)')
-        parser.add_argument('--k_neighbors', default=100, type=int, help='number of neighbors to consider')
+        parser.add_argument('--k_neighbors', default=109, type=int, help='number of neighbors to consider')
         parser.add_argument('--load_action_embedding', default=True, type=bool, help='load action embedding or not')
+        parser.add_argument('--latent_dim', default=96, type=int, help='latent dimension for encoder')
+        parser.add_argument('--chunk_size', default=32, type=int, help='chunk size for training encoder')
         return parser
-
     else:
-
         raise RuntimeError('undefined algorithm {}'.format(alg))
