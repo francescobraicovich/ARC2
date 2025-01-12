@@ -2,6 +2,33 @@ import matplotlib.pyplot as plt
 import json
 from matplotlib import colors
 import numpy as np
+import torch
+
+def to_numpy(var, device=None):
+    """
+    Convert a PyTorch tensor to a NumPy array, handling the device.
+
+    Args:
+        var (torch.Tensor): The PyTorch tensor to convert.
+        device (torch.device or None): The device type (e.g., 'cuda', 'mps', 'cpu').
+
+    Returns:
+        np.ndarray: The NumPy array.
+    """
+    if not isinstance(var, torch.Tensor):
+        raise TypeError("Input must be a PyTorch tensor.")
+
+    # Move tensor to the specified device if provided
+    if device is not None:
+        var = var.to(device)
+
+    # Ensure the tensor is on CPU before converting to NumPy
+    if var.device.type != 'cpu':
+        var = var.cpu()
+
+    # Detach from the computational graph and convert to NumPy
+    return var.detach().numpy()
+
 
 # Define the colormap: -1 maps to white, other values follow the colors list
 cmap = colors.ListedColormap(
@@ -133,7 +160,7 @@ def plot_selection(selection_mask):
         axs[idx].axis('off')
     plt.show()
 
-def plot_grid_3d(grid_3d):
+def plot_grid_3d(grid_3d, title=None):
     num_transformations = grid_3d.shape[0] # Number of transformations to plot
 
     # Calculate the number of rows and columns for the subplots
@@ -145,17 +172,54 @@ def plot_grid_3d(grid_3d):
 
     for idx, grid in enumerate(grid_3d):
         axs[idx].imshow(grid, cmap=cmap, norm=norm)
-        axs[idx].set_title(f'Transformation on selection {idx}')
+        #axs[idx].set_title(f'Transformation on selection {idx}')
         axs[idx].axis('off')
 
     # Hide any unused subplots
     for idx in range(num_transformations, len(axs)):
         axs[idx].axis('off')
 
+    if title is not None:
+        plt.suptitle(title)
+
     plt.show()
 
-def plot_grid(grid):
+def plot_grid(grid, title=None):
     # add a dimension to the grid to make it 3D
     grid_3d = np.expand_dims(grid, axis=0)
-    plot_grid_3d(grid_3d)
+    plot_grid_3d(grid_3d, title)
 
+def plot_step(state0, state1, shape0, shape1, r_t, info):
+    # make the figure to contain 4 square subplots
+    fig, axs = plt.subplots(2, 2, figsize=(8, 8))
+
+    state0 = to_numpy(state0)
+    state1 = to_numpy(state1)
+
+    current0 = state0[:, :, 0]
+    current1 = state1[:, :, 0]
+
+    target0 = state0[:, :, 1]
+    target1 = state1[:, :, 1]
+
+    # plot the current state
+    axs[0, 0].imshow(current0, cmap=cmap, norm=norm)
+    axs[0, 1].imshow(target0, cmap=cmap, norm=norm)
+    axs[1, 0].imshow(current1, cmap=cmap, norm=norm)
+    axs[1, 1].imshow(target1, cmap=cmap, norm=norm)
+
+    last_action = info['action_strings'][-1]
+    action_values = [last_action[k] for k in last_action.keys()]
+    string = '\n'.join(action_values)
+    reward_string = 'reward: {}'.format(np.round(r_t, 2))
+    string += '\n' + reward_string + '\n\n.'
+  
+    # set string as title
+    fig.suptitle(string)
+    shape0_string = 'shape0: {}'.format(torch.flatten(shape0).tolist())
+    shape1_string = 'shape1: {}'.format(torch.flatten(shape1).tolist())
+
+    axs[0, 0].set_title(shape0_string)
+    axs[1, 0].set_title(shape1_string)
+
+    plt.show()
