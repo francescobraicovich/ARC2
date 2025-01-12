@@ -25,12 +25,18 @@ class Selector():
         self.selection_vocabulary = {} # store the selection vocabulary
         self.minimum_geometry_size = 2 # minimum size of the geometry
 
+
+
     def select_color(self, grid:np.ndarray, color:int):
         if check_color(color) == False:
             return np.expand_dims(np.zeros_like(grid), axis=0)
         mask = grid == color
         n_rows, n_cols = grid.shape
         mask = np.reshape(mask, (-1, n_rows, n_cols))
+
+        if np.sum(mask) == 0:
+            raise Warning(f"Color {color} not found in the grid")
+            return np.expand_dims(np.zeros_like(grid), axis=0)
         return mask
     
     def select_rectangles(self, grid, color, height, width):
@@ -59,6 +65,7 @@ class Selector():
         # if there are no elements with the target color, we return the color mask (all false)
         if np.sum(color_mask) == 0:
             return np.expand_dims(np.zeros_like(grid), axis=0)
+        
         color_mask = color_mask[0, :, :] # remove the first dimension
 
         # Iterate over all possible starting points for the rectangle
