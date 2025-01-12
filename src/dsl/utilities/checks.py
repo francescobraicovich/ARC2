@@ -15,6 +15,7 @@ def check_integer(value, minimum, maximum):
         raise Warning(f"Invalid color {value} of type {type(value)}")
         return False
     if value < minimum or value > maximum:
+        raise Warning(f"Invalid color {value} not in range {minimum} to {maximum}")
         return False
     return True
 
@@ -24,6 +25,7 @@ def check_axis(axis):
     """
     minimum = 0
     maximum = 1
+
     return check_integer(axis, minimum, maximum)
 
 def check_color_rank(rank):
@@ -39,7 +41,7 @@ def check_color(color):
     Check if the color is valid. Returns True if valid, False otherwise.
     """
     minimum = 0
-    maximum = 9
+    maximum = 200
     return check_integer(color, minimum, maximum)
 
 def check_num_rotations(num_rotations):
