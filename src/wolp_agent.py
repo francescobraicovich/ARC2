@@ -29,66 +29,86 @@ class WolpertingerAgent(DDPG):
         self.critic.to(self.device)
         self.critic_target.to(self.device)
 
+        self.np_aranges = {}
+        self.torch_aranges = {}
+
     def get_name(self):
         return 'Wolp3_{}k{}_{}'.format(self.action_space.get_number_of_actions(),
                                        self.k_nearest_neighbors, self.experiment)
 
     def get_action_space(self):
         return self.action_space
+    
 
     def wolp_action(self, s_t, shape, proto_action):
+        
         # Get the proto_action's k nearest neighbors
-        distances, indices, actions = self.action_space.search_point(proto_action, k=self.k_nearest_neighbors)
-        actions = to_tensor(actions, device=self.device) #NOTE: next step is to move the action space to the device as tensors
-
+        distances, indices, actions, embedded_actions = self.action_space.search_point(proto_action, k=self.k_nearest_neighbors)
+        embedded_actions = to_tensor(embedded_actions, device=self.device) #NOTE: next step is to move the action space to the device as tensors
+        
+        # Get the batch size and create the aranges if necessary for later indexing
+        if len(np.shape(s_t)) == 3:
+            batch_size = 1
+        else:
+            batch_size = np.shape(s_t)[0]
+        if batch_size not in self.np_aranges:
+            self.np_aranges[batch_size] = np.arange(batch_size)
+            self.torch_aranges[batch_size] = torch.arange(batch_size, device=self.device)
+        
         # Make all the state, action pairs for the critic        
-        s_t = torch.tile(s_t, (self.k_nearest_neighbors, 1, 1, 1, 1))
-        shape = torch.tile(shape, (self.k_nearest_neighbors, 1, 1, 1))
+        s_t = torch.tile(s_t, (self.k_nearest_neighbors, 1, 1, 1))
+        shape = torch.tile(shape, (self.k_nearest_neighbors, 1, 1))
 
-        actions = torch.reshape(actions, (self.k_nearest_neighbors, s_t.shape[1], self.nb_actions))
-
-        #actions = to_tensor(actions, device=self.device)
-        x = s_t, shape
+        # Reshape the actions and embedded actions
+        #embedded_actions = torch.reshape(embedded_actions, (self.k_nearest_neighbors, batch_size, self.nb_actions))
+        #actions = np.reshape(actions, (self.k_nearest_neighbors, batch_size, 3))
 
         # Evaluate each pair through the critic
-        actions_evaluation = torch.squeeze(self.critic(x, actions))
+        x = s_t, shape
+        actions_evaluation = torch.squeeze(self.critic(x, embedded_actions))
 
         # Find the index of the pair with the maximum value
-        max_index = torch.argmax(actions_evaluation, dim=0)
+        axis = 0 if batch_size == 1 else 1
+        torch_max_index = torch.argmax(actions_evaluation, dim=axis)
+        np_max_index = torch_max_index if batch_size == 1 else to_numpy(torch_max_index, device=self.device)
+        
+        if batch_size == 1:
+            selected_action = actions[np_max_index, :]
+            selected_embedded_action = embedded_actions[torch_max_index, :]
+        else:
+            # Select the actions based on the maximum indes
+            np_arange = self.np_aranges[batch_size]
+            torch_arange = self.torch_aranges[batch_size]
 
-        # Select the actions based on the maximum index
-        selected_action = actions[max_index, torch.arange(actions.size(1)), :]
+            # Reshape the actions and embedded actions
+            reshaped_actions = np.reshape(actions, (self.k_nearest_neighbors, batch_size, 3))
+            reshaped_embedded_actions = torch.reshape(embedded_actions, (self.k_nearest_neighbors, batch_size, self.nb_actions))
+            
+            selected_action = reshaped_actions[np_max_index, np_arange, :]
+            selected_embedded_action = reshaped_embedded_actions[torch_max_index, torch_arange, :]
 
-        # Adjust shape if necessary
-        if selected_action.size(0) == 1:
-            selected_action = selected_action[0]
-        selected_action = to_numpy(selected_action, device=self.device)
-
-        return selected_action
+        return selected_action, selected_embedded_action
 
     def select_action(self, s_t, shape, decay_epsilon=True):
         # Take a continuous action from the actor
-        proto_action = super().select_action(s_t, shape, decay_epsilon)
-    
-        wolp_action = self.wolp_action(s_t, shape, proto_action)
-        assert isinstance(wolp_action, np.ndarray)
-        self.a_t = to_tensor(wolp_action, device=self.device)
-        return wolp_action
+        proto_action, proto_embedded_action = super().select_action(s_t, shape, decay_epsilon)
+        wolp_action, wolp_embedded_action = self.wolp_action(s_t, shape, proto_embedded_action)
+        self.a_t = wolp_embedded_action
+        return wolp_action, wolp_embedded_action
 
     def random_action(self):
         proto_action = super().random_action()
-        distances, indices, actions = self.action_space.search_point(proto_action, 1)
-        action = actions[0]
-        self.a_t = to_tensor(action, device=self.device)
-        return action
+        distances, indices, actions, embedded_actions = self.action_space.search_point(proto_action, 1)
+        action, embedded_action = actions[0], embedded_actions[0]
+        self.a_t = to_tensor(embedded_action, device=self.device)
+        return action, embedded_action
 
     def select_target_action(self, s_t, shape):
         x = s_t, shape
-
-        proto_action = self.actor_target(x)
-        proto_action = to_numpy(torch.clamp(proto_action, -1.0, 1.0), device=self.device)
-        action = self.wolp_action(s_t, shape, proto_action)
-        return action
+        proto_embedded_action = self.actor_target(x)
+        proto_embedded_action = to_numpy(torch.clamp(proto_embedded_action, -1.0, 1.0), device=self.device)
+        action, embedded_action = self.wolp_action(s_t, shape, proto_embedded_action)
+        return action, embedded_action
 
     def update_policy(self):
         # Sample batch
@@ -96,27 +116,20 @@ class WolpertingerAgent(DDPG):
             next_state_batch, next_shape_batch, terminal_batch = self.memory.sample_and_split(self.batch_size)
         
         # Prepare for the target q batch
-        next_wolp_action_batch = self.select_target_action(next_state_batch, next_shape_batch)
-
-        next_states_expanded = next_state_batch.unsqueeze(0)
-        next_shape_expanded = next_shape_batch.unsqueeze(0)
-        next_action_batch_expanded = to_tensor(next_wolp_action_batch, device=self.device).unsqueeze(0)
-        next_state = (next_states_expanded, next_shape_expanded)
+        next_wolp_action_batch, next_wolp_embedded_action_batch = self.select_target_action(next_state_batch, next_shape_batch)
+        next_state = (next_state_batch, next_shape_batch)
 
         # Next Q values
-        next_q_values = self.critic_target(next_state, next_action_batch_expanded)
+        next_q_values = self.critic_target(next_state, next_wolp_embedded_action_batch)
 
         # Handle terminal states
         target_q_batch = reward_batch + self.gamma * terminal_batch * next_q_values
 
         # Critic update
         self.critic.zero_grad()
-        state_batch_unsqueezed = state_batch.unsqueeze(0)
-        shape_batch_unsqueezed = shape_batch.unsqueeze(0)
-        action_batch_unsqueezed = action_batch.unsqueeze(0)
 
-        state_unsqueezed = (state_batch_unsqueezed, shape_batch_unsqueezed)
-        q_batch = self.critic(state_unsqueezed, action_batch_unsqueezed)
+        state = (state_batch, shape_batch)
+        q_batch = self.critic(state, action_batch)
 
         value_loss = criterion(q_batch, target_q_batch)
         value_loss.backward()
@@ -126,7 +139,7 @@ class WolpertingerAgent(DDPG):
         self.actor.zero_grad()
         proto_action_batch = self.actor((state_batch, shape_batch))
         proto_action_batch_unsqueezed = proto_action_batch.unsqueeze(0)
-        policy_loss = -self.critic(state_unsqueezed, proto_action_batch_unsqueezed)
+        policy_loss = - self.critic(state, proto_action_batch_unsqueezed)
         policy_loss = policy_loss.mean()
         policy_loss.backward()
         self.actor_optim.step()
