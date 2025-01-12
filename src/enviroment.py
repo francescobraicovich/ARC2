@@ -273,7 +273,6 @@ class ARC_Env(gym.Env):
         return transformed
 
     def step(self, action):
-                
         # Update the info dictionary
         info = self.info
         info['actions'].append(action)
