@@ -121,3 +121,23 @@ def vectorized_center_of_mass(selection):
      sum_weighted_rows = np.sum(weighted_rows, axis=(1, 2), keepdims=True)
      com = np.round(np.where(total_weight > 0, sum_weighted_rows / total_weight, 0)).astype(int)
      return com
+
+def missing_integer(grid: np.ndarray) -> int:
+    """
+    Takes a grid of integers (0 to 9) and returns an integer from 0 to 9 
+    that is not present in the grid. If all integers are present, returns 0.
+    """
+    if not np.issubdtype(grid.dtype, np.integer):
+        raise ValueError("Grid must contain integers only.")
+
+    # Find unique values in the grid
+    unique_values = np.unique(grid)
+
+    # Create a set of integers from 0 to 9
+    all_integers = set(range(10))
+
+    # Find missing integers
+    missing_values = all_integers - set(unique_values)
+
+    # Return the first missing value, or 0 if none are missing
+    return min(missing_values) if missing_values else 0
