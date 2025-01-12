@@ -124,12 +124,6 @@ def create_transformation_similarity_matrix(action_space, env, num_experiments=1
                 similarity_matrix[j, i] += similarity
     mask = np.identity(n) == 0
     similarity_matrix[mask] /= num_experiments
-    # histogram of similarities
-    random_sample = np.random.choice(similarity_matrix.flatten(), 100000)
-    import matplotlib.pyplot as plt
-    plt.hist(random_sample, bins=25)
-    plt.show()
-
     return similarity_matrix
 
 def create_approximate_similarity_matrix(action_space, num_experiments=300):
@@ -137,11 +131,11 @@ def create_approximate_similarity_matrix(action_space, num_experiments=300):
     env = ARC_Env(challenge_dictionary=challenge_dictionary, action_space=action_space)
 
     color_similarity = create_color_similarity_matrix(action_space, env, num_experiments)
-    print("Color similarity matrix created.")
+    print('Similarity matrix created for: color selections.')
     selection_similarity = create_selection_similarity_matrix(action_space, env, num_experiments)
-    print("Selection similarity matrix created.")
+    print('Similarity matrix created for: selections.')
     transformation_similarity = create_transformation_similarity_matrix(action_space, env, num_experiments)
-    print("Transformation similarity matrix created.")
+    print('Similarity matrix created for: transformations.')
 
     color_selections = list(action_space.color_selection_dict.keys())
     selections = list(action_space.selection_dict.keys())
@@ -163,14 +157,20 @@ def create_approximate_similarity_matrix(action_space, num_experiments=300):
             similarity_matrix[i, j] = similarity
             similarity_matrix[j, i] = similarity
         if i % 2500 == 0:
-            print(f"Processed {i}/{n} actions.")
+            print(f"Processed {i}/{n} actions.", end="\r")
     
     return similarity_matrix
 
-def mds_embed(similarity_matrix, n_components=2):
+def mds_embed(similarity_matrix, n_components=20):
+    print('Embedding with MDS...')
+
     embedding = MDS(n_components=n_components, dissimilarity="precomputed", random_state=42, 
                     n_jobs=-1, metric=False, normalized_stress=True, n_init=1)
-    return embedding.fit_transform(similarity_matrix)
+    
+    embedding.fit(similarity_matrix)
+    stress = embedding.stress_
+    print(f'MDS stress: {stress}')
+    return embedding.embedding_
 
 
 
