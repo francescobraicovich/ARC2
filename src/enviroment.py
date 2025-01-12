@@ -6,6 +6,7 @@ from gymnasium import spaces
 from collections import deque
 from utils.util import *
 from scipy.signal import correlate2d
+import copy
 
 def extract_states(previous_state, current_state,  target_state):
     """
@@ -77,75 +78,6 @@ def maximum_overlap_regions(array1, array2):
     
     return best_overlap1, best_overlap2, overlap_score
 
-def cross_correlate_best_overlap(array1, array2):
-    """
-    Finds the best 2D alignment of array2 over array1 to maximize the number
-    of matching elements, using cross-correlation.
-
-    Returns
-    -------
-    offset_i, offset_j : int
-        The offset in array1's coordinate system where array2 should be placed
-        for best overlap (i.e., array2's top-left corner at array1[offset_i, offset_j]).
-    max_count : int
-        The maximum number of matching elements achieved at that offset.
-    overlap_ratio : float
-        max_count / array2.size
-    """
-    # If arrays are not already integers, or if you prefer to handle
-    # certain discrete values, you might need to cast them or gather unique
-    # categories here.
-    unique_vals = np.unique(np.concatenate([array1.ravel(), array2.ravel()]))
-
-    # We'll accumulate the cross-correlations of each one-hot map in corr_sum
-    corr_sum = None
-    for val in unique_vals:
-        A1 = (array1 == val).astype(np.int32)
-        A2 = (array2 == val).astype(np.int32)
-        # cross-correlate (mode='full' so we get all possible displacements)
-        corr = correlate2d(A1, A2, mode='full', boundary='fill', fillvalue=0)
-        if corr_sum is None:
-            corr_sum = corr
-        else:
-            corr_sum += corr
-
-    # Find the maximum value in corr_sum and its index
-    max_count = np.max(corr_sum)
-    max_idx = np.unravel_index(np.argmax(corr_sum), corr_sum.shape)
-
-    # The shape of corr_sum is (H1 + H2 - 1, W1 + W2 - 1),
-    # where H1,W1 = array1.shape, H2,W2 = array2.shape
-    # If max_idx = (mi, mj), that corresponds to the offset where
-    # array2's top-left corner is at:
-    #   offset_i = mi - (H2 - 1)
-    #   offset_j = mj - (W2 - 1)
-    # in array1's coordinate system.
-    offset_i = max_idx[0] - (array2.shape[0] - 1)
-    offset_j = max_idx[1] - (array2.shape[1] - 1)
-
-    overlap_ratio = max_count / array2.size
-    return offset_i, offset_j, max_count, overlap_ratio
-
-def calculate_max_overlap(array1, array2):
-    """
-    Calculate the maximum overlap between two 2D arrays.
-    """
-    num_cells_target_state = np.size(array2)
-    best_overlap1, best_overlap2 = maximum_overlap_regions(array1, array2)
-    if np.any(best_overlap1) and np.any(best_overlap2):
-        try:
-            overlap_score = np.sum(array1[best_overlap1] == array2[best_overlap2])
-            print('Overlap score: ', overlap_score)
-            print('')
-        except:
-            print('Array 1: ', array1)
-            print('Array 2: ', array2)
-            print('Array 1 masked: ', array1[best_overlap1])
-            print('Array 2 masked: ', array2[best_overlap2])
-        return overlap_score / num_cells_target_state
-    return 0
-
-
 class ARC_Env(gym.Env):
     def __init__(self, challenge_dictionary, action_space, dim=30, seed=None):
         super(ARC_Env, self).__init__()
@@ -163,6 +95,7 @@ class ARC_Env(gym.Env):
         # reward variables
         self.STEP_PENALTY = 1
         self.SHAPE_PENALTY = 1
+        self.TRUNCATION_PENALTY = 100
         self.MAXIMUM_SIMILARITY = 50
         self.COMPLETION_REWARD = 25
         self.SKIP_PROBABILITY = 0.005 #DEPRECATED
@@ -242,7 +175,6 @@ class ARC_Env(gym.Env):
             if np.all(current_state_unpadded == target_state_unpadded):
                 return self.COMPLETION_REWARD, True
 
-
         similarity_reward = (current_score - previous_score) * self.MAXIMUM_SIMILARITY
         reward = similarity_reward - step_penalty 
         return reward, False
@@ -263,7 +195,6 @@ class ARC_Env(gym.Env):
         transformation = self.action_space.transformation_dict[transformation_key]
 
         # Apply the color selection, selection, and transformation to the previous state
-        #print('Action in string: ', self.action_space.action_to_string(action))
         color = color_selection(grid = previous_state) if fixed_color is None else fixed_color
         selected = selection(grid = previous_state, color = color)
         if np.any(selected):
@@ -279,35 +210,41 @@ class ARC_Env(gym.Env):
         action_string = self.action_space.action_to_string(action)
         info['action_strings'].append(action_string)
         info['num_actions'] += 1
-        
+
         # Extract the previous and target states
-        state, shape = self.state # make the current state into the previous state
+        state, shape = self.state  # make the current state into the previous state
         previous_state = state[:, :, 0]
-        previous_state_not_padded = unpad_grid(previous_state) # remove the padding from the previous state
-        
-        # Extract the current and target states
-        target_state = state[:, :, 1] # get the target state
-        target_state_not_padded = unpad_grid(target_state) # remove the padding from the target state
+        previous_state_not_padded = unpad_grid(previous_state)  # remove the padding
+
+        # Extract the target state (unpadded)
+        target_state = state[:, :, 1]
+        target_state_not_padded = unpad_grid(target_state)
         target_rows, target_cols = target_state_not_padded.shape
 
         # Apply the action to the previous state
-        current_state_tensor = self.act(previous_state_not_padded, action) # apply the action to the previous state
+        current_state_tensor = self.act(previous_state_not_padded, action)
 
-        # Initialize the rewards, dones, and current states tensors to store the results of the step function
-        rewards = np.zeros(current_state_tensor.shape[0]) # initialize the rewards
-        current_states = np.zeros((current_state_tensor.shape[0], self.dim, self.dim, 2), dtype=np.float32) # initialize the current states
-        shapes = np.zeros((current_state_tensor.shape[0], 2, 2)) # initialize the shapes
-        solveds = np.zeros(current_state_tensor.shape[0], dtype=bool) # initialize the successes
-        
-        # Loop over the first dimension of the tensor
+        # Initialize the arrays to store the results
+        rewards = np.zeros(current_state_tensor.shape[0])
+        current_states = np.zeros((current_state_tensor.shape[0], self.dim, self.dim, 2), dtype=np.float32)
+        shapes = np.zeros((current_state_tensor.shape[0], 2, 2))
+        solveds = np.zeros(current_state_tensor.shape[0], dtype=bool)
+
+        # Compute rewards etc. for each possible next state
         for i in range(current_state_tensor.shape[0]):
-            current_state_not_padded = current_state_tensor[i, :, :] # get the current state
+            current_state_not_padded = current_state_tensor[i, :, :]
             nrows, ncols = current_state_not_padded.shape
-            reward, solved = self.best_overlap_reward(previous_state_not_padded, current_state_not_padded, target_state_not_padded) # compute the reward
-            current_state_padded = pad_grid(current_state_not_padded) # pad the current state
             
-            # Store the results
-            rewards[i] = reward # store the reward
+            # Compute reward for this particular next state
+            reward, solved = self.best_overlap_reward(
+                previous_state_not_padded, current_state_not_padded, target_state_not_padded
+            )
+            
+            # Pad the current state for storing
+            current_state_padded = pad_grid(current_state_not_padded)
+            
+            # Store results
+            rewards[i] = reward
             solveds[i] = solved
             current_states[i, :, :, 0] = current_state_padded
             current_states[i, :, :, 1] = target_state
@@ -315,34 +252,49 @@ class ARC_Env(gym.Env):
             shapes[i, 0, 1] = target_rows
             shapes[i, 1, 0] = ncols
             shapes[i, 1, 1] = target_cols
-        
-        num_states_to_evaluate = min(self.MAX_STATES_PER_ACTION, current_state_tensor.shape[0])
-        top_n_indices = np.argsort(rewards)[-num_states_to_evaluate:] # get the top n indices
-        reward = np.max(rewards[top_n_indices]) # get the maximum reward
 
-        # if the agent has completed the challenge, we update the info dictionary
+        # Select the top n states
+        num_states_to_evaluate = min(self.MAX_STATES_PER_ACTION, current_state_tensor.shape[0])
+        top_n_indices = np.argsort(rewards)[-num_states_to_evaluate:]
+        reward = np.max(rewards[top_n_indices])
+
+        # Check if any state was solved
         done = bool(np.any(solveds))
+
         if done:
+            # If done, pick the first solved state and return
             index_of_solved = np.where(solveds)[0][0]
             self.state = (current_states[index_of_solved, :, :], shapes[index_of_solved, :, :])
             info['solved'] = True
-            return self.state, reward, done, info
             
-        # Add the top n states to the new states and infos
+            # Since we've 'solved' the puzzle, typically truncated = False
+            truncated = False
+            return self.state, reward, done, truncated, info
+
+        # Otherwise, add the top n states to the deque
         for i in top_n_indices:
             state_to_append = current_states[i, :, :, :]
             shape_to_append = shapes[i, :, :]
             self.new_states.append((state_to_append, shape_to_append))
-            self.infos.append(info)
-        
-        # End the episode with a small probability if not ended already
-        #if not done and np.random.random() < self.SKIP_PROBABILITY:
-        #    done = True
+            self.infos.append(copy.deepcopy(info))
 
-        # Update the state of the environment
+        # Update the state to the best next state (the front of the queue)
         self.state = self.new_states.popleft()
         self.info = self.infos.popleft()
-        return self.state, reward, done, self.info
+
+        # -------------------------------
+        # Check if the newly chosen state is all one color
+        # (unpadded to avoid zeros in the padding).
+        # If it is, we set truncated = True; otherwise False.
+        # -------------------------------
+        best_next_unpadded = unpad_grid(self.state[0][:, :, 0])  # channel 0 of our new state
+        unique_values = np.unique(best_next_unpadded)
+        truncated = bool(unique_values.size == 1)
+
+        if truncated:
+            reward -= self.TRUNCATION_PENALTY
+
+        return self.state, reward, done, truncated, self.info
 
 
 
