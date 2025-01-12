@@ -177,23 +177,22 @@ class ARCActionSpace(Space):
         selection_dict[40] = partial(self.selector.select_outer_border_diag) # Select the outer border with diagonal connectivity
         selection_dict[50] = partial(self.selector.select_inner_border) # Select the inner border
         selection_dict[55] = partial(self.selector.select_inner_border_diag) # Select the inner border with diagonal connectivity
-        #selection_dict[65] = partial(self.selector.select_adjacent_to_color, points_of_contact=1) # Select the elements adjacent to the color
-        #selection_dict[67] = partial(self.selector.select_adjacent_to_color, points_of_contact=2) 
-        #selection_dict[69] = partial(self.selector.select_adjacent_to_color, points_of_contact=3) 
-        #selection_dict[71] = partial(self.selector.select_adjacent_to_color, points_of_contact=4) 
-        selection_dict[73] = partial(self.selector.select_adjacent_to_color_diag, points_of_contact=1) # Select the elements adjacent to the color with diagonal connectivity
-        selection_dict[80] = partial(self.selector.select_adjacent_to_color_diag, points_of_contact=2)
-        selection_dict[82] = partial(self.selector.select_adjacent_to_color_diag, points_of_contact=3)
-        selection_dict[84] = partial(self.selector.select_adjacent_to_color_diag, points_of_contact=4)
-        selection_dict[86] = partial(self.selector.select_adjacent_to_color_diag, points_of_contact=5)
-        selection_dict[88] = partial(self.selector.select_adjacent_to_color_diag, points_of_contact=6)
-        selection_dict[90] = partial(self.selector.select_adjacent_to_color_diag, points_of_contact=7)
-        selection_dict[92] = partial(self.selector.select_adjacent_to_color_diag, points_of_contact=8)
+        selection_dict[65] = partial(self.selector.select_adjacent_to_color, points_of_contact=1) # Select the elements adjacent to the color
+        selection_dict[67] = partial(self.selector.select_adjacent_to_color, points_of_contact=2) 
+        selection_dict[69] = partial(self.selector.select_adjacent_to_color, points_of_contact=3) 
+        selection_dict[71] = partial(self.selector.select_adjacent_to_color, points_of_contact=4) 
+        #selection_dict[73] = partial(self.selector.select_adjacent_to_color_diag, points_of_contact=1) # Select the elements adjacent to the color with diagonal connectivity
+        #selection_dict[80] = partial(self.selector.select_adjacent_to_color_diag, points_of_contact=2)
+        #selection_dict[82] = partial(self.selector.select_adjacent_to_color_diag, points_of_contact=3)
+        #selection_dict[84] = partial(self.selector.select_adjacent_to_color_diag, points_of_contact=4)
+        #selection_dict[86] = partial(self.selector.select_adjacent_to_color_diag, points_of_contact=5)
+        #selection_dict[88] = partial(self.selector.select_adjacent_to_color_diag, points_of_contact=6)
+        #selection_dict[90] = partial(self.selector.select_adjacent_to_color_diag, points_of_contact=7)
+        #selection_dict[92] = partial(self.selector.select_adjacent_to_color_diag, points_of_contact=8)
         selection_dict[99] = partial(self.selector.select_all_grid)
 
         #NOTE: This currently leaves out the selection of rectangles (only selection function with parameters)
         #NOTE: This currently leaves out selection of adjacent shapes with no diagonal connectivity
-
         
         uniformised_dict = self.uniformise_density(selection_dict)
         updated_dict = {np.float32(key / (self._range[1]/2) - 1): value for key, value in uniformised_dict.items()}
@@ -212,11 +211,13 @@ class ARCActionSpace(Space):
         fill_with_color_start = 50
         fill_bounding_rectangle_with_color_start = 100
         fill_bounding_square_with_color_start = 150
-        for i in [1, 2, 9]:
-            if i == 1:
+        for i in [0, 1, 2, 9]:
+            if i == 0:
                 displacement = 0
+            if i == 1:
+                displacement = 2
             if i == 2:
-                displacement = 3
+                displacement = 4
             if i == 9:
                 displacement = 6
 
@@ -233,10 +234,10 @@ class ARCActionSpace(Space):
             transformation_dict[fill_bounding_square_with_color_start + displacement + 10] = partial(self.transformer.fill_bounding_square_with_color, method='shape_rank_nodiag', param = i)
 
             # By shape rank (diag)
-            transformation_dict[color_start + displacement + 20] = partial(self.transformer.color, method='shape_rank_diag', param = i)
-            transformation_dict[fill_with_color_start + displacement + 20] = partial(self.transformer.fill_with_color, method='shape_rank_diag', param = i)
-            transformation_dict[fill_bounding_rectangle_with_color_start + displacement + 20] = partial(self.transformer.fill_bounding_rectangle_with_color, method='shape_rank_diag', param = i)
-            transformation_dict[fill_bounding_square_with_color_start + displacement + 20] = partial(self.transformer.fill_bounding_square_with_color, method='shape_rank_diag', param = i)
+            #transformation_dict[color_start + displacement + 20] = partial(self.transformer.color, method='shape_rank_diag', param = i)
+            #transformation_dict[fill_with_color_start + displacement + 20] = partial(self.transformer.fill_with_color, method='shape_rank_diag', param = i)
+            #transformation_dict[fill_bounding_rectangle_with_color_start + displacement + 20] = partial(self.transformer.fill_bounding_rectangle_with_color, method='shape_rank_diag', param = i)
+            #transformation_dict[fill_bounding_square_with_color_start + displacement + 20] = partial(self.transformer.fill_bounding_square_with_color, method='shape_rank_diag', param = i)
 
         # Flipping transformations
         transformation_dict[200] = partial(self.transformer.flipv) # Fill with black
