@@ -1476,6 +1476,8 @@ class Transformer:
         grid3d = create_grid3d(grid, selection)
         color_selector = ColorSelector()
         background_color = color_selector.mostcolor(grid) # Get the most common color in the grid
+        background_color = int(background_color) # Convert the color to an integer
+        
         grid3d[grid3d == background_color] = new_color # Change the background color to the specified color
 
         if check_color(new_color) == False: # Check if the color is valid
