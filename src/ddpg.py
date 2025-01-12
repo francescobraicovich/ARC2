@@ -128,8 +128,6 @@ class DDPG(object):
         Generate a random action within the action space bounds.
         """
         action = np.random.uniform(-1., 1., self.nb_actions)
-        #self.a_t = to_tensor(action, device=self.device)
-        #assert isinstance(self.a_t, torch.Tensor)
         return action
 
     def select_action(self, s_t, shape, decay_epsilon=True):
@@ -145,13 +143,13 @@ class DDPG(object):
         """
         if decay_epsilon:
             self.epsilon -= self.depsilon
+        
         if random.random() < self.epsilon:
-            action = self.random_action()
-            return action
-        action = to_numpy(self.actor((s_t.unsqueeze(0), shape.unsqueeze(0))), device=self.device).squeeze(0)
-        #action += self.is_training * max(self.epsilon, 0) * self.random_process.sample()
-        #action = np.clip(action, -1., 1.)
-        return action
+            action, embedded_action = self.random_action()
+            return action, embedded_action
+        
+        embedded_action = to_numpy(self.actor((s_t.unsqueeze(0), shape.unsqueeze(0))), device=self.device).squeeze(0)
+        return None, embedded_action
 
     def reset(self, s_t, shape):
         """
