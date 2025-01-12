@@ -6,7 +6,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import numpy as np
 #from action_space import ARCActionSpace
-from enviroment import maximum_overlap_regions, ARC_Env, cross_correlate_best_overlap
+from enviroment import maximum_overlap_regions, ARC_Env
 from dsl.utilities.plot import plot_grid_3d, plot_grid
 import json
 from time import time
@@ -72,7 +72,7 @@ def create_selection_similarity_matrix(action_space, env, num_experiments=10):
     similarity_matrix = np.identity(n)
 
     for _ in range(num_experiments):
-        random_problem = random_array(env)
+        random_problem = random_array(env, arc_prob=0.85)
         random_color_in_problem = int(np.random.choice(np.unique(random_problem)))
         for i in range(n):
             for j in range(i + 1, n):
@@ -95,16 +95,13 @@ def create_transformation_similarity_matrix(action_space, env, num_experiments=1
     selector = Selector()
 
     for _ in range(num_experiments):
-        random_problem = random_array(env)
+        random_problem = random_array(env, arc_prob=0.85)
         # Find a random selection that is not empty
         while True:
             random_color_in_problem = int(np.random.choice(np.unique(random_problem)))
             random_selection_key = np.random.choice(selections)
             random_selection = action_space.selection_dict[random_selection_key](random_problem, color=random_color_in_problem)
-            #random_action = action_space.get_space()[np.random.randint(0, len(action_space.get_space()))]
-            #selection = action_space.selection_dict[random_action[1]](random_problem, color=random_color_in_problem)
             random_action = np.array([1, random_selection_key, 0])
-            selection2 = selector.select_connected_shapes(random_problem, random_color_in_problem)
             if np.any(random_selection):
                 break
 
