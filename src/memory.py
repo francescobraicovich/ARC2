@@ -185,6 +185,7 @@ class SequentialMemory(Memory):
                 state0.insert(0, self.observations[current_idx])
             while len(state0) < self.window_length:
                 state0.insert(0, zeroed_observation(state0[0]))
+            
             action = self.actions[idx - 1]
             shape0 = self.shapes[idx - 1]
             reward = self.rewards[idx - 1]
@@ -227,6 +228,7 @@ class SequentialMemory(Memory):
         shape1_batch = torch.stack(shape1_batch)
         terminal1_batch = torch.tensor(terminal1_batch, dtype=torch.bool).reshape(batch_size,-1).to(DEVICE)
         reward_batch = torch.tensor(reward_batch, dtype=torch.float).reshape(batch_size,-1).to(DEVICE)
+        
         try:
             action_batch_new = torch.stack(action_batch).reshape(batch_size,-1).to(DEVICE)
         except:
