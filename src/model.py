@@ -84,6 +84,7 @@ class Actor(nn.Module):
         self.fc3.weight.data.uniform_(-init_w, init_w)
 
     def forward(self, x):
+
         """
         Forward pass of the Actor network.
 
@@ -180,18 +181,22 @@ class Critic(nn.Module):
             a: (N, B, nb_actions) -> we reshape to (N*B, nb_actions).
         """
         state, shape = x
+        reshape = False
         
+        if len(a.shape) == 3:
+            reshape = True
+            B, N, nb_actions = a.shape
+            a = torch.reshape(a, (B * N, nb_actions))
+
         if self.type == 'lpn':
             latent = self.encoder(state, shape)
 
         elif self.type == 'cnn':
             # Reshape: (N, B, R, C, 2) -> (N, B, 2, R, C) -> (N*B, 2, R, C)
             # If your data is just (B, R, C, 2), adjust accordingly (similar to the Actor).
-            N, B, R, C, CH = state.shape
-            state = state.permute(0, 1, 4, 2, 3)   # => (N, B, 2, R, C)
+            NB, R, C, CH = state.shape
+            state = state.permute(0, 3, 1, 2)   # => (N, B, 2, R, C)
             state = state.contiguous()
-            state = state.reshape(-1, 2, R, C)    # => (N*B, 2, R, C)
-
             
             # Forward through CNN
             x = self.relu(self.conv1(state))
@@ -199,19 +204,20 @@ class Critic(nn.Module):
             x = self.relu(self.conv3(x))
             x = self.pool(x)                # => (N*B, 64, 1, 1)
             x = x.reshape(x.size(0), -1)       # => (N*B, 64)
-            
             latent = self.relu(self.fc1(x)) # => (N*B, hidden1)
 
             # Reshape latent back to (N, B, hidden1)
-            latent = latent.reshape(N, B, -1)
+            #latent = latent.reshape(N, B, -1)
         else:
             # MLP approach
             latent = self.relu(self.fc1(state))
-
+        
         # Combine latent + action
         concatenated = torch.cat([latent, a], dim=-1)  # => (N*B, hidden1 + nb_actions)
         out = self.relu(self.fc2(concatenated))
         out = self.fc3(out)
+        if reshape:
+            out = out.reshape(B, N, -1)
         return out
 
 
