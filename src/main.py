@@ -42,7 +42,7 @@ if __name__ == "__main__":
     # discrete action for 1 dimension
     # TODO: change the nb_states to the shape of the grid
     nb_states = 1805  # 60 x 30 grid ravels to 1800 + 4 for the dimensions of the grid + 1 for cls embedding
-    nb_actions = 3  # the dimension of actions, usually it is 1. Depend on the environment.
+    nb_actions = 20  # the dimension of actions, usually it is 1. Depend on the environment.
     continuous = False
 
     if args.seed > 0:
