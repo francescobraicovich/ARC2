@@ -2,7 +2,7 @@ import numpy as np
 from dsl.utilities.plot import plot_selection
 from dsl.utilities.checks import check_axis, check_num_rotations, check_color, check_integer
 from scipy.ndimage import binary_fill_holes, distance_transform_edt
-from dsl.utilities.transformation_utilities import create_grid3d, find_bounding_rectangle, find_bounding_square, center_of_mass, vectorized_center_of_mass
+from dsl.utilities.transformation_utilities import create_grid3d, find_bounding_rectangle, find_bounding_square, center_of_mass, vectorized_center_of_mass, missing_integer
 from dsl.select import Selector
 from dsl.color_select import ColorSelector
 
@@ -119,9 +119,6 @@ class Transformer:
         bounding_square = find_bounding_square(selection)
         grid_3d = np.where((bounding_square & (bounding_square & (1-selection))) == 1, color, grid_3d)
         return grid_3d
-    
-
-    
 
     # Flipping transformations
     def flipv(self, grid, selection):
@@ -1477,7 +1474,6 @@ class Transformer:
         color_selector = ColorSelector()
         background_color = color_selector.mostcolor(grid) # Get the most common color in the grid
         background_color = int(background_color) # Convert the color to an integer
-        
         grid3d[grid3d == background_color] = new_color # Change the background color to the specified color
 
         if check_color(new_color) == False: # Check if the color is valid
