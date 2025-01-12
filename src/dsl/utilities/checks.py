@@ -1,3 +1,4 @@
+import numpy as np
 # This file contains functions that check the validity of input arguments.
 # Functions:
 # - check_integer(value, minimum, maximum): Check if the value is an integer within the specified range. Returns True if valid, False otherwise.
@@ -10,7 +11,8 @@ def check_integer(value, minimum, maximum):
     """
     Check if the value is an integer within the specified range. Returns True if valid, False otherwise.
     """
-    if isinstance(value, int) == False:
+    if isinstance(value, np.int16) == False and isinstance(value, int) == False and isinstance(value, np.int32) == False and isinstance(value, np.int64) == False:
+        raise Warning(f"Invalid color {value} of type {type(value)}")
         return False
     if value < minimum or value > maximum:
         return False
