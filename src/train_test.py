@@ -18,9 +18,9 @@ def train(continuous, env, agent, max_episode, warmup, save_model_dir, max_episo
             # agent pick action ...
             # args.warmup: time without training but only filling the memory
             if step <= warmup:
-                action = agent.random_action()
+                action, embedded_action = agent.random_action()
             else:
-                action = agent.select_action(s_t, shape)
+                action, embedded_action = agent.select_action(s_t, shape)
             actions[episode_steps] = action
 
             # env response with next_observation, reward, terminate_info
@@ -48,15 +48,18 @@ def train(continuous, env, agent, max_episode, warmup, save_model_dir, max_episo
 
             if done:  # end of an episode
                 average_action = np.mean(actions[:episode_steps], axis=0)
+                average_action = np.round(average_action, 3)
                 action_std = np.std(actions[:episode_steps], axis=0)
+                action_std = np.round(action_std, 3)
+                episode_reward = round(episode_reward, 2)
                 logger.info(
-                    "Ep:{0} | R:{1:.2f} | Steps: {2} | Rs>0: {3} | eps: {4:.4f} | mean: {5} | std: {6}".format(episode, episode_reward, episode_steps, episode_positive_rewards, agent.epsilon, average_action, action_std)
+                    "Ep:{0} | R:{1:.2f} | Steps: {2} | Rs>0: {3} | eps: {4:.3f} | mean: {5} | std: {6}".format(episode, episode_reward, episode_steps, episode_positive_rewards, agent.epsilon, average_action, action_std)
                 )
 
                 agent.memory.append(
                     s_t,
                     shape,
-                    agent.select_action(s_t, shape),
+                    agent.select_action(s_t, shape)[1], # embedded action only
                     0., True
                 )
 
