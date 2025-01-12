@@ -47,7 +47,9 @@ class DDPG(object):
             'hidden1': args.hidden1,
             'hidden2': args.hidden2,
             'init_w': args.init_w,
-            'type': args.actor_critic_type
+            'type': args.actor_critic_type,
+            'latent_dim': args.latent_dim,
+            'chunk_size': args.chunk_size
         }
 
         # Initialize Actor and Critic networks (both primary and target)
