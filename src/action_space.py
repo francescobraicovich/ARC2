@@ -14,6 +14,8 @@ class ARCActionSpace(Space):
         dtype = np.float32
         shape = (3,)
         super().__init__(shape, dtype)
+        print('-'*50)
+        print('Creating the action space')
         
         # Define the classes that will be used to create the action space
         self.color_selector = ColorSelector()
@@ -31,7 +33,6 @@ class ARCActionSpace(Space):
         # Define the weights for the old keys when uniformising the density of the keys
         # Uniformising the density is important for Wolpertinger to learn the action space better
         self.OLD_KEYS_WIGHT = 1.5
-
         self.color_selection_dict = None
         self.create_color_selection_dict()
 
@@ -45,18 +46,19 @@ class ARCActionSpace(Space):
         self.create_action_space()
 
         if load:
-            embedding = np.load('src/embedded_space/embedded_actions.npy')
+            self.embedding = np.load('src/embedded_space/embedded_actions.npy')
         else:
-            embedding = self.embed_actions()
-        
+            self.embedding = self.embed_actions()
 
         self.nearest_neighbors = None
         self.create_nearest_neighbors()
+        print('k-NN model created')
+        print('-'*50)
     
     def embed_actions(self):
 
         # Create an approximate similarity matrix
-        similarity_matrix = create_approximate_similarity_matrix(self, num_experiments=500)
+        similarity_matrix = create_approximate_similarity_matrix(self, num_experiments=100)
         distance_matrix = 1 - similarity_matrix
 
         # Embed the actions using MDS
@@ -97,10 +99,11 @@ class ARCActionSpace(Space):
         
         distances, indices = self.nearest_neighbors.kneighbors(query_actions, n_neighbors=k)
         actions = np.array([self.space[indices[i]] for i in range(len(indices))])
+        embedded_actions = np.array([self.embedding[indices[i]] for i in range(len(indices))])
         if query_actions.shape[0] == 1:
             actions = actions[0]
-        return distances, indices, actions
-
+            embedded_actions = embedded_actions[0]
+        return distances, indices, actions, embedded_actions
     def __call__(self):
         return self.space
     
