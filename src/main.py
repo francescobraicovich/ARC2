@@ -9,6 +9,7 @@ from setproctitle import setproctitle as ptitle
 from enviroment import ARC_Env
 import gymnasium as gym
 from action_space import ARCActionSpace
+from cnn import CNNFeatureExtractor
 import torch
 
 if __name__ == "__main__":
