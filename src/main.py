@@ -48,13 +48,12 @@ if __name__ == "__main__":
     if args.seed > 0:
         np.random.seed(args.seed)
         env.seed(args.seed)
-
   
     agent_args = {
         'nb_states': nb_states,
         'nb_actions': nb_actions,
         'args': args,
-        'k': args.k_neighbors,
+        'k': args.k_neighbors
     }
 
     agent = WolpertingerAgent(**agent_args)
