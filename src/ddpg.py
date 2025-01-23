@@ -81,7 +81,7 @@ class DDPG(object):
 
         # Exploration rate decay and initial exploration rate
         self.depsilon = 1.0 / args.epsilon
-        self.epsilon = 1.0
+        self.epsilon = args.epsilon_start
 
         # Placeholder for the current state and action
         self.s_t = None
