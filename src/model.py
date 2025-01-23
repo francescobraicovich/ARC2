@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from utils.util import to_tensor
+from cnn import CNNFeatureExtractor
 
 # Determine the device: CUDA -> MPS -> CPU
 if torch.cuda.is_available():
