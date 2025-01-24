@@ -42,26 +42,31 @@ def to_tensor(ndarray, requires_grad=False, device=None):
     return tensor
 
 def soft_update(target, source, tau_update):
-    for target_param, param in zip(target.parameters(), source.parameters()):
-        target_param.data.copy_(
-            target_param.data * (1.0 - tau_update) + param.data * tau_update
-        )
+    """
+    Performs a soft update of the target network parameters.
+    
+    target = (1 - tau) * target + tau * source
+    
+    Args:
+        target (torch.nn.Module): Target network.
+        source (torch.nn.Module): Source network (usually the latest model).
+        tau_update (float): Interpolation parameter (0 < tau < 1).
+    """
+    with torch.no_grad():  # Disable gradient tracking for efficiency
+        for target_param, param in zip(target.parameters(), source.parameters()):
+            target_param.data.lerp_(param.data, tau_update)  # Efficient in-place interpolation
 
-def hard_update(source_network, target_network):
-    for target_param, source_param in zip(target_network.parameters(), source_network.parameters()):
-        np_data = source_param.detach().cpu().numpy()  # Convert to NumPy
-        # NOTE:
-        # Converting the source tensor to a NumPy array before copying works because:
-        # 1. It ensures that the data is copied to a completely independent memory buffer,
-        #    avoiding any shared memory issues that might arise in PyTorch.
-        # 2. The NumPy conversion forces synchronization of operations, especially on GPUs,
-        #    resolving potential conflicts from PyTorch's asynchronous execution model.
-        # 3. It bypasses PyTorch's autograd mechanism and tensor metadata handling, which 
-        #    could cause segmentation faults if there are hidden issues with gradient tracking 
-        #    or tensor metadata inconsistencies.
-        # While effective, this approach involves additional overhead due to data transfer and 
-        # should only be used when other methods (e.g., .clone(), .detach()) fail to work.
-        target_param.data = torch.from_numpy(np_data).to(target_param.device)  # Convert back
+def hard_update(target, source):
+    """
+    Copies all parameters from source network to target network (hard update).
+    
+    Args:
+        target (torch.nn.Module): Target network to be updated.
+        source (torch.nn.Module): Source network to copy parameters from.
+    """
+    with torch.no_grad():  # Disable gradient tracking for efficiency
+        for target_param, source_param in zip(target.parameters(), source.parameters()):
+            target_param.data.copy_(source_param.data)  # Direct copy without unnecessary NumPy conversion
 
 
 def get_output_folder(parent_dir, env_name):
