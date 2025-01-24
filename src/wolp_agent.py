@@ -139,11 +139,21 @@ class WolpertingerAgent(DDPG):
         self.actor.zero_grad()
         proto_action_batch = self.actor((state_batch, shape_batch))
         proto_action_batch_unsqueezed = proto_action_batch.unsqueeze(0)
-        policy_loss = - self.critic(state, proto_action_batch_unsqueezed)
-        policy_loss = policy_loss.mean()
-        policy_loss.backward()
-        self.actor_optim.step()
+        policy_loss = -self.critic(state, proto_action_batch_unsqueezed)
 
+        policy_loss = policy_loss.mean()
+        print('Policy loss after mean: {}'.format(policy_loss))
+        policy_loss.backward()
+
+        # Check gradients
+        for name, param in self.actor.named_parameters():
+            if param.grad is not None:
+                print(f"Gradients for {name}: {param.grad.norm().item()}")  # Print gradient norm
+            else:
+                print(f"Gradients for {name}: None")
+
+        self.actor_optim.step()
+        
         # Target update
         soft_update(self.actor_target, self.actor, self.tau_update)
         soft_update(self.critic_target, self.critic, self.tau_update)
