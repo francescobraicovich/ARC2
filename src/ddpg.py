@@ -62,8 +62,8 @@ class DDPG(object):
         self.critic_optim = Adam(self.critic.parameters(), lr=args.c_lr, weight_decay=args.weight_decay)
 
         # Synchronize target networks with the primary networks
-        hard_update(self.actor, self.actor_target)
-        hard_update(self.critic, self.critic_target)
+        hard_update(self.actor_target, self.actor)
+        hard_update(self.critic_target, self.critic)
 
         # Initialize replay buffer for experience replay
         self.memory = SequentialMemory(limit=args.rmsize, window_length=args.window_length)
