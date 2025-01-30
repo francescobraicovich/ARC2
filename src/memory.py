@@ -1,265 +1,246 @@
 from __future__ import absolute_import
-from collections import deque, namedtuple
 import warnings
 import random
+from collections import deque, namedtuple
 import numpy as np
 import torch
-from utils.util import to_tensor
 
-# Determine the device: CUDA -> MPS -> CPU
+# If you have a custom 'to_tensor' function, you can import it. 
+# (Code below does not strictly require it.)
+# from utils.util import to_tensor
+
+# ---------------------------------------------------------------
+# Device selection: CUDA -> MPS -> CPU
+# ---------------------------------------------------------------
 if torch.cuda.is_available():
     DEVICE = torch.device("cuda")
 elif torch.backends.mps.is_available():
     DEVICE = torch.device("mps")
 else:
     DEVICE = torch.device("cpu")
-print("Using device: {} for memory".format(DEVICE))
+print("Using device:", DEVICE)
 
+# ---------------------------------------------------------------
+# Experience namedtuple
+# ---------------------------------------------------------------
+Experience = namedtuple("Experience", ["state0", "action", "reward",
+                                      "state1", "terminal1",
+                                      "shape0", "shape1"])
 
-# [reference] https://github.com/matthiasplappert/keras-rl/blob/master/rl/memory.py
-
-Experience = namedtuple('Experience', 'state0, action, reward, state1, terminal1, shape0, shape1')
-
-
+# ---------------------------------------------------------------
+# Helper for sampling batch indexes
+# ---------------------------------------------------------------
 def sample_batch_indexes(low, high, size):
+    """
+    Draw `size` unique samples from [low, high) if possible.
+    Otherwise, allow duplicates (with a warning).
+    """
     if high - low >= size:
-        # We have enough data. Draw without replacement, that is each index is unique in the
-        # batch. We cannot use np.random.choice here because it is horribly inefficient as
-        # the memory grows. See https://github.com/numpy/numpy/issues/2764 for a discussion.
-        # random.sample does the same thing (drawing without replacement) and is way faster.
+        # Enough data to sample without replacement
         try:
-            r = xrange(low, high)
+            r = xrange(low, high)  # Python 2 fallback
         except NameError:
-            r = range(low, high)
+            r = range(low, high)   # Python 3
         batch_idxs = random.sample(r, size)
     else:
-        # Not enough data. Help ourselves with sampling from the range, but the same index
-        # can occur multiple times. This is not good and should be avoided by picking a
-        # large enough warm-up phase.
-        warnings.warn('Not enough entries to sample without replacement. Consider increasing your warm-up phase to avoid oversampling!')
-        # batch_idxs = np.random.random_integers(low, high - 1, size=size)
+        # Not enough data, sample with replacement
+        warnings.warn("Not enough entries to sample without replacement. "
+                      "Consider increasing your warm-up phase to avoid oversampling!")
         batch_idxs = np.random.randint(low, high, size=size)
     assert len(batch_idxs) == size
     return batch_idxs
 
+# ---------------------------------------------------------------
+# Ring buffer for fast appends and random access
+# ---------------------------------------------------------------
 class RingBuffer(object):
     def __init__(self, maxlen):
         self.maxlen = maxlen
         self.start = 0
         self.length = 0
-        self.data = [None for _ in range(maxlen)]
+        self.data = [None] * maxlen
 
     def __len__(self):
         return self.length
 
     def __getitem__(self, idx):
         if idx < 0 or idx >= self.length:
-            raise KeyError()
+            raise KeyError("Index out of valid range in RingBuffer.")
         return self.data[(self.start + idx) % self.maxlen]
 
     def append(self, v):
-        #assert isinstance(v, np.ndarray) or isinstance(v, float) or isinstance(v, bool), "v_type:{}".format(type(v))
         if self.length < self.maxlen:
-            # We have space, simply increase the length.
             self.length += 1
         elif self.length == self.maxlen:
-            # No space, "remove" the first item.
+            # Overwrite the oldest entry
             self.start = (self.start + 1) % self.maxlen
         else:
-            # This should never happen.
-            raise RuntimeError()
+            # Should never happen
+            raise RuntimeError("RingBuffer in invalid state.")
         self.data[(self.start + self.length - 1) % self.maxlen] = v
 
-
+# ---------------------------------------------------------------
+# Zeroed observation helper (used only if you wanted >1 window)
+# ---------------------------------------------------------------
 def zeroed_observation(observation):
+    """
+    Returns a zero array of the same shape/type as `observation`.
+    If window_length=1, you won't really need this.
+    """
     if hasattr(observation, 'shape'):
-        return np.zeros(observation.shape)
+        return np.zeros(observation.shape, dtype=observation.dtype)
     elif hasattr(observation, '__iter__'):
-        out = []
-        for x in observation:
-            out.append(zeroed_observation(x))
-        return out
+        # If observation is a nested structure
+        return [zeroed_observation(x) for x in observation]
     else:
         return 0.
 
-
-# Determine the device: CUDA -> MPS -> CPU
-if torch.cuda.is_available():
-    DEVICE = torch.device("cuda")
-elif torch.backends.mps.is_available():
-    DEVICE = torch.device("mps")
-else:
-    DEVICE = torch.device("cpu")
-print("Using device: {} for memory".format(DEVICE))
+# ---------------------------------------------------------------
+# Base Memory class (kept minimal)
+# ---------------------------------------------------------------
 class Memory(object):
-    def __init__(self, window_length, ignore_episode_boundaries=False):
-        self.window_length = window_length
+    def __init__(self, ignore_episode_boundaries=False):
         self.ignore_episode_boundaries = ignore_episode_boundaries
-
-        self.recent_observations = deque(maxlen=window_length)
-        self.recent_shapes = deque(maxlen=window_length)
-        self.recent_terminals = deque(maxlen=window_length)
 
     def sample(self, batch_size, batch_idxs=None):
         raise NotImplementedError()
 
     def append(self, observation, shape, action, reward, terminal, training=True):
-        self.recent_observations.append(observation)
-        self.recent_shapes.append(shape)
-        print('Appending terminal: ', terminal)
-        self.recent_terminals.append(terminal)
-        print('Recent terminals: ', self.recent_terminals)
-
-    def get_recent_state(self, current_observation):
-        # This code is slightly complicated by the fact that subsequent observations might be
-        # from different episodes. We ensure that an experience never spans multiple episodes.
-        # This is probably not that important in practice but it seems cleaner.
-        state = [current_observation]
-        idx = len(self.recent_observations) - 1
-        for offset in range(0, self.window_length - 1):
-            current_idx = idx - offset
-            current_terminal = self.recent_terminals[current_idx - 1] if current_idx - 1 >= 0 else False
-            if current_idx < 0 or (not self.ignore_episode_boundaries and current_terminal):
-                # The previously handled observation was terminal, don't add the current one.
-                # Otherwise we would leak into a different episode.
-                break
-            state.insert(0, self.recent_observations[current_idx])
-        while len(state) < self.window_length:
-            state.insert(0, zeroed_observation(state[0]))
-        return state
+        raise NotImplementedError()
 
     def get_config(self):
-        config = {
-            'window_length': self.window_length,
-            'ignore_episode_boundaries': self.ignore_episode_boundaries,
-        }
-        return config
+        return {'ignore_episode_boundaries': self.ignore_episode_boundaries}
 
+# ---------------------------------------------------------------
+# SequentialMemory
+#   - stores transitions and samples them
+#   - we set window_length=1 for simplicity
+# ---------------------------------------------------------------
 class SequentialMemory(Memory):
-    def __init__(self, limit, **kwargs):
-        super(SequentialMemory, self).__init__(**kwargs)
+    def __init__(self, limit, ignore_episode_boundaries=False):
+        super(SequentialMemory, self).__init__(ignore_episode_boundaries=ignore_episode_boundaries)
         
         self.limit = limit
-
-        # Do not use deque to implement the memory. This data structure may seem convenient but
-        # it is way too slow on random access. Instead, we use our own ring buffer implementation.
-        self.actions = RingBuffer(limit)
-        self.rewards = RingBuffer(limit)
-        self.terminals = RingBuffer(limit)
+        # RingBuffers for each part of the transition
         self.observations = RingBuffer(limit)
-        self.shapes = RingBuffer(limit)
+        self.shapes       = RingBuffer(limit)
+        self.actions      = RingBuffer(limit)
+        self.rewards      = RingBuffer(limit)
+        self.terminals    = RingBuffer(limit)
 
-    def sample(self, batch_size, batch_idxs=None):
-        if batch_idxs is None:
-            # Draw random indexes such that we have at least a single entry before each
-            # index.
-            assert self.nb_entries >= 2
-            batch_idxs = sample_batch_indexes(0, self.nb_entries - 1, size=batch_size)
-        batch_idxs = np.array(batch_idxs) + 1
-        assert np.min(batch_idxs) >= 1
-        assert np.max(batch_idxs) < self.nb_entries
-        assert len(batch_idxs) == batch_size
-
-        # Create experiences
-        experiences = []
-        for idx in batch_idxs:
-            terminal0 = self.terminals[idx - 2] if idx >= 2 else False
-            while terminal0:
-                # Skip this transition because the environment was reset here. Select a new, random
-                # transition and use this instead. This may cause the batch to contain the same
-                # transition twice.
-                idx = sample_batch_indexes(1, self.nb_entries, size=1)[0]
-                terminal0 = self.terminals[idx - 2] if idx >= 2 else False
-            assert 1 <= idx < self.nb_entries
-
-            # This code is slightly complicated by the fact that subsequent observations might be
-            # from different episodes. We ensure that an experience never spans multiple episodes.
-            # This is probably not that important in practice but it seems cleaner.
-            state0 = self.observations[idx - 1]
-            
-            for offset in range(0, self.window_length - 1):
-                current_idx = idx - 2 - offset
-                current_terminal = self.terminals[current_idx - 1] if current_idx - 1 > 0 else False
-                if current_idx < 0 or (not self.ignore_episode_boundaries and current_terminal):
-                    # The previously handled observation was terminal, don't add the current one.
-                    # Otherwise we would leak into a different episode.
-                    break
-                state0.insert(0, self.observations[current_idx])
-            while len(state0) < self.window_length:
-                state0.insert(0, zeroed_observation(state0[0]))
-            
-            action = self.actions[idx - 1]
-            shape0 = self.shapes[idx - 1]
-            reward = self.rewards[idx - 1]
-            terminal1 = self.terminals[idx - 1]
-            
-            # Okay, now we need to create the follow-up state. This is state0 shifted on timestep
-            # to the right. Again, we need to be careful to not include an observation from the next
-            # episode if the last state is terminal.
-            state1 = self.observations[idx]
-            shape1 = self.shapes[idx]
-            
-            experiences.append(Experience(state0=state0, action=action, reward=reward,
-                                          state1=state1, terminal1=terminal1, shape0=shape0, shape1=shape1))
-        assert len(experiences) == batch_size
-        return experiences
-
-    def sample_and_split(self, batch_size, batch_idxs=None):
-        experiences = self.sample(batch_size, batch_idxs)
-
-        state0_batch = []
-        shape_batch = []
-        reward_batch = []
-        action_batch = []
-        terminal1_batch = []
-        state1_batch = []
-        shape1_batch = []
-        for e in experiences:
-            state0_batch.append(e.state0)
-            shape_batch.append(e.shape0)
-            state1_batch.append(e.state1)
-            shape1_batch.append(e.shape1)
-            reward_batch.append(e.reward)
-            action_batch.append(e.action)
-            terminal1_batch.append(0. if e.terminal1 else 1.)
-       
-        #state0_batch = torch.stack(state0_batch)
-        state0_batch = torch.stack(state0_batch).squeeze(1)
-        shape0_batch = torch.stack(shape_batch)
-        state1_batch = torch.stack(state1_batch).squeeze(1)
-        shape1_batch = torch.stack(shape1_batch)
-        terminal1_batch = torch.tensor(terminal1_batch, dtype=torch.bool).reshape(batch_size,-1).to(DEVICE)
-        reward_batch = torch.tensor(reward_batch, dtype=torch.float).reshape(batch_size,-1).to(DEVICE)
-        
-        try:
-            action_batch_new = torch.stack(action_batch).reshape(batch_size,-1).to(DEVICE)
-        except:
-            print('len of action_batch: ', len(action_batch))
-            print('type of action_batch:', type(action_batch))
-            print('type of elements in action_batch: ', [type(x) for x in action_batch])
-            for i in range(len(action_batch)):
-                print('action_batch[{0}]: {1}'.format(i), action_batch[i])
-
-        return state0_batch, shape0_batch, action_batch_new, reward_batch, state1_batch, shape1_batch, terminal1_batch
-
+    @property
+    def nb_entries(self):
+        return len(self.observations)
 
     def append(self, observation, shape, action, reward, terminal, training=True):
-        super(SequentialMemory, self).append(observation, shape, action, reward, terminal, training=training)
-        
-        # This needs to be understood as follows: in observation, take action, obtain reward
-        # and weather the next state is terminal or not.
+        """
+        Add a new transition to memory:
+          observation -> (take action) -> reward, terminal
+        The *next* state is the subsequent observation in the ring buffer.
+        """
         if training:
             self.observations.append(observation)
             self.shapes.append(shape)
             self.actions.append(action)
             self.rewards.append(reward)
-            print('Appending terminal to memory: ', terminal)
             self.terminals.append(terminal)
-            print('Length of terminals: ', len(self.terminals))
 
-    @property
-    def nb_entries(self):
-        return len(self.observations)
+    def sample(self, batch_size, batch_idxs=None):
+        """
+        Sample a batch of transitions from memory, skipping transitions
+        that cross episode boundaries if ignore_episode_boundaries=False.
+        
+        Because window_length=1, we define:
+            state0 = observations[idx - 1]
+            state1 = observations[idx]
+        """
+        if self.nb_entries < 2:
+            raise ValueError("Not enough entries in memory to sample a batch. "
+                             f"Need >=2, have {self.nb_entries}.")
+
+        # If user hasn't passed in specific indices, sample them
+        if batch_idxs is None:
+            # We want to sample from [0..nb_entries-2], because we'll do +1
+            # below. So let's sample from [0..nb_entries - 2].
+            high_value = self.nb_entries - 1
+            batch_idxs = sample_batch_indexes(0, high_value, batch_size)
+
+        # We will actually use idx+1 for next state, so do that shift
+        batch_idxs = np.array(batch_idxs) + 1
+
+        experiences = []
+        for idx in batch_idxs:
+            # If ignoring episode boundaries, skip transitions where the
+            # previous step was terminal (that would cross the boundary).
+            terminal0 = self.terminals[idx - 2] if (idx >= 2) else False
+
+            while (terminal0 and not self.ignore_episode_boundaries):
+                # Resample a new index
+                idx = sample_batch_indexes(1, self.nb_entries, 1)[0]
+                terminal0 = self.terminals[idx - 2] if (idx >= 2) else False
+
+            # Now gather transition info
+            state0   = self.observations[idx - 1]
+            shape0   = self.shapes[idx - 1]
+            action   = self.actions[idx - 1]
+            reward   = self.rewards[idx - 1]
+            terminal1 = self.terminals[idx - 1]
+
+            state1   = self.observations[idx]
+            shape1   = self.shapes[idx]
+
+            exp = Experience(state0=state0, action=action, reward=reward,
+                             state1=state1, terminal1=terminal1,
+                             shape0=shape0, shape1=shape1)
+            experiences.append(exp)
+
+        return experiences
+
+    def sample_and_split(self, batch_size, batch_idxs=None):
+        """
+        Sample from memory and return separate tensors (state0, shape0, action, etc.).
+        """
+        experiences = self.sample(batch_size, batch_idxs)
+
+        state0_batch   = []
+        shape0_batch   = []
+        action_batch   = []
+        reward_batch   = []
+        state1_batch   = []
+        shape1_batch   = []
+        terminal1_batch = []
+
+        for exp in experiences:
+            state0_batch.append(exp.state0)
+            shape0_batch.append(exp.shape0)
+            action_batch.append(exp.action)
+            reward_batch.append(exp.reward)
+            state1_batch.append(exp.state1)
+            shape1_batch.append(exp.shape1)
+            # Convert terminal to 0/1 or bool as you prefer
+            terminal1_batch.append(exp.terminal1)
+
+        # Convert to tensors. Adjust dtypes as needed.
+        # If your states are already torch.Tensors, you can do torch.stack(...).
+        # If they're arrays or lists, do torch.tensor(...).
+        
+        # Example, we assume each state0/state1 is a Tensor of shape (C,H,W) or (D,) etc.
+        state0_batch = torch.stack(state0_batch).to(DEVICE)
+        shape0_batch = torch.stack(shape0_batch).to(DEVICE)  # if shape0 is also a Tensor
+        state1_batch = torch.stack(state1_batch).to(DEVICE)
+        shape1_batch = torch.stack(shape1_batch).to(DEVICE)
+
+        # For reward, action, terminal, we typically convert from Python scalars
+        reward_batch = torch.tensor(reward_batch, dtype=torch.float, device=DEVICE)
+        # Choose int or float for action, depends on your environment
+        action_batch = torch.tensor(action_batch, dtype=torch.long, device=DEVICE)
+        # Terminal can be bool or float. Here we make it bool:
+        terminal1_batch = torch.tensor(terminal1_batch, dtype=torch.bool, device=DEVICE)
+
+        return (state0_batch, shape0_batch,
+                action_batch, reward_batch,
+                state1_batch, shape1_batch,
+                terminal1_batch)
 
     def get_config(self):
         config = super(SequentialMemory, self).get_config()
