@@ -106,7 +106,9 @@ class Memory(object):
     def append(self, observation, shape, action, reward, terminal, training=True):
         self.recent_observations.append(observation)
         self.recent_shapes.append(shape)
+        print('Appending terminal: ', terminal)
         self.recent_terminals.append(terminal)
+        print('Recent terminals: ', self.recent_terminals)
 
     def get_recent_state(self, current_observation):
         # This code is slightly complicated by the fact that subsequent observations might be
@@ -251,7 +253,9 @@ class SequentialMemory(Memory):
             self.shapes.append(shape)
             self.actions.append(action)
             self.rewards.append(reward)
+            print('Appending terminal to memory: ', terminal)
             self.terminals.append(terminal)
+            print('Length of terminals: ', len(self.terminals))
 
     @property
     def nb_entries(self):
