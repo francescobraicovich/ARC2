@@ -6,6 +6,7 @@ from dsl.color_select import ColorSelector
 from dsl.select import Selector
 from dsl.transform import Transformer
 from sklearn.neighbors import NearestNeighbors
+from sklearn.preprocessing import MinMaxScaler
 from utils.action_space_embedding import create_approximate_similarity_matrix, mds_embed
 #import faiss
 
@@ -47,6 +48,7 @@ class ARCActionSpace(Space):
 
         if load:
             self.embedding = np.load('src/embedded_space/embedded_actions.npy')
+            self.embedding = MinMaxScaler().fit_transform(self.embedding)
         else:
             self.embedding = self.embed_actions()
 
@@ -92,7 +94,7 @@ class ARCActionSpace(Space):
         """
         if self.nearest_neighbors is None:
             raise ValueError("NearestNeighbors model is not initialized. Call create_nearest_neighbors() first.")
-        
+
         query_actions = np.array(query_actions, dtype=np.float32)
         if query_actions.ndim == 1:
             query_actions = query_actions.reshape(1, -1)  # Handle single query action as a special case
@@ -104,6 +106,7 @@ class ARCActionSpace(Space):
             actions = actions[0]
             embedded_actions = embedded_actions[0]
         return distances, indices, actions, embedded_actions
+    
     def __call__(self):
         return self.space
     
