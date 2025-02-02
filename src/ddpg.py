@@ -1,11 +1,12 @@
 import torch
 import torch.nn as nn
-from torch.optim import Adam
+from torch.optim import Adam, RMSprop
 from model import (Actor, Critic)
 from memory import SequentialMemory
 from random_process import OrnsteinUhlenbeckProcess
 from utils.util import *
 import random
+from utils.util import set_device
 
 # Loss function for the Critic network
 criterion = nn.MSELoss()
@@ -26,12 +27,7 @@ class DDPG(object):
         """
 
         # Determine the appropriate device
-        if torch.cuda.is_available():
-            self.device = torch.device("cuda")
-        elif torch.backends.mps.is_available():
-            self.device = torch.device("mps")
-        else:
-            self.device = torch.device("cpu")
+        self.device = set_device()
         print("Using device: {} for ddpg".format(self.device))
 
 
@@ -66,7 +62,7 @@ class DDPG(object):
         hard_update(self.critic_target, self.critic)
 
         # Initialize replay buffer for experience replay
-        self.memory = SequentialMemory(limit=args.rmsize, window_length=args.window_length)
+        self.memory = SequentialMemory(limit=args.rmsize)
 
         # Initialize Ornstein-Uhlenbeck process for action exploration noise
         self.random_process = OrnsteinUhlenbeckProcess(
@@ -149,7 +145,6 @@ class DDPG(object):
         if random.random() < self.epsilon:
             action, embedded_action = self.random_action()
             return action, embedded_action
-        
         embedded_action = to_numpy(self.actor((s_t.unsqueeze(0), shape.unsqueeze(0))), device=self.device).squeeze(0)
         return None, embedded_action
 
