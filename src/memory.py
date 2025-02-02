@@ -4,6 +4,7 @@ import random
 from collections import deque, namedtuple
 import numpy as np
 import torch
+from utils.util import set_device
 
 # If you have a custom 'to_tensor' function, you can import it. 
 # (Code below does not strictly require it.)
@@ -12,12 +13,7 @@ import torch
 # ---------------------------------------------------------------
 # Device selection: CUDA -> MPS -> CPU
 # ---------------------------------------------------------------
-if torch.cuda.is_available():
-    DEVICE = torch.device("cuda")
-elif torch.backends.mps.is_available():
-    DEVICE = torch.device("mps")
-else:
-    DEVICE = torch.device("cpu")
+DEVICE = set_device()
 print("Using device:", DEVICE)
 
 # ---------------------------------------------------------------
@@ -37,10 +33,7 @@ def sample_batch_indexes(low, high, size):
     """
     if high - low >= size:
         # Enough data to sample without replacement
-        try:
-            r = xrange(low, high)  # Python 2 fallback
-        except NameError:
-            r = range(low, high)   # Python 3
+        r = range(low, high)
         batch_idxs = random.sample(r, size)
     else:
         # Not enough data, sample with replacement
@@ -229,13 +222,13 @@ class SequentialMemory(Memory):
         shape0_batch = torch.stack(shape0_batch).to(DEVICE)  # if shape0 is also a Tensor
         state1_batch = torch.stack(state1_batch).to(DEVICE)
         shape1_batch = torch.stack(shape1_batch).to(DEVICE)
+        action_batch = torch.stack(action_batch).to(DEVICE)
 
         # For reward, action, terminal, we typically convert from Python scalars
         reward_batch = torch.tensor(reward_batch, dtype=torch.float, device=DEVICE)
-        # Choose int or float for action, depends on your environment
-        action_batch = torch.tensor(action_batch, dtype=torch.long, device=DEVICE)
         # Terminal can be bool or float. Here we make it bool:
         terminal1_batch = torch.tensor(terminal1_batch, dtype=torch.bool, device=DEVICE)
+
 
         return (state0_batch, shape0_batch,
                 action_batch, reward_batch,
