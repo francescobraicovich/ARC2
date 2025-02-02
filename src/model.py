@@ -2,17 +2,11 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from utils.util import to_tensor
+from utils.util import set_device
 from cnn import CNNFeatureExtractor
 
 # Determine the device: CUDA -> MPS -> CPU
-if torch.cuda.is_available():
-    DEVICE = torch.device("cuda")
-elif torch.backends.mps.is_available():
-    DEVICE = torch.device("mps")
-else:
-    DEVICE = torch.device("cpu")
-print("Using device: {} for actor-critic model".format(DEVICE))
+DEVICE = set_device()
 
 from utils.util_transformer import EncoderTransformerConfig, TransformerLayerConfig
 from transformer import EncoderTransformer
@@ -56,6 +50,14 @@ def config_encoder(latent_dim=32):
     # Initialize the encoder
     encoder = EncoderTransformer(cfg)
     return encoder
+
+class ScaledSigmoid(nn.Module):
+    def __init__(self):
+        super(ScaledSigmoid, self).__init__()
+    
+    def forward(self, x):
+        return 2 * torch.sigmoid(x) - 1
+
 
 def process_in_chunks(encoder, state, shape, chunk_size):
     """
@@ -119,8 +121,10 @@ class Actor(nn.Module):
         # Shared layers (for MLP or after CNN feature extraction)
         self.fc2 = nn.Linear(hidden1, hidden2).to(DEVICE)
         self.fc3 = nn.Linear(hidden2, nb_actions).to(DEVICE)
-        self.relu = nn.ReLU()
-        self.tanh = nn.Tanh()  # For bounded action space
+        self.bn2 = nn.BatchNorm1d(hidden2).to(DEVICE)
+
+        self.relu = nn.LeakyReLU()
+        self.softsign = nn.Softsign()
         
         self.init_weights(init_w)
         self.to(DEVICE)  # Move the network to the selected device
@@ -173,8 +177,11 @@ class Actor(nn.Module):
             latent = self.relu(self.fc1(state))
 
         # Shared part of the network
-        out = self.relu(self.fc2(latent))
-        out = self.tanh(self.fc3(out))  # Use Tanh for bounded outputs
+        out = self.fc2(latent)
+        out = self.bn2(out)  # Batch Normalization here
+        out = self.relu(out)
+        out = self.fc3(out)
+        out = self.softsign(out)
         return out
 
 # Critic Network
@@ -206,7 +213,9 @@ class Critic(nn.Module):
         # In the second layer, we combine state-latent + action
         self.fc2 = nn.Linear(hidden1 + nb_actions, hidden2).to(DEVICE)
         self.fc3 = nn.Linear(hidden2, 1).to(DEVICE)
-        self.relu = nn.ReLU().to(DEVICE)
+        self.relu = nn.LeakyReLU()
+        self.bn2 = nn.BatchNorm1d(hidden2).to(DEVICE)  # BatchNorm after fc2
+
 
         self.init_weights(init_w)
         self.to(DEVICE)  # Move the network to the selected device
@@ -237,19 +246,10 @@ class Critic(nn.Module):
                 nn.init.zeros_(self.fc3.bias)
     
     def forward(self, x, a):
-        """
-        Forward pass of the Critic network.
-        Args:
-            x: State input as (state, shape).
-            a: Action input.
 
-        Shapes of arguments for the CNN case:
-            state: (N, B, R, C, 2) -> we eventually reshape to (N*B, 2, R, C).
-            a: (N, B, nb_actions) -> we reshape to (N*B, nb_actions).
-        """
         state, shape = x
         reshape = False
-        
+
         if len(a.shape) == 3:
             reshape = True
             B, N, nb_actions = a.shape
@@ -267,9 +267,14 @@ class Critic(nn.Module):
         
         # Combine latent + action
         concatenated = torch.cat([latent, a], dim=-1)  # => (N*B, hidden1 + nb_actions)
-        out = self.relu(self.fc2(concatenated))
+        out = self.fc2(concatenated)
+        out = self.bn2(out)
+        out = self.relu(out)
         out = self.fc3(out)
         if reshape:
             out = out.reshape(B, N, -1)
+        out = torch.squeeze(out)
         return out
+
+
 
