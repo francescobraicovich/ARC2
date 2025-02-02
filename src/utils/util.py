@@ -41,7 +41,7 @@ def to_tensor(ndarray, requires_grad=False, device=None):
     tensor.requires_grad = requires_grad
     return tensor
 
-def soft_update(target, source, tau_update):
+def soft_update(target, source, tau_update: float):
     """
     Performs a soft update of the target network parameters.
     
@@ -53,8 +53,8 @@ def soft_update(target, source, tau_update):
         tau_update (float): Interpolation parameter (0 < tau < 1).
     """
     with torch.no_grad():  # Disable gradient tracking for efficiency
-        for target_param, param in zip(target.parameters(), source.parameters()):
-            target_param.data.lerp_(param.data, tau_update)  # Efficient in-place interpolation
+        for target_param, source_param in zip(target.parameters(), source.parameters()):
+            target_param.copy_(target_param * (1.0 - tau_update) + source_param * tau_update)
 
 def hard_update(target, source):
     """
@@ -118,3 +118,12 @@ def setup_logger(logger_name, log_file, level=logging.INFO):
     l.setLevel(level)
     l.addHandler(fileHandler)
     l.addHandler(streamHandler)
+
+def set_device():
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+    elif torch.backends.mps.is_available():
+        device = torch.device("mps")
+    else:
+        device = torch.device("cpu")
+    return device
