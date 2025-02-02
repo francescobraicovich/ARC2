@@ -7,19 +7,13 @@ import json
 from arg_parser import init_parser
 from setproctitle import setproctitle as ptitle
 from enviroment import ARC_Env
-import gymnasium as gym
 from action_space import ARCActionSpace
-from cnn import CNNFeatureExtractor
+from utils.util import set_device
 import torch
 
 if __name__ == "__main__":
 
-    if torch.cuda.is_available():
-        device = torch.device("cuda")
-    elif torch.backends.mps.is_available():
-        device = torch.device("mps")
-    else:
-        device = torch.device("cpu")
+    device = set_device()
     print('Using device: {}'.format(device))
 
 
@@ -93,6 +87,7 @@ if __name__ == "__main__":
             'env': env,
             'agent': agent,
             'max_episode': args.max_episode,
+            'max_actions': args.max_actions,
             'warmup': args.warmup,
             'save_model_dir': args.save_model_dir,
             'max_episode_length': args.max_episode_length,
