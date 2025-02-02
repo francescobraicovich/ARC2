@@ -3,17 +3,17 @@ import numpy as np
 import torch
 from dsl.utilities.plot import plot_step
 
-def train(continuous, env, agent, max_episode, warmup, save_model_dir, max_episode_length, logger, save_per_epochs):
+def train(continuous, env, agent, max_episode, max_actions, warmup, save_model_dir, max_episode_length, logger, save_per_epochs):
     agent.is_training = True
-    step = episode = episode_steps = episode_positive_rewards = num_equal_rewards = 0
+    step = episode = episode_steps = episode_positive_rewards = num_equal_rewards = actions = 0
     episode_reward = 0.
     s_t = None
-    while episode < max_episode:
+    while episode < max_episode and actions < max_actions:
         while True:
             if s_t is None:
                 s_t, shape = env.reset()
-                s_t = to_tensor(s_t, device=agent.device)
-                shape = to_tensor(shape, device=agent.device)
+                s_t = to_tensor(s_t, device=agent.device, requires_grad=True)
+                shape = to_tensor(shape, device=agent.device, requires_grad=True)
                 agent.reset(s_t, shape)
 
             # agent pick action ...
@@ -22,13 +22,13 @@ def train(continuous, env, agent, max_episode, warmup, save_model_dir, max_episo
                 action, embedded_action = agent.random_action()
             else:
                 action, embedded_action = agent.select_action(s_t, shape)
-            #actions[episode_steps] = action
 
             # env response with next_observation, reward, terminate_info
             state1, r_t, done, truncated, info = env.step(action)
             s_t1, shape1 = state1
-            s_t1, shape1 = to_tensor(s_t1, device=agent.device), to_tensor(shape1, device=agent.device)
-            
+            s_t1, shape1 = to_tensor(s_t1, device=agent.device, requires_grad=True), to_tensor(shape1, device=agent.device, requires_grad=True)
+            actions += 1
+
             if torch.equal(shape, shape1):
                 if torch.equal(s_t, s_t1):
                     num_equal_rewards += 1
@@ -39,7 +39,7 @@ def train(continuous, env, agent, max_episode, warmup, save_model_dir, max_episo
             if max_episode_length and episode_steps >= max_episode_length - 1:
                 done = True
 
-            # agent observe and update policy
+            # agent observe and update policy, try not to fill the memory with transitions that don't change the state
             agent.observe(r_t, s_t1, shape1, done)
             if step > warmup:
                 agent.update_policy()
@@ -51,20 +51,22 @@ def train(continuous, env, agent, max_episode, warmup, save_model_dir, max_episo
             s_t = s_t1
             shape = shape1
 
-            if done or truncated:  # end of an episode
+            if done or truncated or actions>=max_actions:  # end of an episode
                 episode_reward = round(episode_reward, 2)
                 logger.info(
                     "Ep:{:<4} | R:{:>7.2f} | Steps:{:>5} | Equal:{:>5} | Rs>0:{:>5} | eps:{:>6.3f}".format(
                         episode, episode_reward, episode_steps, num_equal_rewards, episode_positive_rewards, agent.epsilon
                     )
                 )
-
+                
+                """"
                 agent.memory.append(
                     s_t,
                     shape,
                     agent.select_action(s_t, shape)[1], # embedded action only
                     0., True
                 )
+                """
 
                 # reset
                 s_t = None
@@ -73,7 +75,6 @@ def train(continuous, env, agent, max_episode, warmup, save_model_dir, max_episo
                 episode_positive_rewards = 0
                 episode_reward = 0.
                 episode += 1
-                #actions = np.zeros((max_episode_length, 3))
                 # break to next episode
                 break
         # [optional] save intermideate model every run through of 32 episodes
