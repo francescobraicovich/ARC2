@@ -98,8 +98,8 @@ class ARC_Env(gym.Env):
         self.TRUNCATION_PENALTY = 100
         self.MAXIMUM_SIMILARITY = 50
         self.COMPLETION_REWARD = 25
-        self.SKIP_PROBABILITY = 0.005 #DEPRECATED
-        self.MAX_STATES_PER_ACTION = 1 #DEPRECATED
+        self.NO_CHANGE_REWARD = -5.0
+        self.MAX_STATES_PER_ACTION = 1
 
         # Define the action space: a sequence of 9 integers
         self.action_space = action_space
@@ -160,6 +160,10 @@ class ARC_Env(gym.Env):
         """
         Reward the agent based on the best overlap between the current state and the target state.
         """
+
+        if np.all(current_state_unpadded.shape == previous_state_unpadded.shape):
+            if np.all(current_state_unpadded == previous_state_unpadded):
+                return self.NO_CHANGE_REWARD, False
         
         # Calculate the overlap between the previous state and the target state
         r1, r2, previous_score = maximum_overlap_regions(previous_state_unpadded, target_state_unpadded)
@@ -194,9 +198,12 @@ class ARC_Env(gym.Env):
         selection = self.action_space.selection_dict[selection_key]
         transformation = self.action_space.transformation_dict[transformation_key]
 
+        #print('\n\n')
         # Apply the color selection, selection, and transformation to the previous state
         color = color_selection(grid = previous_state) if fixed_color is None else fixed_color
+        #print('Color selected:', color)
         selected = selection(grid = previous_state, color = color)
+        #plot_selection(selected)
         if np.any(selected):
             transformed = transformation(grid = previous_state, selection = selected)
         else:
