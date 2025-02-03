@@ -1,38 +1,91 @@
+"""
+Module for computing approximate similarity matrices and embeddings for ARC action spaces.
+
+This module defines functions to:
+    - Generate random ARC problems and arrays.
+    - Compute similarity matrices for color selections, grid selections, and transformations.
+    - Filter actions based on the change they induce in the environment.
+    - Create an overall approximate similarity matrix by combining the component similarities.
+    - Embed the similarity matrix using Multi-Dimensional Scaling (MDS).
+
+Dependencies:
+    - sys, os
+    - numpy
+    - json
+    - scikit-learn (MDS)
+    - Custom modules: enviroment (ARC_Env, maximum_overlap_regions),
+                      dsl.utilities.padding (pad_grid, unpad_grid)
+"""
+
 import sys
 import os
+import json
+import numpy as np
+from sklearn.manifold import MDS
 
-# Add parent directory to sys.path
+# Add parent directory to sys.path to allow relative imports.
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import numpy as np
-#from action_space import ARCActionSpace
+# Local module imports.
 from enviroment import maximum_overlap_regions, ARC_Env
-import json
-from sklearn.manifold import MDS
 from dsl.utilities.padding import pad_grid, unpad_grid
 
+
 def random_arc_problem(env):
+    """
+    Generate a random ARC problem using the environment.
+
+    Args:
+        env: The ARC environment instance.
+
+    Returns:
+        np.ndarray: The unpadded training grid extracted from the environment's state.
+    """
     random_state = env.reset()
     grid, shape = random_state
     training_grid = grid[:, :, 0]
     unpadded_grid = unpad_grid(training_grid)
     return unpadded_grid
 
+
 def random_array(env, arc_prob=1):
     """
-    Generates a random 2D array for testing purposes.
+    Generate a random 2D array for testing purposes.
+    
+    With probability `arc_prob`, an ARC problem is generated via the environment.
+    Otherwise, a random 2D array with dimensions between 3 and 30 is created.
+
+    Args:
+        env: The environment instance.
+        arc_prob (float): The probability of generating an ARC problem instead of a random array.
 
     Returns:
         np.ndarray: A random 2D array.
     """
     if np.random.rand() < arc_prob:
         return random_arc_problem(env)
-    
+
+    # Randomly choose rows and columns between 3 and 30 (inclusive)
     rows = int(np.random.randint(3, 31))
     cols = int(np.random.randint(3, 31))
     return np.random.randint(0, 9, (rows, cols))
 
+
 def create_color_similarity_matrix(action_space, env, num_experiments=10):
+    """
+    Create a similarity matrix for color selection functions.
+
+    For each pair of color selections, the function runs multiple experiments on a random problem
+    and increments similarity if both selections yield the same result.
+
+    Args:
+        action_space: The action space containing color selection functions.
+        env: The environment instance.
+        num_experiments (int): The number of experiments to run per pair.
+
+    Returns:
+        np.ndarray: A similarity matrix (size: number of color selections).
+    """
     color_selections = list(action_space.color_selection_dict.keys())
     n = len(color_selections)
     similarity_matrix = np.identity(n)
@@ -45,31 +98,65 @@ def create_color_similarity_matrix(action_space, env, num_experiments=10):
                 selection2 = color_selections[j]
                 col1 = action_space.color_selection_dict[selection1](random_problem)
                 col2 = action_space.color_selection_dict[selection2](random_problem)
-                
+
+                # Increment similarity if both selections yield the same color.
                 similarity = 1 if col1 == col2 else 0
                 similarity_matrix[i, j] += similarity
                 similarity_matrix[j, i] += similarity
+
+    # Average out the similarity scores over experiments (ignoring the diagonal).
     mask = np.identity(n) == 0
     similarity_matrix[mask] /= num_experiments
     return similarity_matrix
 
+
 def compute_selection_similarity(sel1, sel2):
-    size = np.size(sel1)
-    max = 0
+    """
+    Compute the maximum similarity between two selection masks.
+
+    The similarity is computed as the fraction of identical elements (over the total number of elements)
+    for each pair of masks from sel1 and sel2. The maximum similarity over all pairs is returned.
+
+    Args:
+        sel1 (np.ndarray): A 3D array representing the first selection.
+        sel2 (np.ndarray): A 3D array representing the second selection.
+
+    Returns:
+        float: The maximum similarity value found.
+    """
+    total_elements = np.size(sel1)
+    max_similarity = 0.0
     for i in range(sel1.shape[0]):
         for j in range(sel2.shape[0]):
-            similarity = np.sum(sel1[i, :, :] == sel2[j, :, :]) / size
-            if similarity > max:
-                max = similarity
-    return max
+            # Compute the fraction of matching elements.
+            similarity = np.sum(sel1[i, :, :] == sel2[j, :, :]) / total_elements
+            if similarity > max_similarity:
+                max_similarity = similarity
+    return max_similarity
+
 
 def create_selection_similarity_matrix(action_space, env, num_experiments=10):
+    """
+    Create a similarity matrix for grid selection functions.
+
+    For each pair of selection functions, the function runs experiments on a random problem
+    and computes similarity using `compute_selection_similarity`.
+
+    Args:
+        action_space: The action space containing selection functions.
+        env: The environment instance.
+        num_experiments (int): The number of experiments to run per pair.
+
+    Returns:
+        np.ndarray: A similarity matrix (size: number of selection functions).
+    """
     selections = list(action_space.selection_dict.keys())
     n = len(selections)
     similarity_matrix = np.identity(n)
 
     for _ in range(num_experiments):
         random_problem = random_array(env, arc_prob=0.85)
+        # Choose a random color present in the problem for selection functions.
         random_color_in_problem = int(np.random.choice(np.unique(random_problem)))
         for i in range(n):
             for j in range(i + 1, n):
@@ -80,11 +167,29 @@ def create_selection_similarity_matrix(action_space, env, num_experiments=10):
                 similarity = compute_selection_similarity(sel1, sel2)
                 similarity_matrix[i, j] += similarity
                 similarity_matrix[j, i] += similarity
+
+    # Average out the similarity scores over experiments (ignoring the diagonal).
     mask = np.identity(n) == 0
     similarity_matrix[mask] /= num_experiments
     return similarity_matrix
 
+
 def create_transformation_similarity_matrix(action_space, env, num_experiments=10):
+    """
+    Create a similarity matrix for transformation functions.
+
+    For each pair of transformation functions, the function selects a random problem and a random
+    non-empty selection, then applies each transformation and computes similarity using
+    `maximum_overlap_regions`.
+
+    Args:
+        action_space: The action space containing transformation functions.
+        env: The environment instance.
+        num_experiments (int): The number of experiments to run per pair.
+
+    Returns:
+        np.ndarray: A similarity matrix (size: number of transformation functions).
+    """
     transformations = list(action_space.transformation_dict.keys())
     selections = list(action_space.selection_dict.keys())
     n = len(transformations)
@@ -92,7 +197,7 @@ def create_transformation_similarity_matrix(action_space, env, num_experiments=1
 
     for _ in range(num_experiments):
         random_problem = random_array(env, arc_prob=0.85)
-        # Find a random selection that is not empty
+        # Find a non-empty selection by repeatedly sampling until a valid selection is found.
         while True:
             random_color_in_problem = int(np.random.choice(np.unique(random_problem)))
             random_selection_key = np.random.choice(selections)
@@ -111,25 +216,44 @@ def create_transformation_similarity_matrix(action_space, env, num_experiments=1
 
                 random_action[2] = transformation2
                 out2 = env.act(random_problem, random_action, fixed_color=random_color_in_problem)
-                r1, r2, similarity = maximum_overlap_regions(out1, out2)
 
+                # Compute similarity using maximum_overlap_regions.
+                _, _, similarity = maximum_overlap_regions(out1, out2)
                 similarity_matrix[i, j] += similarity
                 similarity_matrix[j, i] += similarity
+
+    # Average out the similarity scores over experiments (ignoring the diagonal).
     mask = np.identity(n) == 0
     similarity_matrix[mask] /= num_experiments
     return similarity_matrix
 
+
 def filter_by_change(action_space, env, num_experiments, threshold):
+    """
+    Filter actions that induce change in the environment.
+
+    For each action in the action space, the function tests it on random ARC problems.
+    If the action leaves the state unchanged too often (equal ratio above threshold),
+    it is filtered out.
+
+    Args:
+        action_space: The action space object.
+        env: The environment instance.
+        num_experiments (int): The number of experiments to run per action.
+        threshold (float): The threshold for the fraction of unchanged outcomes.
+
+    Returns:
+        np.ndarray: An array of actions that meet the change criteria.
+    """
     actions = action_space.get_space()
     n = len(actions)
-
-    equal_ratios = np.zeros((n), dtype=np.float64)
+    equal_ratios = np.zeros(n, dtype=np.float64)
 
     for i in range(n):
         action = actions[i]
         num_equal = 0
-        
-        for j in range(num_experiments):
+
+        for _ in range(num_experiments):
             random_problem = random_arc_problem(env)
             new_state = env.act(random_problem, action)[0, :, :]
             if np.array_equal(random_problem, new_state):
@@ -146,17 +270,41 @@ def filter_by_change(action_space, env, num_experiments, threshold):
     mask = change_ratios > threshold
 
     print(f'Out of {n} actions, only {np.sum(mask)} are used.')
-
     cleaned_actions = actions[mask]
     return cleaned_actions
 
 
 def create_approximate_similarity_matrix(action_space, num_experiments_filter, filter_threshold, num_experiments_similarity):
-    challenge_dictionary = json.load(open('data/RAW_DATA_DIR/arc-prize-2024/arc-agi_training_challenges.json'))
+    """
+    Create an approximate similarity matrix for the entire action space.
+
+    The function performs the following steps:
+        1. Loads challenge data and creates an ARC environment.
+        2. Filters out actions that do not cause significant changes.
+        3. Computes similarity matrices for color selections, selections, and transformations.
+        4. Combines these component matrices to produce a final similarity matrix.
+
+    Args:
+        action_space: The action space object.
+        num_experiments_filter (int): Number of experiments for filtering actions.
+        filter_threshold (float): Threshold for filtering actions based on change.
+        num_experiments_similarity (int): Number of experiments to compute similarity.
+
+    Returns:
+        tuple: (cleaned_actions, similarity_matrix)
+            - cleaned_actions (np.ndarray): The filtered set of actions.
+            - similarity_matrix (np.ndarray): The combined similarity matrix.
+    """
+    # Load challenge data for the ARC environment.
+    challenge_dictionary = json.load(
+        open('data/RAW_DATA_DIR/arc-prize-2024/arc-agi_training_challenges.json')
+    )
     env = ARC_Env(challenge_dictionary=challenge_dictionary, action_space=action_space)
 
+    # Filter actions based on their ability to change the environment.
     cleaned_actions = filter_by_change(action_space, env, num_experiments_filter, filter_threshold)
 
+    # Compute similarity matrices for each action component.
     color_similarity = create_color_similarity_matrix(action_space, env, num_experiments_similarity)
     print('Similarity matrix created for: color selections.')
     selection_similarity = create_selection_similarity_matrix(action_space, env, num_experiments_similarity)
@@ -164,6 +312,7 @@ def create_approximate_similarity_matrix(action_space, num_experiments_filter, f
     transformation_similarity = create_transformation_similarity_matrix(action_space, env, num_experiments_similarity)
     print('Similarity matrix created for: transformations.')
 
+    # Retrieve keys lists for mapping.
     color_selections = list(action_space.color_selection_dict.keys())
     selections = list(action_space.selection_dict.keys())
     transformations = list(action_space.transformation_dict.keys())
@@ -171,110 +320,53 @@ def create_approximate_similarity_matrix(action_space, num_experiments_filter, f
     n = len(cleaned_actions)
     similarity_matrix = np.identity(n, dtype=np.float32)
 
+    # Combine component similarities for each pair of cleaned actions.
     for i in range(n):
         col_sel1 = color_selections.index(cleaned_actions[i][0])
         sel1 = selections.index(cleaned_actions[i][1])
         trn1 = transformations.index(cleaned_actions[i][2])
-        for j in range(i+1, n):
+        for j in range(i + 1, n):
             col_sel2 = color_selections.index(cleaned_actions[j][0])
             sel2 = selections.index(cleaned_actions[j][1])
             trn2 = transformations.index(cleaned_actions[j][2])
-            similarity = color_similarity[col_sel1, col_sel2] * selection_similarity[sel1, sel2] * transformation_similarity[trn1, trn2]
+            similarity = (
+                color_similarity[col_sel1, col_sel2] *
+                selection_similarity[sel1, sel2] *
+                transformation_similarity[trn1, trn2]
+            )
             similarity_matrix[i, j] = similarity
             similarity_matrix[j, i] = similarity
+
         if i % 2500 == 0:
             print(f"Processed {i}/{n} actions.", end="\r")
-    
+
     return cleaned_actions, similarity_matrix
 
+
 def mds_embed(similarity_matrix, n_components=20):
+    """
+    Embed the similarity matrix into a lower-dimensional space using MDS.
+
+    Args:
+        similarity_matrix (np.ndarray): The precomputed similarity (or dissimilarity) matrix.
+        n_components (int): The number of dimensions for the embedding.
+
+    Returns:
+        np.ndarray: The embedded representation of the actions.
+    """
     print('Embedding with MDS...')
 
-    embedding = MDS(n_components=n_components, dissimilarity="precomputed", random_state=42, 
-                    n_jobs=-1, metric=False, normalized_stress=True, n_init=1)
-    
+    embedding = MDS(
+        n_components=n_components,
+        dissimilarity="precomputed",
+        random_state=42,
+        n_jobs=-1,
+        metric=False,
+        normalized_stress=True,
+        n_init=1
+    )
+
     embedding.fit(similarity_matrix)
     stress = embedding.stress_
     print(f'MDS stress: {stress}')
     return embedding.embedding_
-
-
-
-"""
-def create_similarity_matrix(action_space, env, num_experiments=10):
-    actions = action_space.get_space()
-    n = len(actions)
-    similarity_matrix = np.identity(n)
-
-    for _ in range(num_experiments):
-        random_problem = random_array(env)
-        transformation_time = 0
-        similarity_time = 0
-        for i in range(n):
-            for j in range(i + 1, n):
-                action1 = actions[i]
-                action2 = actions[j]
-                t0 = time()
-                out1 = env.act(random_problem, action1)
-                out2 = env.act(random_problem, action2)
-                t1 = time()
-                if np.shape(out1) != np.shape(out2):
-                    r1, r2, similarity = maximum_overlap_regions(out1, out2)
-                else:
-                    similarity = np.sum(out1 == out2) / np.size(out2)
-                #_, _, similarity2, _ = cross_correlate_best_overlap(out1, out2)
-                #assert similarity == similarity2, f"Similarity mismatch: {similarity} != {similarity2}"
-
-                similarity_matrix[i, j] += similarity
-                similarity_matrix[j, i] += similarity
-                t2 = time()
-                transformation_time += t1 - t0
-                similarity_time += t2 - t1
-
-        similarity_matrix /= num_experiments
-        return similarity_matrix
-    
-def compute_pair_similarity(i, j, actions, env, random_problem):
-
-    action1 = actions[i]
-    action2 = actions[j]
-    out1 = env.act(random_problem, action1)
-    out2 = env.act(random_problem, action2)
-    r1, r2, similarity = maximum_overlap_regions(out1, out2)
-    return (i, j, similarity)
-    
-def create_similarity_matrix_chunked(action_space, env, num_experiments=10, n_jobs=-1, chunk_size=500):
-    actions = action_space.get_space()
-    n = len(actions)
-    similarity_matrix = np.identity(n, dtype=float)
-
-    # Number of pairs can be insane, so chunk in blocks of 'block_size'
-    block_size = 3  # tune to your memory & overhead constraints
-    
-    for exp_idx in range(num_experiments):
-        random_problem = random_array(env)
-        
-        # We'll chunk over i in blocks of size block_size
-        for start_i in tqdm(range(0, n, block_size), desc=f"Experiment {exp_idx+1}/{num_experiments}"):
-            end_i = min(start_i + block_size, n)
-            # Create sublist of pairs within this block
-            pairs = [
-                (i, j) 
-                for i in range(start_i, end_i) 
-                for j in range(i+1, n)
-            ]
-            # Parallel processing
-            results = Parallel(n_jobs=n_jobs, batch_size=chunk_size)(
-                delayed(compute_pair_similarity)(i, j, actions, env, random_problem) 
-                for i, j in pairs
-            )
-            # Accumulate
-            for i, j, sim in results:
-                similarity_matrix[i, j] += sim
-                similarity_matrix[j, i] += sim
-        print(f"Processed experiment {exp_idx+1}/{num_experiments}")
-    
-    similarity_matrix /= num_experiments
-    return similarity_matrix
-
-"""
