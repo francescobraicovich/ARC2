@@ -32,7 +32,7 @@ def calculate_gradient_norm(model, print):
     return sum
 
 class WolpertingerAgent(DDPG):
-    def __init__(self, nb_states, nb_actions, args, k):
+    def __init__(self, action_space, nb_states, nb_actions, args, k):
         super().__init__(args, nb_states, nb_actions)
 
         # Automatically determine the device
@@ -40,8 +40,10 @@ class WolpertingerAgent(DDPG):
         print("Using device: {} for Wolpertinger agent".format(self.device))
 
         self.experiment = args.id
-        self.action_space = action_space.ARCActionSpace()
+        self.action_space = action_space
         self.k_nearest_neighbors = k
+        self.max_embedding = args.max_embedding
+        self.min_embedding = args.min_embedding
         print("Using {} nearest neighbors for Wolpertinger agent".format(self.k_nearest_neighbors))
 
         # Move all networks to the determined device
@@ -52,7 +54,7 @@ class WolpertingerAgent(DDPG):
 
         self.n_policy_updates = 0
         self.policy_print_freq = 1
-        self.plot_freq = 200
+        self.plot_freq = 1000
 
         self.actor_gradients = []
         self.critic_gradients = []
@@ -63,13 +65,6 @@ class WolpertingerAgent(DDPG):
 
         self.np_aranges = {}
         self.torch_aranges = {}
-
-    def get_name(self):
-        return 'Wolp3_{}k{}_{}'.format(self.action_space.get_number_of_actions(),
-                                       self.k_nearest_neighbors, self.experiment)
-
-    def get_action_space(self):
-        return self.action_space
     
 
     def wolp_action(self, s_t, shape, proto_action):
@@ -138,7 +133,7 @@ class WolpertingerAgent(DDPG):
     def select_target_action(self, s_t, shape):
         x = s_t, shape
         proto_embedded_action = self.actor_target(x)
-        proto_embedded_action = to_numpy(torch.clamp(proto_embedded_action, -1, 1), device=self.device)
+        proto_embedded_action = to_numpy(torch.clamp(proto_embedded_action, self.min_embedding, self.max_embedding), device=self.device)
         action, embedded_action = self.wolp_action(s_t, shape, proto_embedded_action)
         return action, embedded_action
     
@@ -154,14 +149,18 @@ class WolpertingerAgent(DDPG):
         policy_losses = np.array(self.policy_losses)
         actor_differences = np.array(self.actor_difference)
         critic_differences = np.array(self.critic_difference)
+
+        length = len(actor_gradients)
+        max_length = 200
+        window_size = max(15, length // max_length)
         
         # Apply smoothing
-        smooth_actor_gradients = self.smooth_array(actor_gradients)
-        smooth_critic_gradients = self.smooth_array(critic_gradients)
-        smooth_value_losses = self.smooth_array(value_losses)
-        smooth_policy_losses = self.smooth_array(policy_losses)
-        smooth_actor_differences = self.smooth_array(actor_differences)
-        smooth_critic_differences = self.smooth_array(critic_differences)
+        smooth_actor_gradients = self.smooth_array(actor_gradients, window_size)
+        smooth_critic_gradients = self.smooth_array(critic_gradients, window_size)
+        smooth_value_losses = self.smooth_array(value_losses, window_size)
+        smooth_policy_losses = self.smooth_array(policy_losses, window_size)
+        smooth_actor_differences = self.smooth_array(actor_differences, window_size)
+        smooth_critic_differences = self.smooth_array(critic_differences, window_size)
         
         fig, axs = plt.subplots(3, 2, figsize=(12, 12))
         
