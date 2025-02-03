@@ -51,12 +51,17 @@ def config_encoder(latent_dim=32):
     encoder = EncoderTransformer(cfg)
     return encoder
 
-class ScaledSigmoid(nn.Module):
-    def __init__(self):
-        super(ScaledSigmoid, self).__init__()
-    
+class CustomSoftsign(nn.Module):
+    def __init__(self, min_val, max_val):
+        super(CustomSoftsign, self).__init__()
+        self.min_val = min_val
+        self.max_val = max_val
+        self.softsign = nn.Softsign()
+
     def forward(self, x):
-        return 2 * torch.sigmoid(x) - 1
+        # Apply Softsign and scale to [min_val, max_val]
+        return self.min_val + (self.max_val - self.min_val) * (self.softsign(x) + 1) / 2
+
 
 
 def process_in_chunks(encoder, state, shape, chunk_size):
@@ -93,7 +98,7 @@ def process_in_chunks(encoder, state, shape, chunk_size):
 
 class Actor(nn.Module):
     def __init__(self, nb_states, nb_actions, latent_dim=32, type='lpn',
-                 hidden1=256, hidden2=128, init_w=3e-3, chunk_size=100):
+                 hidden1=256, hidden2=128, init_w=3e-3, chunk_size=100, min_val=-1, max_val=1):
         """
         Actor network for policy prediction.
         Args:
@@ -123,8 +128,10 @@ class Actor(nn.Module):
         self.fc3 = nn.Linear(hidden2, nb_actions).to(DEVICE)
         self.bn2 = nn.BatchNorm1d(hidden2).to(DEVICE)
 
+
+
         self.relu = nn.LeakyReLU()
-        self.softsign = nn.Softsign()
+        self.final_activation = CustomSoftsign(min_val, max_val)
         
         self.init_weights(init_w)
         self.to(DEVICE)  # Move the network to the selected device
@@ -181,7 +188,7 @@ class Actor(nn.Module):
         out = self.bn2(out)  # Batch Normalization here
         out = self.relu(out)
         out = self.fc3(out)
-        out = self.softsign(out)
+        out = self.final_activation(out)
         return out
 
 # Critic Network
