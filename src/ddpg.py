@@ -48,9 +48,15 @@ class DDPG(object):
             'chunk_size': args.chunk_size
         }
 
+        actor_cfg = {
+            **net_cfg,  # Unpack all elements from net_cfg
+            'min_val': args.min_embedding,
+            'max_val': args.max_embedding
+                }
+
         # Initialize Actor and Critic networks (both primary and target)
-        self.actor = Actor(self.nb_states, self.nb_actions, **net_cfg).to(self.device)
-        self.actor_target = Actor(self.nb_states, self.nb_actions, **net_cfg).to(self.device)
+        self.actor = Actor(self.nb_states, self.nb_actions, **actor_cfg).to(self.device)
+        self.actor_target = Actor(self.nb_states, self.nb_actions, **actor_cfg).to(self.device)
         self.actor_optim = Adam(self.actor.parameters(), lr=args.p_lr, weight_decay=args.weight_decay)
 
         self.critic = Critic(self.nb_states, self.nb_actions, **net_cfg).to(self.device)
