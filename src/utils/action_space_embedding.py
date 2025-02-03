@@ -7,12 +7,9 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import numpy as np
 #from action_space import ARCActionSpace
 from enviroment import maximum_overlap_regions, ARC_Env
-from dsl.utilities.plot import plot_grid_3d, plot_grid
 import json
-from time import time
 from sklearn.manifold import MDS
 from dsl.utilities.padding import pad_grid, unpad_grid
-from dsl.select import Selector
 
 def random_arc_problem(env):
     random_state = env.reset()
@@ -92,7 +89,6 @@ def create_transformation_similarity_matrix(action_space, env, num_experiments=1
     selections = list(action_space.selection_dict.keys())
     n = len(transformations)
     similarity_matrix = np.identity(n)
-    selector = Selector()
 
     for _ in range(num_experiments):
         random_problem = random_array(env, arc_prob=0.85)
@@ -123,40 +119,73 @@ def create_transformation_similarity_matrix(action_space, env, num_experiments=1
     similarity_matrix[mask] /= num_experiments
     return similarity_matrix
 
-def create_approximate_similarity_matrix(action_space, num_experiments=300):
+def filter_by_change(action_space, env, num_experiments, threshold):
+    actions = action_space.get_space()
+    n = len(actions)
+
+    equal_ratios = np.zeros((n), dtype=np.float64)
+
+    for i in range(n):
+        action = actions[i]
+        num_equal = 0
+        
+        for j in range(num_experiments):
+            random_problem = random_arc_problem(env)
+            new_state = env.act(random_problem, action)[0, :, :]
+            if np.array_equal(random_problem, new_state):
+                num_equal += 1
+
+        equal_ratio = num_equal / num_experiments
+        equal_ratios[i] = equal_ratio
+
+        if i % 500 == 0:
+            print(f'Filtered {i} out of {n} actions')
+
+    print('Average equal ratio:', np.mean(equal_ratios))
+    change_ratios = 1 - equal_ratios
+    mask = change_ratios > threshold
+
+    print(f'Out of {n} actions, only {np.sum(mask)} are used.')
+
+    cleaned_actions = actions[mask]
+    return cleaned_actions
+
+
+def create_approximate_similarity_matrix(action_space, num_experiments_filter, filter_threshold, num_experiments_similarity):
     challenge_dictionary = json.load(open('data/RAW_DATA_DIR/arc-prize-2024/arc-agi_training_challenges.json'))
     env = ARC_Env(challenge_dictionary=challenge_dictionary, action_space=action_space)
 
-    color_similarity = create_color_similarity_matrix(action_space, env, num_experiments)
+    cleaned_actions = filter_by_change(action_space, env, num_experiments_filter, filter_threshold)
+
+    color_similarity = create_color_similarity_matrix(action_space, env, num_experiments_similarity)
     print('Similarity matrix created for: color selections.')
-    selection_similarity = create_selection_similarity_matrix(action_space, env, num_experiments)
+    selection_similarity = create_selection_similarity_matrix(action_space, env, num_experiments_similarity)
     print('Similarity matrix created for: selections.')
-    transformation_similarity = create_transformation_similarity_matrix(action_space, env, num_experiments)
+    transformation_similarity = create_transformation_similarity_matrix(action_space, env, num_experiments_similarity)
     print('Similarity matrix created for: transformations.')
 
     color_selections = list(action_space.color_selection_dict.keys())
     selections = list(action_space.selection_dict.keys())
     transformations = list(action_space.transformation_dict.keys())
 
-    actions = action_space.get_space()
-    n = len(actions)
+    n = len(cleaned_actions)
     similarity_matrix = np.identity(n, dtype=np.float32)
 
     for i in range(n):
-        col_sel1 = color_selections.index(actions[i][0])
-        sel1 = selections.index(actions[i][1])
-        trn1 = transformations.index(actions[i][2])
+        col_sel1 = color_selections.index(cleaned_actions[i][0])
+        sel1 = selections.index(cleaned_actions[i][1])
+        trn1 = transformations.index(cleaned_actions[i][2])
         for j in range(i+1, n):
-            col_sel2 = color_selections.index(actions[j][0])
-            sel2 = selections.index(actions[j][1])
-            trn2 = transformations.index(actions[j][2])
+            col_sel2 = color_selections.index(cleaned_actions[j][0])
+            sel2 = selections.index(cleaned_actions[j][1])
+            trn2 = transformations.index(cleaned_actions[j][2])
             similarity = color_similarity[col_sel1, col_sel2] * selection_similarity[sel1, sel2] * transformation_similarity[trn1, trn2]
             similarity_matrix[i, j] = similarity
             similarity_matrix[j, i] = similarity
         if i % 2500 == 0:
             print(f"Processed {i}/{n} actions.", end="\r")
     
-    return similarity_matrix
+    return cleaned_actions, similarity_matrix
 
 def mds_embed(similarity_matrix, n_components=20):
     print('Embedding with MDS...')
