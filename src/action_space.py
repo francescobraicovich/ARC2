@@ -11,12 +11,14 @@ from utils.action_space_embedding import create_approximate_similarity_matrix, m
 #import faiss
 
 class ARCActionSpace(Space):
-    def __init__(self, ColorSelector=ColorSelector, Selector=Selector, Transformer=Transformer, low=[0, 0, 0], high=[99, 99, 999], load=True):
+    def __init__(self, args, ColorSelector=ColorSelector, Selector=Selector, Transformer=Transformer):
         dtype = np.float32
         shape = (3,)
         super().__init__(shape, dtype)
         print('-'*50)
         print('Creating the action space')
+
+        self.args = args
         
         # Define the classes that will be used to create the action space
         self.color_selector = ColorSelector()
@@ -24,12 +26,16 @@ class ARCActionSpace(Space):
         self.transformer = Transformer()
 
         # Define some constants
-        self._low = np.array(low)
-        self._high = np.array(high)
+        self._low = np.array([0, 0, 0])
+        self._high = np.array([99, 99, 999])
         self._range = self._high - self._low
-        self._dimensions = len(low)
+        self._dimensions = 3
         self._low = -1
         self._high = 1
+
+        # Define maximum and minimum values for the embedding of the actions
+        self.max_embedding = args.max_embedding
+        self.min_embedding = args.min_embedding
 
         # Define the weights for the old keys when uniformising the density of the keys
         # Uniformising the density is important for Wolpertinger to learn the action space better
@@ -46,11 +52,11 @@ class ARCActionSpace(Space):
         self.space = None
         self.create_action_space()
 
-        if load:
+        if args.load_action_embedding:
+            self.cleaned_space = np.load('src/embedded_space/cleaned_actions.npy')
             self.embedding = np.load('src/embedded_space/embedded_actions.npy')
-            self.embedding = MinMaxScaler().fit_transform(self.embedding)
         else:
-            self.embedding = self.embed_actions()
+            cleaned_space, self.embedding = self.embed_actions()
 
         self.nearest_neighbors = None
         self.create_nearest_neighbors()
@@ -58,18 +64,24 @@ class ARCActionSpace(Space):
         print('-'*50)
     
     def embed_actions(self):
-
+        args = self.args
+        
         # Create an approximate similarity matrix
-        similarity_matrix = create_approximate_similarity_matrix(self, num_experiments=100)
+        cleaned_actions, similarity_matrix = create_approximate_similarity_matrix(self, args.num_experiments_filter, args.filter_threshold, args.num_experiments_similarity)
         distance_matrix = 1 - similarity_matrix
 
         # Embed the actions using MDS
         embedded_actions = mds_embed(distance_matrix)
 
+        # Scale the embedded actions to the range [-10, 10]
+        scaler = MinMaxScaler(feature_range=(-10, 10))
+        embedded_actions = scaler.fit_transform(embedded_actions)
+
         # save the embedded actions in the embedded_space folder
         np.save('src/embedded_space/embedded_actions.npy', embedded_actions)
+        np.save('src/embedded_space/cleaned_actions.npy', cleaned_actions)
 
-        return embedded_actions
+        return cleaned_actions, embedded_actions
 
 
     def create_nearest_neighbors(self):
@@ -100,7 +112,7 @@ class ARCActionSpace(Space):
             query_actions = query_actions.reshape(1, -1)  # Handle single query action as a special case
         
         distances, indices = self.nearest_neighbors.kneighbors(query_actions, n_neighbors=k)
-        actions = np.array([self.space[indices[i]] for i in range(len(indices))])
+        actions = np.array([self.cleaned_space[indices[i]] for i in range(len(indices))])
         embedded_actions = np.array([self.embedding[indices[i]] for i in range(len(indices))])
         if query_actions.shape[0] == 1:
             actions = actions[0]
@@ -365,3 +377,6 @@ class ARCActionSpace(Space):
             return action_dict['transformation']
         return action_dict
     
+    def filter_action_space(prc_change=0.05):
+        
+        env = ARC
