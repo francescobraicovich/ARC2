@@ -3,7 +3,6 @@ import argparse
 def init_parser(alg):
 
     if alg == 'WOLP_DDPG':
-
         parser = argparse.ArgumentParser(description='WOLP_DDPG')
         parser.add_argument('--env', default='ARC', metavar='ENV', help='environment to train on')
         parser.add_argument('--gamma', type=float, default=0.99, metavar='G', help='discount factor for rewards (default: 0.99)')
@@ -20,16 +19,15 @@ def init_parser(alg):
         parser.add_argument('--hidden1', default=256, type=int, help='hidden num of first fully connect layer')
         parser.add_argument('--hidden2', default=128, type=int, help='hidden num of second fully connect layer')
         parser.add_argument('--c-lr', default=1e-4, type=float, help='critic net learning rate')
-        parser.add_argument('--p-lr', default=3e-3, type=float, help='policy net learning rate (only for DDPG)')
-        parser.add_argument('--warmup', default=100, type=int, help='time without training but only filling the replay memory')
+        parser.add_argument('--p-lr', default=1e-3, type=float, help='policy net learning rate (only for DDPG)')
+        parser.add_argument('--warmup', default=250, type=int, help='time without training but only filling the replay memory')
         parser.add_argument('--bsize', default=64, type=int, help='minibatch size')
-        parser.add_argument('--rmsize', default=50000, type=int, help='memory size')
+        parser.add_argument('--rmsize', default=100000, type=int, help='memory size')
         parser.add_argument('--window_length', default=1, type=int, help='')
-        parser.add_argument('--tau-update', default=0.001, type=float, help='moving average for target network')
+        parser.add_argument('--tau-update', default=0.0005, type=float, help='moving average for target network')
         parser.add_argument('--ou_theta', default=0.5, type=float, help='noise theta')
         parser.add_argument('--ou_sigma', default=0.2, type=float, help='noise sigma')
         parser.add_argument('--ou_mu', default=0.0, type=float, help='noise mu')
-        parser.add_argument('--max_episode_length', default=500, type=int, help='')
         parser.add_argument('--init_w', default=0.003, type=float, help='')
         parser.add_argument('--epsilon', default=100000, type=int, help='Linear decay of exploration policy')
         parser.add_argument('--seed', default=-1, type=int, help='')
@@ -41,6 +39,11 @@ def init_parser(alg):
         parser.add_argument('--latent_dim', default=48, type=int, help='latent dimension for encoder')
         parser.add_argument('--chunk_size', default=10, type=int, help='chunk size for training encoder')
         parser.add_argument('--epsilon_start', default=1.0, type=float, help='starting epsilon value, useful for resuming training')
+        parser.add_argument('--num_experiments_filter', default=350, type=int, help='number of problems on which to calculate the change percentage when filtering actions')
+        parser.add_argument('--filter_threshold', default=0.3, type=float, help='percentage of random problems an action must change not to be filtered')
+        parser.add_argument('--num_experiments_similarity', default=500, type=int, help='number of problems on which to calculate approximate similarity matrix between actions')
+        parser.add_argument('--max_embedding', default=10., type=float, help='Maximum value for numbers in the embedding matrix')
+        parser.add_argument('--min_embedding', default=-10., type=float, help='Minimum value for numbers in the embedding matrix')
         return parser
     else:
         raise RuntimeError('undefined algorithm {}'.format(alg))
