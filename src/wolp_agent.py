@@ -54,7 +54,7 @@ class WolpertingerAgent(DDPG):
 
         self.n_policy_updates = 0
         self.policy_print_freq = 1
-        self.plot_freq = 1000
+        self.plot_freq = 250
 
         self.actor_gradients = []
         self.critic_gradients = []
@@ -151,7 +151,7 @@ class WolpertingerAgent(DDPG):
         critic_differences = np.array(self.critic_difference)
 
         length = len(actor_gradients)
-        max_length = 200
+        max_length = 150
         window_size = max(15, length // max_length)
         
         # Apply smoothing
