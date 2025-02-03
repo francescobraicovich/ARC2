@@ -30,7 +30,15 @@ if __name__ == "__main__":
     args.save_model_dir = get_output_folder('../output', args.env)
 
     challenge_dictionary = json.load(open('data/RAW_DATA_DIR/arc-prize-2024/arc-agi_training_challenges.json'))
-    action_space = ARCActionSpace(load=args.load_action_embedding)
+
+    action_space_args = {
+        'num_experiments_filter': args.num_experiments_filter, 
+        'filter_threshold': args.filter_threshold, 
+        'num_experiments_similarity': args.num_experiments_similarity,
+        'load': args.load_action_embedding
+    }
+
+    action_space = ARCActionSpace(args)
     env = ARC_Env(challenge_dictionary, action_space)
     continuous = None
 
@@ -48,7 +56,8 @@ if __name__ == "__main__":
         'nb_states': nb_states,
         'nb_actions': nb_actions,
         'args': args,
-        'k': args.k_neighbors
+        'k': args.k_neighbors,
+        'action_space': action_space
     }
 
     agent = WolpertingerAgent(**agent_args)
