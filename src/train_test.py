@@ -37,7 +37,7 @@ def train(continuous, env, agent, max_episode, max_actions, warmup, save_model_d
                 episode_positive_rewards += 1
 
             if max_episode_length and episode_steps >= max_episode_length - 1:
-                done = True
+                truncated = True
 
             # agent observe and update policy, try not to fill the memory with transitions that don't change the state
             agent.observe(r_t, s_t1, shape1, done)
