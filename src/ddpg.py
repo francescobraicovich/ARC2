@@ -203,6 +203,9 @@ class DDPG(object):
 
         print(f"Actor and Critic models loaded from {dir}")
 
+        hard_update(self.actor_target, self.actor)
+        hard_update(self.critic_target, self.critic)
+
 
     def save_model(self, output):
         """
