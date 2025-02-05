@@ -21,6 +21,8 @@ import sys
 import os
 import json
 import numpy as np
+import random
+from rearc.main import *
 from sklearn.manifold import MDS
 
 # Add parent directory to sys.path to allow relative imports.
@@ -53,7 +55,7 @@ def random_array(env, arc_prob=1):
     Generate a random 2D array for testing purposes.
     
     With probability `arc_prob`, an ARC problem is generated via the environment.
-    Otherwise, a random 2D array with dimensions between 3 and 30 is created.
+    Otherwise, a re-arc  array is used .
 
     Args:
         env: The environment instance.
@@ -65,10 +67,10 @@ def random_array(env, arc_prob=1):
     if np.random.rand() < arc_prob:
         return random_arc_problem(env)
 
-    # Randomly choose rows and columns between 3 and 30 (inclusive)
-    rows = int(np.random.randint(3, 31))
-    cols = int(np.random.randint(3, 31))
-    return np.random.randint(0, 9, (rows, cols))
+    random_challenge = random.choice(list(generators.keys()))
+    result = demo_generator(random_challenge) 
+    result = np.array(result[0]['input'] )
+    return result
 
 
 def create_color_similarity_matrix(action_space, env, num_experiments=10):
