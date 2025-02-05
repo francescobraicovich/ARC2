@@ -127,3 +127,37 @@ def set_device():
     else:
         device = torch.device("cpu")
     return device
+
+def clip_and_boost_gradients(parameters, min_norm=0.1, max_norm=1.0):
+    # Standard Gradient Clipping (Upper Bound)
+    total_norm = torch.nn.utils.clip_grad_norm_(parameters, max_norm)
+
+    # Inverse Clipping (Boosting Small Gradients)
+    for param in parameters:
+        if param.grad is not None:
+            grad_norm = param.grad.norm()
+
+            # Boost gradients if they are too small
+            if grad_norm < min_norm and grad_norm > 0:
+                scaling_factor = min_norm / (grad_norm + 1e-6)  # Avoid division by zero
+                param.grad.data.mul_(scaling_factor)  # Rescale the gradient
+    return total_norm
+
+
+def calculate_gradient_norm(model, PRINT):
+    n_params = 0
+    sum = 0
+    norms = []
+    for name, param in model.named_parameters():
+        if param.grad is not None:
+            n_params += 1
+            norm = param.grad.norm().item()
+            norm = float(norm)
+            norms.append(norm)
+            sum += norm
+        else:
+            norms.append(0)
+    sum /= n_params if n_params > 0 else 1
+    if PRINT:
+        print(f'Average gradient norm: {sum:.4f}, max: {max(norms):.4f}, min: {min(norms):.4f}')
+    return sum
