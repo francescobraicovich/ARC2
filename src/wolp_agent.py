@@ -1,5 +1,4 @@
 from ddpg import DDPG
-import action_space
 from utils.util import *
 import torch.nn as nn
 import torch
@@ -7,29 +6,14 @@ from utils.util import set_device
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.ticker import ScalarFormatter
+import torch
+from utils.util import calculate_gradient_norm, clip_and_boost_gradients
 
 np.set_printoptions(precision=2, suppress=True)
 torch.set_printoptions(precision=2, sci_mode=False)
 
 
 criterion = nn.MSELoss()
-def calculate_gradient_norm(model, print):
-    n_params = 0
-    sum = 0
-    norms = []
-    for name, param in model.named_parameters():
-        if param.grad is not None:
-            n_params += 1
-            norm = param.grad.norm().item()
-            norm = float(norm)
-            norms.append(norm)
-            sum += norm
-        else:
-            norms.append(0)
-    sum /= n_params if n_params > 0 else 1
-    if print:
-        print(f'Average gradient norm: {sum:.4f}, max: {max(norms):.4f}, min: {min(norms):.4f}')
-    return sum
 
 class WolpertingerAgent(DDPG):
     def __init__(self, action_space, nb_states, nb_actions, args, k):
@@ -53,8 +37,8 @@ class WolpertingerAgent(DDPG):
         self.critic_target.to(self.device)
 
         self.n_policy_updates = 0
-        self.policy_print_freq = 1
-        self.plot_freq = 250
+        self.policy_print_freq = 200
+        self.plot_freq = 200
 
         self.actor_gradients = []
         self.critic_gradients = []
@@ -146,7 +130,7 @@ class WolpertingerAgent(DDPG):
         actor_gradients = np.array(self.actor_gradients)
         critic_gradients = np.array(self.critic_gradients)
         value_losses = np.array(self.value_losses)
-        policy_losses = np.array(self.policy_losses)
+        policy_losses = np.abs(np.array(self.policy_losses))
         actor_differences = np.array(self.actor_difference)
         critic_differences = np.array(self.critic_difference)
 
@@ -217,7 +201,7 @@ class WolpertingerAgent(DDPG):
         self.n_policy_updates += 1
         PRINT, PLOT = False, False
         if self.n_policy_updates % self.policy_print_freq == 0:
-            #PRINT = True
+            PRINT = True
             pass
         if self.n_policy_updates % self.plot_freq == 0:
             PLOT = True
@@ -234,7 +218,6 @@ class WolpertingerAgent(DDPG):
         # Sample batch
         state_batch, shape_batch, action_batch, reward_batch, \
             next_state_batch, next_shape_batch, terminal_batch = self.memory.sample_and_split(self.batch_size)
-        
 
         with torch.no_grad():
             # Ensure select_target_action does not detach gradients
@@ -271,7 +254,8 @@ class WolpertingerAgent(DDPG):
             print(f'Value loss: {value_loss:.4f}')
         critic_gradient_norm = calculate_gradient_norm(self.critic, PRINT)
         self.critic_gradients.append(critic_gradient_norm)
-    
+
+        torch.nn.utils.clip_grad_norm_(self.critic.parameters(), max_norm=1.0)
         self.critic_optim.step()
 
         # Actor update
@@ -294,7 +278,7 @@ class WolpertingerAgent(DDPG):
             print(f'Proto action mean: {float(proto_action_batch.mean()):.4f}, std: {float(proto_action_batch.std()):.4f}')
             print(f'Proto action max value: {float(proto_action_batch.max()):.4f}, min value: {float(proto_action_batch.min()):.4f}')
             print(f'Policy loss mean: {float(policy_loss.mean()):.4f}, std: {float(policy_loss.std()):.4f}')
-            print(f'Polici loss max value: {float(policy_loss.max()):.4f}, min value: {float(policy_loss.min()):.4f}')
+            print(f'Policy loss max value: {float(policy_loss.max()):.4f}, min value: {float(policy_loss.min()):.4f}')
         
         actor_gradient_norm = calculate_gradient_norm(self.actor, PRINT)
         self.actor_gradients.append(actor_gradient_norm)
@@ -306,7 +290,9 @@ class WolpertingerAgent(DDPG):
         if PLOT:
             self.plot_gradients_and_losses()
 
+        torch.nn.utils.clip_grad_norm_(self.actor.parameters(), max_norm=1.0)
         self.actor_optim.step()
+
 
         # Target update
         soft_update(self.actor_target, self.actor, self.tau_update)
