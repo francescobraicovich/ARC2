@@ -4,164 +4,154 @@ from torchvision import models
 import torch.nn.functional as F
 
 class SelfAttention(nn.Module):
-    """
-    Self-Attention Module for Spatial Feature Maps.
-    Enhances feature maps by modeling spatial dependencies.
-    """
     def __init__(self, in_dim):
-        """
-        Args:
-            in_dim (int): Number of input channels.
-        """
         super(SelfAttention, self).__init__()
-        self.chanel_in = in_dim
+        self.query_conv = nn.Conv2d(in_dim, in_dim // 8, 1)
+        self.key_conv = nn.Conv2d(in_dim, in_dim // 8, 1)
+        self.value_conv = nn.Conv2d(in_dim, in_dim, 1)
 
-        # Query, Key, and Value convolutions
-        self.query_conv = nn.Conv2d(in_channels=in_dim, out_channels=in_dim // 8, kernel_size=1)
-        self.key_conv = nn.Conv2d(in_channels=in_dim, out_channels=in_dim // 8, kernel_size=1)
-        self.value_conv = nn.Conv2d(in_channels=in_dim, out_channels=in_dim, kernel_size=1)
-
-        # Softmax for attention scores
         self.softmax = nn.Softmax(dim=-1)
+        self.gamma = nn.Parameter(torch.ones(1))
+        self.temperature = nn.Parameter(torch.tensor(0.5))  # Lower initial value for stability
 
-        # Learnable scaling factor for residual connection
-        self.gamma = nn.Parameter(torch.ones(1))  # Initialize gamma to 1
+        self.layer_norm = nn.LayerNorm([in_dim, 8, 8])  # Match output shape after layer3
 
-        # Learnable temperature parameter
-        self.temperature = nn.Parameter(torch.tensor(1.0))
-
-        # Initialize weights for stability
         nn.init.xavier_uniform_(self.query_conv.weight)
         nn.init.xavier_uniform_(self.key_conv.weight)
 
     def forward(self, x):
-        """
-        Forward pass for self-attention.
+        B, C, W, H = x.size()
+        proj_query = F.normalize(self.query_conv(x).view(B, -1, W * H), p=2, dim=-1)
+        proj_key = F.normalize(self.key_conv(x).view(B, -1, W * H), p=2, dim=-1)
+        proj_value = self.value_conv(x).view(B, -1, W * H)
 
-        Args:
-            x (torch.Tensor): Input feature maps (B, C, H, W).
-
-        Returns:
-            torch.Tensor: Output feature maps after applying self-attention.
-        """
-        m_batchsize, C, width, height = x.size()
-        
-        # Compute Query, Key, and Value matrices
-        proj_query = self.query_conv(x).view(m_batchsize, -1, width * height)  # (B, C', N)
-        proj_key = self.key_conv(x).view(m_batchsize, -1, width * height)  # (B, C', N)
-        proj_value = self.value_conv(x).view(m_batchsize, -1, width * height)  # (B, C, N)
-
-        # Normalize Query and Key to prevent large values
-        proj_query = F.normalize(proj_query, p=2, dim=-1)  # L2 Normalize along last dim
-        proj_key = F.normalize(proj_key, p=2, dim=-1)
-
-        # Compute attention energy and scale
-        energy = torch.bmm(proj_query.permute(0, 2, 1), proj_key)  # (B, N, N)
-        energy = energy / (self.temperature + 1e-6)  # Learnable temperature scaling
-
-        # Residual connection for stability
-        identity_matrix = torch.eye(energy.shape[-1], device=x.device).expand_as(energy)
-        energy = energy + identity_matrix  # Helps smooth out extreme values
-
-        # Softmax for attention scores
+        energy = torch.bmm(proj_query.permute(0, 2, 1), proj_key) / (self.temperature + 1e-6)
         attention = self.softmax(energy)
 
-        # Apply attention to value
-        out = torch.bmm(proj_value, attention.permute(0, 2, 1))  # (B, C, N)
-        out = out.view(m_batchsize, C, width, height)  # (B, C, H, W)
+        out = torch.bmm(proj_value, attention.permute(0, 2, 1)).view(B, C, W, H)
+        out = self.gamma * out + (1 - self.gamma) * x  # Weighted residual connection
 
-        # Scale and add residual
-        out = self.gamma * out + x
+        return self.layer_norm(out)  # Apply LayerNorm
 
-        return out
+class MultiHeadSelfAttention(nn.Module):
+    def __init__(self, in_dim, num_heads=4):
+        super(MultiHeadSelfAttention, self).__init__()
+        self.num_heads = num_heads
+        assert in_dim % num_heads == 0, "in_dim must be divisible by num_heads"
+        head_dim = in_dim // num_heads
+        self.query_conv = nn.Conv2d(in_dim, in_dim, 1)
+        self.key_conv = nn.Conv2d(in_dim, in_dim, 1)
+        self.value_conv = nn.Conv2d(in_dim, in_dim, 1)
+        self.softmax = nn.Softmax(dim=-1)
+        self.gamma = nn.Parameter(torch.ones(1))
+        self.temperature = nn.Parameter(torch.tensor(0.5))
+        self.proj = nn.Conv2d(in_dim, in_dim, 1)
+        # You could also keep a LayerNorm if you wish to normalize across the heads:
+        self.layer_norm = nn.LayerNorm([in_dim, 8, 8]) # Match output shape after layer3
+    
+    def forward(self, x):
+        B, C, W, H = x.size()
+        head_dim = C // self.num_heads
+        # Project and reshape for multi-head
+        q = self.query_conv(x).view(B, self.num_heads, head_dim, W * H)  # (B, heads, head_dim, N)
+        k = self.key_conv(x).view(B, self.num_heads, head_dim, W * H)
+        v = self.value_conv(x).view(B, self.num_heads, head_dim, W * H)
+        
+        # Normalize queries and keys for stability
+        q = F.normalize(q, p=2, dim=-1)
+        k = F.normalize(k, p=2, dim=-1)
+        
+        # Compute scaled dot-product attention per head
+        attn = torch.einsum('bhdn,bhdm->bhnm', q, k) / (self.temperature + 1e-6)
+        attn = self.softmax(attn)
+        out = torch.einsum('bhnm,bhdm->bhdn', attn, v)
+        
+        # Concatenate heads
+        out = out.contiguous().view(B, C, W * H).view(B, C, W, H)
+        out = self.proj(out)
+        out = self.gamma * out + (1 - self.gamma) * x  # Residual connection
+        
+        return self.layer_norm(out)
 
 class CNNFeatureExtractor(nn.Module):
-    def __init__(self, hidden1=512, dropout_prob=0.1, pretrained=True):
+    def __init__(self, hidden1=256, dropout_prob=0, pretrained=True):
         super(CNNFeatureExtractor, self).__init__()
-        
-        # Load ResNet-18 model
         self.resnet = models.resnet18(pretrained=pretrained)
-        
-        # Modify the first convolutional layer to accept 2 input channels
         self._modify_first_conv_layer()
-        
-        # Modify layer2 and layer3 to avoid downsampling
         self._modify_resnet_architecture()
 
-        # Remove the final fully connected layer
+        # Remove the final classification layer
         self.resnet.fc = nn.Identity()
-        
-        # Self-Attention Module
-        self.self_attention = SelfAttention(in_dim=256)  # Change to match layer3 output
-        
-        # Fully connected layer to match hidden1
-        self.fc1 = nn.Linear(256, hidden1)  # Adjust for new spatial size
-        
-        # Dropout layer
-        self.dropout = nn.Dropout(p=dropout_prob)
-        
-        # Activation function
-        self.activation = nn.LeakyReLU(negative_slope=0.1, inplace=True)
-        
-        # Initialize weights for new layers
-        self._initialize_weights()
-    
-    def _modify_first_conv_layer(self):
-        """
-        Modify the first convolutional layer of ResNet-18:
-        - Change kernel size to 3x3
-        - Change stride to 1
-        - Reduce padding
-        """
-        self.resnet.conv1 = nn.Conv2d(
-            in_channels=2, out_channels=64, kernel_size=3, stride=1, padding=1, bias=False
-        )
 
-        del self.resnet.layer4  # Remove the final layer
+        # Self-attention, fully connected layers, etc.
+        self.self_attention = SelfAttention(in_dim=256)
+        self.fc1 = nn.Linear(256, hidden1)
+        self.dropout = nn.Dropout(p=dropout_prob)
+        self.activation = nn.GELU()
+
+        self._initialize_weights()
+
+    def _modify_first_conv_layer(self):
+        # Now the input will have 4 channels:
+        #   2 channels from the original state data, plus 2 mask channels.
+        self.resnet.conv1 = nn.Conv2d(
+            in_channels=4, 
+            out_channels=64, 
+            kernel_size=3, 
+            stride=1, 
+            padding=1, 
+            bias=False
+        )
+        # Remove the last ResNet layer (layer4)
+        del self.resnet.layer4
 
     def _modify_resnet_architecture(self):
-        """
-        Modify layer2 and layer3 to avoid downsampling.
-        """
-        # Prevent layer2 from reducing spatial dimensions
-        self.resnet.layer2[0].conv1.stride = (2, 2)
-        self.resnet.layer2[0].downsample[0].stride = (2, 2)
-        
-        # Prevent layer3 from reducing spatial dimensions
-        self.resnet.layer3[0].conv1.stride = (2, 2)
-        self.resnet.layer3[0].downsample[0].stride = (2, 2)
-    
+        # Modify layer2: keep downsampling and adjust dilation/padding as needed
+        layer2 = self.resnet.layer2
+        for block in layer2:
+            block.conv2.dilation = (2, 2)
+            block.conv2.padding = (2, 2)
+
+        # Modify layer3: prevent downsampling in the first block and adjust dilation/padding
+        layer3 = self.resnet.layer3
+        for i, block in enumerate(layer3):
+            if i == 0:
+                block.conv1.stride = (1, 1)  # Prevent downsampling
+                if block.downsample is not None:
+                    block.downsample[0].stride = (1, 1)
+            block.conv2.dilation = (2, 2)
+            block.conv2.padding = (2, 2)
+
     def _initialize_weights(self):
-        nn.init.kaiming_normal_(self.fc1.weight, mode='fan_out', nonlinearity='leaky_relu')
+        nn.init.xavier_uniform_(self.fc1.weight)
         if self.fc1.bias is not None:
             nn.init.constant_(self.fc1.bias, 0)
 
     def forward(self, state):
-        """
-        Forward pass through the ResNet-18 + Self-Attention feature extractor.
-        """
-        x = state.permute(0, 3, 1, 2).contiguous()
-        
-        x = self.resnet.conv1(x)
+        # state shape is expected to be (B, H, W, 2)
+        # Permute to (B, C, H, W) as in your original code
+        x = state.permute(0, 3, 1, 2).contiguous()  # Now x has shape (B, 2, H, W)
+
+        # Create the mask:
+        # For every position, if the value is not -1, mark it as 1.0; otherwise, 0.0.
+        # This produces a mask with the same shape as x, i.e., (B, 2, H, W)
+        mask = (x != -1).float()
+
+        # Concatenate the original input and the mask along the channel dimension.
+        # The result will have 4 channels: 2 original channels and 2 mask channels.
+        x = torch.cat([x, mask], dim=1)  # x now has shape (B, 4, H, W)
+
+        # Continue with the forward pass through ResNet and self-attention:
+        x = self.resnet.conv1(x)  # Now uses the modified conv1 that accepts 4 channels
         x = self.resnet.bn1(x)
         x = self.resnet.relu(x)
         x = self.resnet.maxpool(x)
-
         x = self.resnet.layer1(x)
         x = self.resnet.layer2(x)
-        x = self.resnet.layer3(x)  # Output shape should now be (B, 256, 8, 8)
-
-        # Apply Self-Attention
-        x = self.self_attention(x)  # Shape: (B, 256, H, W)
-        
-        # Global Average Pooling
-        x = nn.AdaptiveAvgPool2d((1, 1))(x) # Shape: (B, 256, 1, 1)
-        
-        # Flatten the tensor
-        x = x.view(x.size(0), -1) 
-        
-        # Fully Connected Layer with Activation and Dropout
-        x = self.activation(self.fc1(x))  # Shape: (B, hidden1)
+        x = self.resnet.layer3(x)
+        x = self.self_attention(x)  # (B, 256, H', W')
+        x = nn.AdaptiveAvgPool2d((1, 1))(x)
+        x = x.view(x.size(0), -1)
+        x = self.activation(self.fc1(x))
         x = self.dropout(x)
-        
         return x
