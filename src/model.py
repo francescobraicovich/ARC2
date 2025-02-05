@@ -126,9 +126,7 @@ class Actor(nn.Module):
         # Shared layers (for MLP or after CNN feature extraction)
         self.fc2 = nn.Linear(hidden1, hidden2).to(DEVICE)
         self.fc3 = nn.Linear(hidden2, nb_actions).to(DEVICE)
-        self.bn2 = nn.BatchNorm1d(hidden2).to(DEVICE)
-
-
+        self.normalization = nn.LayerNorm(hidden2).to(DEVICE)
 
         self.relu = nn.LeakyReLU()
         self.final_activation = CustomSoftsign(min_val, max_val)
@@ -185,7 +183,7 @@ class Actor(nn.Module):
 
         # Shared part of the network
         out = self.fc2(latent)
-        out = self.bn2(out)  # Batch Normalization here
+        out = self.normalization(out)  # Batch Normalization here
         out = self.relu(out)
         out = self.fc3(out)
         out = self.final_activation(out)
@@ -221,7 +219,7 @@ class Critic(nn.Module):
         self.fc2 = nn.Linear(hidden1 + nb_actions, hidden2).to(DEVICE)
         self.fc3 = nn.Linear(hidden2, 1).to(DEVICE)
         self.relu = nn.LeakyReLU()
-        self.bn2 = nn.BatchNorm1d(hidden2).to(DEVICE)  # BatchNorm after fc2
+        self.normalizaton = nn.LayerNorm(hidden2).to(DEVICE)  # LayerNorm
 
 
         self.init_weights(init_w)
@@ -275,7 +273,7 @@ class Critic(nn.Module):
         # Combine latent + action
         concatenated = torch.cat([latent, a], dim=-1)  # => (N*B, hidden1 + nb_actions)
         out = self.fc2(concatenated)
-        out = self.bn2(out)
+        out = self.normalizaton(out)
         out = self.relu(out)
         out = self.fc3(out)
         if reshape:
