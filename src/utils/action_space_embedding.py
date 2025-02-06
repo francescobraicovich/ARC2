@@ -67,7 +67,10 @@ def random_array(env, arc_prob=1):
     if np.random.rand() < arc_prob:
         return random_arc_problem(env)
 
+    print("generating random array")
+    print('generators: ', generators)
     random_challenge = random.choice(list(generators.keys()))
+    print(random_challenge)
     result = demo_generator(random_challenge) 
     result = np.array(result[0]['input'] )
     return result
@@ -93,7 +96,7 @@ def create_color_similarity_matrix(action_space, env, num_experiments=10):
     similarity_matrix = np.identity(n)
 
     for _ in range(num_experiments):
-        random_problem = random_array(env, arc_prob=0.5)
+        random_problem = random_array(env, arc_prob=1)
         for i in range(n):
             for j in range(i + 1, n):
                 selection1 = color_selections[i]
@@ -157,7 +160,7 @@ def create_selection_similarity_matrix(action_space, env, num_experiments=10):
     similarity_matrix = np.identity(n)
 
     for _ in range(num_experiments):
-        random_problem = random_array(env, arc_prob=0.85)
+        random_problem = random_array(env, arc_prob=1)
         # Choose a random color present in the problem for selection functions.
         random_color_in_problem = int(np.random.choice(np.unique(random_problem)))
         for i in range(n):
@@ -198,7 +201,7 @@ def create_transformation_similarity_matrix(action_space, env, num_experiments=1
     similarity_matrix = np.identity(n)
 
     for _ in range(num_experiments):
-        random_problem = random_array(env, arc_prob=0.85)
+        random_problem = random_array(env, arc_prob=1)
         # Find a non-empty selection by repeatedly sampling until a valid selection is found.
         while True:
             random_color_in_problem = int(np.random.choice(np.unique(random_problem)))
@@ -273,6 +276,8 @@ def filter_by_change(action_space, env, num_experiments, threshold):
 
     print(f'Out of {n} actions, only {np.sum(mask)} are used.')
     cleaned_actions = actions[mask]
+
+    assert len(cleaned_actions) == np.sum(mask), 'Error in filtering actions.'
     return cleaned_actions
 
 
@@ -341,6 +346,8 @@ def create_approximate_similarity_matrix(action_space, num_experiments_filter, f
 
         if i % 2500 == 0:
             print(f"Processed {i}/{n} actions.", end="\r")
+
+    print('Similarity matrix shape: ', similarity_matrix.shape)
 
     return cleaned_actions, similarity_matrix
 
