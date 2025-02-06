@@ -108,10 +108,11 @@ class ARCActionSpace(Space):
         else:
             self.cleaned_space, self.embedding = self.embed_actions()
 
+        print('Number of actions filtered:', len(self.cleaned_space))
+
         # Create the k-NN model for nearest neighbor search in the embedded space
         self.nearest_neighbors = None
         self.create_nearest_neighbors()
-        print('k-NN model created')
         print(SEPARATOR)
 
     def embed_actions(self):
@@ -129,6 +130,7 @@ class ARCActionSpace(Space):
         cleaned_actions, similarity_matrix = create_approximate_similarity_matrix(
             self, args.num_experiments_filter, args.filter_threshold, args.num_experiments_similarity
         )
+        
         # Convert similarity to distance
         distance_matrix = 1 - similarity_matrix
 
@@ -151,6 +153,9 @@ class ARCActionSpace(Space):
         """
         self.nearest_neighbors = NearestNeighbors(n_neighbors=None, algorithm='auto')
         self.nearest_neighbors.fit(self.embedding)
+
+        print('NearestNeighbors model created with {} neighbors'.format(self.nearest_neighbors.n_neighbors))
+        print
 
     def search_point(self, query_actions, k=5):
         """
@@ -482,7 +487,7 @@ class ARCActionSpace(Space):
                     action[2] = transformation_key
                     action_space.append(action)
 
-        print(f"Number of actions: {len(action_space)}")
+        print(f"Number of actions not filtered: {len(action_space)}")
         self.space = np.array(action_space)
         return action_space
 
