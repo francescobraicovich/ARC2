@@ -37,8 +37,8 @@ class WolpertingerAgent(DDPG):
         self.critic_target.to(self.device)
 
         self.n_policy_updates = 0
-        self.policy_print_freq = 200
-        self.plot_freq = 200
+        self.policy_print_freq = 2000
+        self.plot_freq = 2000
 
         self.actor_gradients = []
         self.critic_gradients = []
