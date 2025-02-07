@@ -362,12 +362,7 @@ class EncoderTransformer(nn.Module):
         C = pairs.shape[2]
 
         print(f"Batch size: {batch_size}, Rows: {R}, Columns: {C}")
-        print('Num colors:', self.colors_embed.num_embeddings)
-                
-        # Check color embedding indices
-        if pairs.min() < -1 or pairs.max() >= self.colors_embed.num_embeddings:
-            raise ValueError(f"Color indices out of range: min={pairs.min()}, max={pairs.max()}")
-
+        
         # Embedding for color tokens
         colors_embed = self.colors_embed(pairs.long())
         print(f"Colors embed shape: {colors_embed.shape}")
