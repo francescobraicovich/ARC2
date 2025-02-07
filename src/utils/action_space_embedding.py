@@ -268,7 +268,10 @@ def filter_by_change(action_space, env, num_experiments, threshold):
         equal_ratios[i] = equal_ratio
 
         if i % 500 == 0:
-            print(f'Filtered {i} out of {n} actions')
+            # Clear the line
+            print('\r' + ' ' * 50, end='', flush=True)
+            # Print the new message
+            print(f'\rFiltered {i} out of {n} actions', end='', flush=True)
 
     print('Average equal ratio:', np.mean(equal_ratios))
     change_ratios = 1 - equal_ratios
@@ -344,7 +347,7 @@ def create_approximate_similarity_matrix(action_space, num_experiments_filter, f
             similarity_matrix[i, j] = similarity
             similarity_matrix[j, i] = similarity
 
-        if i % 2500 == 0:
+        if i % 500 == 0:
             print(f"Processed {i}/{n} actions.", end="\r")
 
     print('Similarity matrix shape: ', similarity_matrix.shape)
