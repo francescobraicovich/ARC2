@@ -183,7 +183,7 @@ class Actor(nn.Module):
 
         # Shared part of the network
         out = self.fc2(latent)
-        out = self.normalization(out)  # Batch Normalization here
+        out = self.normalization(out)  # Normalization here
         out = self.relu(out)
         out = self.fc3(out)
         out = self.final_activation(out)
@@ -217,7 +217,8 @@ class Critic(nn.Module):
 
         # In the second layer, we combine state-latent + action
         self.fc2 = nn.Linear(hidden1 + nb_actions, hidden2).to(DEVICE)
-        self.fc3 = nn.Linear(hidden2, 1).to(DEVICE)
+        self.fc3 = nn.Linear(hidden2, hidden2).to(DEVICE)
+        self.fc4 = nn.Linear(hidden2, 1).to(DEVICE)
         self.relu = nn.LeakyReLU()
         self.normalizaton = nn.LayerNorm(hidden2).to(DEVICE)  # LayerNorm
 
@@ -249,6 +250,10 @@ class Critic(nn.Module):
             nn.init.uniform_(self.fc3.weight, -init_w, init_w)
             if self.fc3.bias is not None:
                 nn.init.zeros_(self.fc3.bias)
+        if hasattr(self, 'fc4') and self.fc4.weight is not None:
+            nn.init.uniform_(self.fc4.weight, -init_w, init_w)
+            if self.fc4.bias is not None:
+                nn.init.zeros_(self.fc4.bias)
     
     def forward(self, x, a):
 
@@ -273,12 +278,15 @@ class Critic(nn.Module):
         # Combine latent + action
         concatenated = torch.cat([latent, a], dim=-1)  # => (N*B, hidden1 + nb_actions)
         out = self.fc2(concatenated)
-        out = self.normalizaton(out)
         out = self.relu(out)
         out = self.fc3(out)
+        out = self.normalizaton(out)
+        out = self.relu(out)
+        out = self.fc4(out)
         if reshape:
             out = out.reshape(B, N, -1)
         out = torch.squeeze(out)
+        assert False
         return out
 
 
