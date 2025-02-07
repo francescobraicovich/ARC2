@@ -256,7 +256,6 @@ class Critic(nn.Module):
                 nn.init.zeros_(self.fc4.bias)
     
     def forward(self, x, a):
-
         state, shape = x
         reshape = False
 
@@ -266,7 +265,7 @@ class Critic(nn.Module):
             a = torch.reshape(a, (B * N, nb_actions))
 
         if self.type == 'lpn':
-            latent = process_in_chunks(self.encoder, state, shape, self.chunk_size)
+            latent = latent = self.encoder(state, shape)
             latent = self.fc1(latent)
 
         elif self.type == 'cnn':
