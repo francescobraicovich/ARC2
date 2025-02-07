@@ -39,9 +39,9 @@ def init_parser(alg):
         parser.add_argument('--latent_dim', default=48, type=int, help='latent dimension for encoder')
         parser.add_argument('--chunk_size', default=10, type=int, help='chunk size for training encoder')
         parser.add_argument('--epsilon_start', default=1.0, type=float, help='starting epsilon value, useful for resuming training')
-        parser.add_argument('--num_experiments_filter', default=100, type=int, help='number of problems on which to calculate the change percentage when filtering actions')
-        parser.add_argument('--filter_threshold', default=0.95, type=float, help='percentage of random problems an action must change not to be filtered')
-        parser.add_argument('--num_experiments_similarity', default=500, type=int, help='number of problems on which to calculate approximate similarity matrix between actions')
+        parser.add_argument('--num_experiments_filter', default=2, type=int, help='number of problems on which to calculate the change percentage when filtering actions')
+        parser.add_argument('--filter_threshold', default=0.4, type=float, help='percentage of random problems an action must change not to be filtered')
+        parser.add_argument('--num_experiments_similarity', default=2, type=int, help='number of problems on which to calculate approximate similarity matrix between actions')
         parser.add_argument('--max_embedding', default=10., type=float, help='Maximum value for numbers in the embedding matrix')
         parser.add_argument('--min_embedding', default=-10., type=float, help='Minimum value for numbers in the embedding matrix')
         return parser
