@@ -340,46 +340,6 @@ class EncoderTransformer(nn.Module):
 
         x = F.dropout(x, p=embed_dropout_p, training=not dropout_eval)
         return x
-
-    def make_pad_mask(self, grid_shapes: torch.Tensor) -> torch.Tensor:
-        """
-        Creates a boolean pad mask of shape (B, T, T) or (B, seq_len), etc.
-        Original JAX code returns shape (*B, 1, T, T).
-        Here, we’ll return shape (B, T, T) as an attention mask where
-        True=attend, False=ignore or vice versa (depending on how we feed it).
-
-        grid_shapes: shape (B, 2, 2), each subarray = [[R_in,R_out],[C_in,C_out]].
-        We allow up to max_rows x max_cols => 2*max_len tokens + 4 shape tokens + 1 CLS token => T=1+4+2*(max_rows*max_cols).
-        The actual used tokens for each example are 1+4+2*(R*C). Everything else is padding.
-        """
-        B = grid_shapes.shape[0]
-        T = 1 + 4 + 2 * (self.config.max_rows * self.config.max_cols)
-
-        # For each example, figure out how many tokens are actually used = 1 + 4 + 2*(R*C).
-        # We create a 1D mask [T], with the first N entries = True (valid), rest = False.
-        # Then broadcast to (B, T) or (B, T, T).
-
-        # Compute N = 1 + 4 + 2 * (R*C) from the real R, C.
-        # R = grid_shapes[:,0,0] for input, but we might also consider R_out? Typically R_in=R_out, but depends on usage.
-        # The original code uses: row_mask < grid_shapes[...,0,:], col_mask < grid_shapes[...,1,:],
-        # etc. We'll simplify by just using the max of [R_in, R_out] as R_total, and similarly for columns.
-
-        rows_used = torch.max(grid_shapes[:, 0, :], dim=-1)[0]  # shape (B,); max of [R_in,R_out]
-        cols_used = torch.max(grid_shapes[:, 1, :], dim=-1)[0]  # shape (B,); max of [C_in,C_out]
-        # total tokens for that example
-        used_tokens = 1 + 4 + 2 * (rows_used * cols_used)  # shape (B,)
-
-        # Build the 1D mask for each example
-        # pad_mask[b, i] = True if i < used_tokens[b], else False
-        # Then we turn that into a 2D (T, T) by outer product or something similar.
-        pad_mask = torch.zeros((B, T), dtype=torch.bool, device=grid_shapes.device)
-        for b in range(B):
-            n = used_tokens[b].long().item()
-            pad_mask[b, :n] = True
-
-        # Now we create an attention mask (B, T, T) by ANDing: pad_mask[b,i] & pad_mask[b,j].
-        pad_mask_2d = pad_mask.unsqueeze(-1) & pad_mask.unsqueeze(1)  # (B, T, T)
-        return pad_mask_2d
     
     def make_pad_mask(self, grid_shapes: torch.Tensor) -> torch.Tensor:
         """
@@ -408,5 +368,74 @@ class EncoderTransformer(nn.Module):
             n = used_tokens[b].long().item()
             if n < T:
                 key_padding_mask[b, n:] = True  # Mask out padding tokens
+
+        return key_padding_mask
+    
+    def make_pad_mask(self, grid_shapes: torch.Tensor) -> torch.Tensor:
+        """
+        Creates a key_padding_mask of shape (B, T), where True indicates padding tokens.
+
+        Args:
+            grid_shapes: shape (B, 2, 2), representing [[R_in, R_out], [C_in, C_out]].
+
+        Returns:
+            key_padding_mask: shape (B, T), where T = 1 + 4 + 2 * max_rows * max_cols.
+                            True indicates positions that are padding and should be masked.
+        """
+        # Debugging: Check the shape and contents of grid_shapes
+        print(f"grid_shapes.shape: {grid_shapes.shape}")
+        print(f"grid_shapes: {grid_shapes}")
+
+        # Validate grid_shapes dimensions
+        assert grid_shapes.ndim == 3 and grid_shapes.shape[1:] == (2, 2), \
+            f"Expected grid_shapes of shape (B, 2, 2), but got {grid_shapes.shape}"
+
+        # Check for NaN or Inf values
+        if torch.isnan(grid_shapes).any():
+            print("NaN detected in grid_shapes")
+        if torch.isinf(grid_shapes).any():
+            print("Inf detected in grid_shapes")
+
+        B = grid_shapes.shape[0]
+        T = 1 + 4 + 2 * (self.config.max_rows * self.config.max_cols)
+
+        # Debugging: Print calculated T
+        print(f"Batch size (B): {B}, Total tokens (T): {T}")
+
+        # Compute used tokens: 1 CLS + 4 grid shapes + 2*(R*C)
+        rows_used = torch.max(grid_shapes[:, 0, :], dim=-1)[0]  # shape (B,)
+        cols_used = torch.max(grid_shapes[:, 1, :], dim=-1)[0]  # shape (B,)
+
+        # Debugging: Print rows and columns used
+        print(f"rows_used: {rows_used}")
+        print(f"cols_used: {cols_used}")
+
+        used_tokens = 1 + 4 + 2 * (rows_used * cols_used)  # shape (B,)
+
+        # Debugging: Print used_tokens
+        print(f"used_tokens: {used_tokens}")
+
+        # Check for invalid token counts
+        if (used_tokens > T).any():
+            print("Warning: used_tokens exceed T in some batches!")
+
+        # Initialize mask with all False (no padding)
+        key_padding_mask = torch.zeros((B, T), dtype=torch.bool, device=grid_shapes.device)
+
+        # Debugging: Ensure mask is initialized correctly
+        print(f"Initial key_padding_mask (all False): {key_padding_mask}")
+
+        # Set True for padding positions
+        for b in range(B):
+            n = used_tokens[b].long().item()
+
+            # Debugging: Check individual batch token count
+            print(f"Batch {b}: used_tokens = {n}")
+
+            if n < T:
+                key_padding_mask[b, n:] = True  # Mask out padding tokens
+
+            # Debugging: Print mask after modification
+            print(f"key_padding_mask after batch {b}: {key_padding_mask[b]}")
 
         return key_padding_mask
