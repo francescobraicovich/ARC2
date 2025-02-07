@@ -85,7 +85,7 @@ class CNNFeatureExtractor(nn.Module):
 
         # Self-attention, fully connected layers, etc.
         self.self_attention = SelfAttention(in_dim=256)
-        self.fc1 = nn.Linear(256, hidden1)
+        self.fc1 = nn.Linear(256 * 4 * 4, hidden1)
         self.dropout = nn.Dropout(p=dropout_prob)
         self.activation = nn.GELU()
 
@@ -150,7 +150,7 @@ class CNNFeatureExtractor(nn.Module):
         x = self.resnet.layer2(x)
         x = self.resnet.layer3(x)
         x = self.self_attention(x)  # (B, 256, H', W')
-        x = nn.AdaptiveAvgPool2d((1, 1))(x)
+        x = nn.AdaptiveAvgPool2d((4, 4))(x)
         x = x.view(x.size(0), -1)
         x = self.activation(self.fc1(x))
         x = self.dropout(x)
