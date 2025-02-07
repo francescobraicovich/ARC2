@@ -286,7 +286,6 @@ class Critic(nn.Module):
         if reshape:
             out = out.reshape(B, N, -1)
         out = torch.squeeze(out)
-        assert False
         return out
 
 
