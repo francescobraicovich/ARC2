@@ -176,7 +176,7 @@ class DDPG(object):
     def load_weights(self, dir):
         """
         Load the Actor and Critic model weights from the specified directory.
-
+        
         Args:
             dir: Directory from which to load the model weights.
         """
@@ -186,25 +186,29 @@ class DDPG(object):
         # Construct paths for the weights
         actor_path = f"../output/{dir}/actor.pt"
         critic_path = f"../output/{dir}/critic.pt"
-
+        
+        # Define map_location based on your device.
+        # Ensure self.device is set correctly (see note below).
+        map_location = lambda storage, loc: storage.to(self.device)
+        
         # Load Actor model
         if hasattr(self.actor, 'module'):
-            # Load into the underlying model for DataParallel
-            self.actor.module.load_state_dict(torch.load(actor_path, map_location=self.device))
+            self.actor.module.load_state_dict(torch.load(actor_path, map_location=map_location))
         else:
-            self.actor.load_state_dict(torch.load(actor_path, map_location=self.device))
-
+            self.actor.load_state_dict(torch.load(actor_path, map_location=map_location))
+        
         # Load Critic model
         if hasattr(self.critic, 'module'):
-            # Load into the underlying model for DataParallel
-            self.critic.module.load_state_dict(torch.load(critic_path, map_location=self.device))
+            self.critic.module.load_state_dict(torch.load(critic_path, map_location=map_location))
         else:
-            self.critic.load_state_dict(torch.load(critic_path, map_location=self.device))
-
+            self.critic.load_state_dict(torch.load(critic_path, map_location=map_location))
+        
         print(f"Actor and Critic models loaded from {dir}")
 
+        # Update target networks
         hard_update(self.actor_target, self.actor)
         hard_update(self.critic_target, self.critic)
+
 
 
     def save_model(self, output):
