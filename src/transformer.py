@@ -363,6 +363,10 @@ class EncoderTransformer(nn.Module):
 
         print(f"Batch size: {batch_size}, Rows: {R}, Columns: {C}")
 
+        # Check color embedding indices
+        if pairs.min() < 0 or pairs.max() >= self.colors_embed.num_embeddings:
+            raise ValueError(f"Color indices out of range: min={pairs.min()}, max={pairs.max()}")
+
         # Embedding for color tokens
         colors_embed = self.colors_embed(pairs.long())
         print(f"Colors embed shape: {colors_embed.shape}")
@@ -373,8 +377,14 @@ class EncoderTransformer(nn.Module):
             row_vec = torch.zeros((R,), dtype=torch.long, device=device)
             col_vec = torch.zeros((C,), dtype=torch.long, device=device)
 
-            row_embed = self.pos_row_embed(row_vec)  # shape [R, emb_dim]
-            col_embed = self.pos_col_embed(col_vec)  # shape [C, emb_dim]
+            # Check position embedding indices
+            if row_vec.min() < 0 or row_vec.max() >= self.pos_row_embed.num_embeddings:
+                raise ValueError(f"Row indices out of range: {row_vec}")
+            if col_vec.min() < 0 or col_vec.max() >= self.pos_col_embed.num_embeddings:
+                raise ValueError(f"Col indices out of range: {col_vec}")
+
+            row_embed = self.pos_row_embed(row_vec)
+            col_embed = self.pos_col_embed(col_vec)
 
             print(f"Row embed shape (scaled): {row_embed.shape}")
             print(f"Col embed shape (scaled): {col_embed.shape}")
@@ -391,33 +401,42 @@ class EncoderTransformer(nn.Module):
             print(f"Position row embeds shape (scaled): {pos_row_embeds.shape}")
             print(f"Position col embeds shape (scaled): {pos_col_embeds.shape}")
 
-            pos_embed = pos_row_embeds + pos_col_embeds  # [R, C, 1, emb_dim]
+            pos_embed = pos_row_embeds + pos_col_embeds
         else:
             row_ids = torch.arange(R, device=device, dtype=torch.long)
             col_ids = torch.arange(C, device=device, dtype=torch.long)
-            
+
             print(f"Row IDs: {row_ids}")
             print(f"Col IDs: {col_ids}")
 
-            row_embed = self.pos_row_embed(row_ids)  # [R, emb_dim]
-            col_embed = self.pos_col_embed(col_ids)  # [C, emb_dim]
+            # Check position embedding indices
+            if row_ids.min() < 0 or row_ids.max() >= self.pos_row_embed.num_embeddings:
+                raise ValueError(f"Row IDs out of range: {row_ids}")
+            if col_ids.min() < 0 or col_ids.max() >= self.pos_col_embed.num_embeddings:
+                raise ValueError(f"Col IDs out of range: {col_ids}")
+
+            row_embed = self.pos_row_embed(row_ids)
+            col_embed = self.pos_col_embed(col_ids)
 
             print(f"Row embed shape: {row_embed.shape}")
             print(f"Col embed shape: {col_embed.shape}")
 
-            row_embed = row_embed.unsqueeze(1).unsqueeze(2)  # [R, 1, 1, emb_dim]
-            col_embed = col_embed.unsqueeze(0).unsqueeze(2)  # [1, C, 1, emb_dim]
+            row_embed = row_embed.unsqueeze(1).unsqueeze(2)
+            col_embed = col_embed.unsqueeze(0).unsqueeze(2)
 
             print(f"Row embed shape after unsqueeze: {row_embed.shape}")
             print(f"Col embed shape after unsqueeze: {col_embed.shape}")
 
-            pos_embed = row_embed + col_embed  # [R, C, 1, emb_dim]
+            pos_embed = row_embed + col_embed
 
         print(f"Position embed shape: {pos_embed.shape}")
 
         # Channels embedding
         channel_ids = torch.arange(2, device=device, dtype=torch.long)
         print(f"Channel IDs: {channel_ids}")
+
+        if channel_ids.min() < 0 or channel_ids.max() >= self.channels_embed.num_embeddings:
+            raise ValueError(f"Channel indices out of range: {channel_ids}")
 
         channel_emb = self.channels_embed(channel_ids)
         print(f"Channel embed shape: {channel_emb.shape}")
@@ -426,7 +445,7 @@ class EncoderTransformer(nn.Module):
         print(f"Channel embed shape after unsqueeze: {channel_emb.shape}")
 
         # Combine
-        x = colors_embed + pos_embed + channel_emb  # [B, R, C, 2, emb_dim]
+        x = colors_embed + pos_embed + channel_emb
         print(f"Combined embed shape: {x.shape}")
 
         # Flatten
@@ -435,6 +454,11 @@ class EncoderTransformer(nn.Module):
 
         # Embed grid shape tokens
         grid_shapes = grid_shapes.long()
+        if (grid_shapes[:, 0, :] - 1).min() < 0 or (grid_shapes[:, 0, :] - 1).max() >= self.grid_shapes_row_embed.num_embeddings:
+            raise ValueError(f"Grid shape row indices out of range: {grid_shapes[:, 0, :]}")
+        if (grid_shapes[:, 1, :] - 1).min() < 0 or (grid_shapes[:, 1, :] - 1).max() >= self.grid_shapes_col_embed.num_embeddings:
+            raise ValueError(f"Grid shape col indices out of range: {grid_shapes[:, 1, :]}")
+
         row_part = self.grid_shapes_row_embed(grid_shapes[:, 0, :] - 1)
         col_part = self.grid_shapes_col_embed(grid_shapes[:, 1, :] - 1)
 
@@ -452,6 +476,9 @@ class EncoderTransformer(nn.Module):
 
         # Add CLS token
         cls_ids = torch.zeros((batch_size, 1), dtype=torch.long, device=device)
+        if cls_ids.min() < 0 or cls_ids.max() >= self.cls_token.num_embeddings:
+            raise ValueError(f"CLS token indices out of range: {cls_ids}")
+
         cls_token = self.cls_token(cls_ids)
         print(f"CLS token shape: {cls_token.shape}")
 
@@ -464,6 +491,7 @@ class EncoderTransformer(nn.Module):
 
         print(f"Final output shape after dropout: {x.shape}")
         return x
+
 
 
     def make_pad_mask(self, grid_shapes: torch.Tensor) -> torch.Tensor:
