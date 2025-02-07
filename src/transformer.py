@@ -341,6 +341,131 @@ class EncoderTransformer(nn.Module):
         x = F.dropout(x, p=embed_dropout_p, training=not dropout_eval)
         return x
     
+    def embed_grids(
+        self,
+        pairs: torch.Tensor,
+        grid_shapes: torch.Tensor,
+        dropout_eval: bool = False
+    ) -> torch.Tensor:
+        """
+        Creates the token embeddings for:
+          - Colors
+          - Positions (row/col)
+          - Channels
+          - Grid shapes
+          - CLS
+        Returns:
+          x of shape (batch, 1 + 4 + 2 * R * C, emb_dim)
+        """
+        batch_size = pairs.shape[0]
+        R = pairs.shape[1]
+        C = pairs.shape[2]
+
+        print(f"Batch size: {batch_size}, Rows: {R}, Columns: {C}")
+
+        # Embedding for color tokens
+        colors_embed = self.colors_embed(pairs.long())
+        print(f"Colors embed shape: {colors_embed.shape}")
+
+        # Position embeddings
+        device = pairs.device
+        if self.config.scaled_position_embeddings:
+            row_vec = torch.zeros((R,), dtype=torch.long, device=device)
+            col_vec = torch.zeros((C,), dtype=torch.long, device=device)
+
+            row_embed = self.pos_row_embed(row_vec)  # shape [R, emb_dim]
+            col_embed = self.pos_col_embed(col_vec)  # shape [C, emb_dim]
+
+            print(f"Row embed shape (scaled): {row_embed.shape}")
+            print(f"Col embed shape (scaled): {col_embed.shape}")
+
+            row_scales = torch.arange(1, R + 1, device=device, dtype=row_embed.dtype).unsqueeze(-1)
+            col_scales = torch.arange(1, C + 1, device=device, dtype=col_embed.dtype).unsqueeze(-1)
+
+            pos_row_embeds = row_scales * row_embed
+            pos_col_embeds = col_scales * col_embed
+
+            pos_row_embeds = pos_row_embeds.unsqueeze(1).unsqueeze(2)
+            pos_col_embeds = pos_col_embeds.unsqueeze(0).unsqueeze(2)
+
+            print(f"Position row embeds shape (scaled): {pos_row_embeds.shape}")
+            print(f"Position col embeds shape (scaled): {pos_col_embeds.shape}")
+
+            pos_embed = pos_row_embeds + pos_col_embeds  # [R, C, 1, emb_dim]
+        else:
+            row_ids = torch.arange(R, device=device, dtype=torch.long)
+            col_ids = torch.arange(C, device=device, dtype=torch.long)
+            
+            print(f"Row IDs: {row_ids}")
+            print(f"Col IDs: {col_ids}")
+
+            row_embed = self.pos_row_embed(row_ids)  # [R, emb_dim]
+            col_embed = self.pos_col_embed(col_ids)  # [C, emb_dim]
+
+            print(f"Row embed shape: {row_embed.shape}")
+            print(f"Col embed shape: {col_embed.shape}")
+
+            row_embed = row_embed.unsqueeze(1).unsqueeze(2)  # [R, 1, 1, emb_dim]
+            col_embed = col_embed.unsqueeze(0).unsqueeze(2)  # [1, C, 1, emb_dim]
+
+            print(f"Row embed shape after unsqueeze: {row_embed.shape}")
+            print(f"Col embed shape after unsqueeze: {col_embed.shape}")
+
+            pos_embed = row_embed + col_embed  # [R, C, 1, emb_dim]
+
+        print(f"Position embed shape: {pos_embed.shape}")
+
+        # Channels embedding
+        channel_ids = torch.arange(2, device=device, dtype=torch.long)
+        print(f"Channel IDs: {channel_ids}")
+
+        channel_emb = self.channels_embed(channel_ids)
+        print(f"Channel embed shape: {channel_emb.shape}")
+
+        channel_emb = channel_emb.unsqueeze(0).unsqueeze(0)
+        print(f"Channel embed shape after unsqueeze: {channel_emb.shape}")
+
+        # Combine
+        x = colors_embed + pos_embed + channel_emb  # [B, R, C, 2, emb_dim]
+        print(f"Combined embed shape: {x.shape}")
+
+        # Flatten
+        x = x.view(batch_size, R * C * 2, self.config.emb_dim)
+        print(f"Flattened embed shape: {x.shape}")
+
+        # Embed grid shape tokens
+        grid_shapes = grid_shapes.long()
+        row_part = self.grid_shapes_row_embed(grid_shapes[:, 0, :] - 1)
+        col_part = self.grid_shapes_col_embed(grid_shapes[:, 1, :] - 1)
+
+        print(f"Row part shape: {row_part.shape}")
+        print(f"Col part shape: {col_part.shape}")
+
+        row_part = row_part + channel_emb.squeeze(0)
+        col_part = col_part + channel_emb.squeeze(0)
+
+        grid_shapes_embed = torch.cat([row_part, col_part], dim=1)
+        print(f"Grid shapes embed shape: {grid_shapes_embed.shape}")
+
+        x = torch.cat([grid_shapes_embed, x], dim=1)
+        print(f"Embed shape after adding grid shapes: {x.shape}")
+
+        # Add CLS token
+        cls_ids = torch.zeros((batch_size, 1), dtype=torch.long, device=device)
+        cls_token = self.cls_token(cls_ids)
+        print(f"CLS token shape: {cls_token.shape}")
+
+        x = torch.cat([cls_token, x], dim=1)
+        print(f"Final embed shape after adding CLS token: {x.shape}")
+
+        # Apply dropout
+        embed_dropout_p = 0.0 if dropout_eval else self.config.transformer_layer.dropout_rate
+        x = F.dropout(x, p=embed_dropout_p, training=not dropout_eval)
+
+        print(f"Final output shape after dropout: {x.shape}")
+        return x
+
+
     def make_pad_mask(self, grid_shapes: torch.Tensor) -> torch.Tensor:
         """
         Creates a key_padding_mask of shape (B, T), where True indicates padding tokens.
@@ -371,71 +496,3 @@ class EncoderTransformer(nn.Module):
 
         return key_padding_mask
     
-    def make_pad_mask(self, grid_shapes: torch.Tensor) -> torch.Tensor:
-        """
-        Creates a key_padding_mask of shape (B, T), where True indicates padding tokens.
-
-        Args:
-            grid_shapes: shape (B, 2, 2), representing [[R_in, R_out], [C_in, C_out]].
-
-        Returns:
-            key_padding_mask: shape (B, T), where T = 1 + 4 + 2 * max_rows * max_cols.
-                            True indicates positions that are padding and should be masked.
-        """
-        # Debugging: Check the shape and contents of grid_shapes
-        print(f"grid_shapes.shape: {grid_shapes.shape}")
-        print(f"grid_shapes: {grid_shapes}")
-
-        # Validate grid_shapes dimensions
-        assert grid_shapes.ndim == 3 and grid_shapes.shape[1:] == (2, 2), \
-            f"Expected grid_shapes of shape (B, 2, 2), but got {grid_shapes.shape}"
-
-        # Check for NaN or Inf values
-        if torch.isnan(grid_shapes).any():
-            print("NaN detected in grid_shapes")
-        if torch.isinf(grid_shapes).any():
-            print("Inf detected in grid_shapes")
-
-        B = grid_shapes.shape[0]
-        T = 1 + 4 + 2 * (self.config.max_rows * self.config.max_cols)
-
-        # Debugging: Print calculated T
-        print(f"Batch size (B): {B}, Total tokens (T): {T}")
-
-        # Compute used tokens: 1 CLS + 4 grid shapes + 2*(R*C)
-        rows_used = torch.max(grid_shapes[:, 0, :], dim=-1)[0]  # shape (B,)
-        cols_used = torch.max(grid_shapes[:, 1, :], dim=-1)[0]  # shape (B,)
-
-        # Debugging: Print rows and columns used
-        print(f"rows_used: {rows_used}")
-        print(f"cols_used: {cols_used}")
-
-        used_tokens = 1 + 4 + 2 * (rows_used * cols_used)  # shape (B,)
-
-        # Debugging: Print used_tokens
-        print(f"used_tokens: {used_tokens}")
-
-        # Check for invalid token counts
-        if (used_tokens > T).any():
-            print("Warning: used_tokens exceed T in some batches!")
-
-        # Initialize mask with all False (no padding)
-        key_padding_mask = torch.zeros((B, T), dtype=torch.bool, device=grid_shapes.device)
-
-        # Debugging: Ensure mask is initialized correctly
-        print(f"Initial key_padding_mask (all False): {key_padding_mask}")
-
-        # Set True for padding positions
-        for b in range(B):
-            n = used_tokens[b].long().item()
-
-            # Debugging: Check individual batch token count
-            print(f"Batch {b}: used_tokens = {n}")
-
-            if n < T:
-                key_padding_mask[b, n:] = True  # Mask out padding tokens
-
-            # Debugging: Print mask after modification
-            print(f"key_padding_mask after batch {b}: {key_padding_mask[b]}")
-
-        return key_padding_mask
