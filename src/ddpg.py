@@ -189,7 +189,7 @@ class DDPG(object):
         
         # Define map_location based on your device.
         # Ensure self.device is set correctly (see note below).
-        map_location = lambda storage, loc: storage.to(self.device)
+        map_location = lambda storage, loc: storage.to(device=self.device)
         
         # Load Actor model
         if hasattr(self.actor, 'module'):
