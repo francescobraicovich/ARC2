@@ -14,6 +14,7 @@ Dependencies:
 
 # Standard library imports
 from functools import partial
+import os
 
 # Third-party imports
 import gymnasium as gym
@@ -103,8 +104,13 @@ class ARCActionSpace(Space):
 
         # Load or create embedded actions
         if args.load_action_embedding:
-            self.cleaned_space = np.load('src/embedded_space/cleaned_actions.npy')
-            self.embedding = np.load('src/embedded_space/embedded_actions.npy')
+            try:
+                self.cleaned_space = np.load(f'src/embedded_space/{args.filter_threshold} threshold/cleaned_actions.npy')
+                self.embedding = np.load(f'src/embedded_space/{args.filter_threshold} threshold/embedded_actions.npy')
+            except:
+                print('Error loading the embedded actions. Creating new ones...')
+                print('Missing path: ', f'src/embedded_space/{args.filter_threshold} threshold/cleaned_actions.npy')
+                self.cleaned_space, self.embedding = self.embed_actions()
         else:
             self.cleaned_space, self.embedding = self.embed_actions()
 
@@ -141,10 +147,16 @@ class ARCActionSpace(Space):
         scaler = MinMaxScaler(feature_range=(-10, 10))
         embedded_actions = scaler.fit_transform(embedded_actions)
 
-        # Save the embedded actions for future use
-        np.save('src/embedded_space/embedded_actions.npy', embedded_actions)
-        np.save('src/embedded_space/cleaned_actions.npy', cleaned_actions)
+        # Directory path based on your existing code
+        directory = f'src/embedded_space/{args.filter_threshold} threshold/'
 
+        # Create the directory if it doesn't exist
+        os.makedirs(directory, exist_ok=True)
+
+        # Now save the file
+        np.save(os.path.join(directory, 'embedded_actions.npy'), embedded_actions)
+        np.save(os.path.join(directory, 'cleaned_actions.npy'), cleaned_actions)
+        
         return cleaned_actions, embedded_actions
 
     def create_nearest_neighbors(self):
