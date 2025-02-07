@@ -145,8 +145,6 @@ class ARCActionSpace(Space):
         np.save('src/embedded_space/embedded_actions.npy', embedded_actions)
         np.save('src/embedded_space/cleaned_actions.npy', cleaned_actions)
 
-        assert False, "Embedding complete. Please rerun the program with --load_action_embedding=True."
-
         return cleaned_actions, embedded_actions
 
     def create_nearest_neighbors(self):
