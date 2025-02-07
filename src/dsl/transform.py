@@ -60,9 +60,7 @@ def select_color(grid, method, param):
 class Transformer:
     def __init__(self):
         pass
-
     
-    # Coloring transformations
   # Coloring transformations
     def new_color(self, grid, selection, color):
         """
@@ -540,6 +538,9 @@ class Transformer:
         # Copy the values to the new positions
         np.add.at(grid_3d, (layer_idxs, new_row_idxs, new_col_idxs), values)
 
+        # use modulo to keep the values in the range [0, 9]
+        grid_3d = grid_3d % 10
+
         return grid_3d
     
     def cut_paste(self, grid, selection, shift_x, shift_y):
@@ -599,6 +600,9 @@ class Transformer:
 
         # Paste the values to the new positions adding them to the existing values
         np.add.at(grid_3d, (layer_idxs[valid_mask], new_row_idxs[valid_mask], new_col_idxs[valid_mask]), values)
+
+        # use modulo to keep the values in the range [0, 9]
+        grid_3d = grid_3d % 10
 
         return grid_3d
     
