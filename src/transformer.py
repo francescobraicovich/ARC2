@@ -284,7 +284,7 @@ class EncoderTransformer(nn.Module):
 
         # Channels embedding
         # shape [2, emb_dim], then broadcast to [R, C, 2, emb_dim].
-        channel_ids = torch.arange(2, device=pairs.DEVICE, dtype=torch.long)
+        channel_ids = torch.arange(2, device=DEVICE, dtype=torch.long)
         channel_emb = self.channels_embed(channel_ids)  # [2, emb_dim]
         # reshape to [1, 1, 2, emb_dim] for broadcast
         channel_emb = channel_emb.unsqueeze(0).unsqueeze(0)

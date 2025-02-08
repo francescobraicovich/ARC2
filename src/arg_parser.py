@@ -33,7 +33,7 @@ def init_parser(alg):
         parser.add_argument('--seed', default=-1, type=int, help='')
         parser.add_argument('--weight-decay', default=1e-4, type=float, help='weight decay for L2 Regularization loss')
         parser.add_argument('--save_per_epochs', default=25, type=int, help='save model every X epochs')
-        parser.add_argument('--actor_critic_type', default='cnn', type=str, help='type of model to use (lpn, cnn, mlp)')
+        parser.add_argument('--actor_critic_type', default='lpn', type=str, help='type of model to use (lpn, cnn, mlp)')
         parser.add_argument('--k_neighbors', default=20, type=int, help='number of neighbors to consider')
         parser.add_argument('--load_action_embedding', default=True, type=bool, help='load action embedding or not')
         parser.add_argument('--latent_dim', default=48, type=int, help='latent dimension for encoder')
