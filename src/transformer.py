@@ -401,10 +401,10 @@ class EncoderTransformer(nn.Module):
             print('Device of col_ids:', col_ids.device)
 
             # Check position embedding indices
-            if row_ids.min() < 0 or row_ids.max() > self.pos_row_embed.num_embeddings:
-                raise ValueError(f"Row IDs out of range: {row_ids}")
-            if col_ids.min() < 0 or col_ids.max() > self.pos_col_embed.num_embeddings:
-                raise ValueError(f"Col IDs out of range: {col_ids}")
+            #if row_ids.min() < 0 or row_ids.max() > self.pos_row_embed.num_embeddings:
+            #    raise ValueError(f"Row IDs out of range: {row_ids}")
+            #if col_ids.min() < 0 or col_ids.max() > self.pos_col_embed.num_embeddings:
+            #    raise ValueError(f"Col IDs out of range: {col_ids}")
 
             row_embed = self.pos_row_embed(row_ids)
             col_embed = self.pos_col_embed(col_ids)
