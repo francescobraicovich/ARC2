@@ -15,7 +15,7 @@ class EncoderTransformerConfig:
     """
     def __init__(
         self,
-        vocab_size=10,
+        vocab_size=11,
         max_rows=30,
         max_cols=30,
         emb_dim=32,
@@ -361,8 +361,9 @@ class EncoderTransformer(nn.Module):
         R = pairs.shape[1]
         C = pairs.shape[2]
 
+        print('vocab_size:', self.config.vocab_size)
         print(f"Batch size: {batch_size}, Rows: {R}, Columns: {C}")
-        
+
         # Embedding for color tokens
         colors_embed = self.colors_embed(pairs.long())
         print(f"Colors embed shape: {colors_embed.shape}")
