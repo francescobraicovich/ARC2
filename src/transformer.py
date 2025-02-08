@@ -6,7 +6,7 @@ from typing import Optional, Tuple
 
 from utils.util import set_device
 
-device = set_device()
+DEVICE = set_device()
 # ---------------------------------------------------------------------
 # Example placeholders for configs and the PyTorch version of TransformerLayer.
 # Adjust these imports or definitions as needed to match your project.
@@ -50,8 +50,8 @@ class TransformerLayer(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.config = config
-        self.ln1 = nn.LayerNorm(config.emb_dim, elementwise_affine=False)
-        self.ln2 = nn.LayerNorm(config.emb_dim, elementwise_affine=False)
+        self.ln1 = nn.LayerNorm(config.emb_dim, elementwise_affine=False).to(DEVICE)
+        self.ln2 = nn.LayerNorm(config.emb_dim, elementwise_affine=False).to(DEVICE)
         self.mha = nn.MultiheadAttention(
             embed_dim=config.emb_dim,
             num_heads=config.num_heads,
@@ -59,8 +59,8 @@ class TransformerLayer(nn.Module):
             bias=config.use_bias,
             batch_first=True,
         )
-        self.mlp_block = MlpBlock(config)  # MlpBlock from your code
-        self.resid_dropout = nn.Dropout(p=config.dropout_rate)
+        self.mlp_block = MlpBlock(config).to(DEVICE)  # MlpBlock from your code
+        self.resid_dropout = nn.Dropout(p=config.dropout_rate).to(DEVICE)
 
     def forward(
         self,
@@ -144,47 +144,48 @@ class EncoderTransformer(nn.Module):
         # multiply by torch.arange(1, ...). Otherwise, we embed each row/col index.
         # -----------------------------------------------------------------
         if self.config.scaled_position_embeddings:
-            self.pos_row_embed = nn.Embedding(1, self.config.emb_dim)
-            self.pos_col_embed = nn.Embedding(1, self.config.emb_dim)
+            self.pos_row_embed = nn.Embedding(1, self.config.emb_dim).to(DEVICE)
+            self.pos_col_embed = nn.Embedding(1, self.config.emb_dim).to(DEVICE)
         else:
-            self.pos_row_embed = nn.Embedding(self.config.max_rows, self.config.emb_dim)
-            self.pos_col_embed = nn.Embedding(self.config.max_cols, self.config.emb_dim)
+            self.pos_row_embed = nn.Embedding(self.config.max_rows, self.config.emb_dim).to(DEVICE)
+            self.pos_col_embed = nn.Embedding(self.config.max_cols, self.config.emb_dim).to(DEVICE)
 
         # Embeddings for colors, channels, grid shapes, and CLS token
-        self.colors_embed = nn.Embedding(self.config.vocab_size, self.config.emb_dim)
-        self.channels_embed = nn.Embedding(2, self.config.emb_dim)
+        self.colors_embed = nn.Embedding(self.config.vocab_size, self.config.emb_dim).to(DEVICE)
+        self.channels_embed = nn.Embedding(2, self.config.emb_dim).to(DEVICE)
 
-        self.grid_shapes_row_embed = nn.Embedding(self.config.max_rows, self.config.emb_dim)
-        self.grid_shapes_col_embed = nn.Embedding(self.config.max_cols, self.config.emb_dim)
+        self.grid_shapes_row_embed = nn.Embedding(self.config.max_rows, self.config.emb_dim).to(DEVICE)
+        self.grid_shapes_col_embed = nn.Embedding(self.config.max_cols, self.config.emb_dim).to(DEVICE)
 
-        self.cls_token = nn.Embedding(1, self.config.emb_dim)
+        self.cls_token = nn.Embedding(1, self.config.emb_dim).to(DEVICE)
 
         # Dropout for the embedded sequence
-        self.embed_dropout = nn.Dropout(self.config.transformer_layer.dropout_rate)
+        self.embed_dropout = nn.Dropout(self.config.transformer_layer.dropout_rate).to(DEVICE)
 
         # Layers: stack of TransformerLayer
         self.layers = nn.ModuleList([
-            TransformerLayer(self.config.transformer_layer) for _ in range(self.config.num_layers)
+            TransformerLayer(self.config.transformer_layer).to(DEVICE) for _ in range(self.config.num_layers)
         ])
 
         # Final layer norm of CLS token
         self.cls_layer_norm = nn.LayerNorm(
             self.config.emb_dim,
             elementwise_affine=False  # mimic use_scale=False, use_bias=False
-        )
+        ).to(DEVICE)
 
         # Projections for latent mean/logvar
         self.latent_mu = nn.Linear(
             self.config.emb_dim,
             self.config.latent_dim,
             bias=self.config.latent_projection_bias
-        )
+        ).to(DEVICE)
+
         if self.config.variational:
             self.latent_logvar = nn.Linear(
                 self.config.emb_dim,
                 self.config.latent_dim,
                 bias=self.config.latent_projection_bias
-            )
+            ).to(DEVICE)
         else:
             self.latent_logvar = None
 
@@ -254,15 +255,15 @@ class EncoderTransformer(nn.Module):
         if self.config.scaled_position_embeddings:
             # pos_row_embed is nn.Embedding(1, emb_dim). We'll "lookup" zeros, shape -> [R, emb_dim].
             # Then multiply by torch.arange(1, R+1).
-            row_vec = torch.zeros((R,), dtype=torch.long, device=device)
-            col_vec = torch.zeros((C,), dtype=torch.long, device=device)
+            row_vec = torch.zeros((R,), dtype=torch.long, device=DEVICE)
+            col_vec = torch.zeros((C,), dtype=torch.long, device=DEVICE)
 
             row_embed = self.pos_row_embed(row_vec)  # shape [R, emb_dim]
             col_embed = self.pos_col_embed(col_vec)  # shape [C, emb_dim]
 
             # scale them by the row/col indices
-            row_scales = torch.arange(1, R + 1, device=device, dtype=row_embed.dtype).unsqueeze(-1)
-            col_scales = torch.arange(1, C + 1, device=device, dtype=col_embed.dtype).unsqueeze(-1)
+            row_scales = torch.arange(1, R + 1, device=DEVICE, dtype=row_embed.dtype).unsqueeze(-1)
+            col_scales = torch.arange(1, C + 1, device=DEVICE, dtype=col_embed.dtype).unsqueeze(-1)
 
             pos_row_embeds = row_scales * row_embed  # [R, emb_dim]
             pos_col_embeds = col_scales * col_embed  # [C, emb_dim]
