@@ -361,7 +361,7 @@ class EncoderTransformer(nn.Module):
         # --------------------------- Colors Embedding ---------------------------
         print("\n--- Embedding color tokens ---")
         colors_embed = self.colors_embed(pairs.long())
-        torch.cuda.synchronize()
+        #torch.cuda.synchronize()
 
         print(f"Colors embed shape: {colors_embed.shape}, device: {colors_embed.device}")
         print(f"Colors embed dtype: {colors_embed.dtype}")
