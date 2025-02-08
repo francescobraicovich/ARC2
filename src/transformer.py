@@ -408,8 +408,8 @@ class EncoderTransformer(nn.Module):
             #if col_ids.min() < 0 or col_ids.max() > self.pos_col_embed.num_embeddings:
             #    raise ValueError(f"Col IDs out of range: {col_ids}")
 
-            row_embed = self.pos_row_embed(row_ids)
-            col_embed = self.pos_col_embed(col_ids)
+            row_embed = self.pos_row_embed(row_ids).to(DEVICE)
+            col_embed = self.pos_col_embed(col_ids).to(DEVICE)
             print(f'Embedded rows and columns')
 
             #print(f"Row embed shape: {row_embed.shape}")
