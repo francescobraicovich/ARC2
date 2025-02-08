@@ -120,12 +120,20 @@ def setup_logger(logger_name, log_file, level=logging.INFO):
     l.addHandler(streamHandler)
 
 def set_device():
-    if torch.cuda.is_available():
-        device = torch.device("cuda")
-    elif torch.backends.mps.is_available():
-        device = torch.device("mps")
-    else:
-        device = torch.device("cpu")
+    try:
+        import torch_xla.core.xla_model as xm
+        device = xm.xla_device()
+        print("Using TPU")
+    except ImportError:
+        if torch.cuda.is_available():
+            device = torch.device("cuda")
+            print("Using CUDA GPU")
+        elif torch.backends.mps.is_available():
+            device = torch.device("mps")
+            print("Using Apple Silicon MPS")
+        else:
+            device = torch.device("cpu")
+            print("Using CPU")
     return device
 
 def clip_and_boost_gradients(parameters, min_norm=0.1, max_norm=1.0):
