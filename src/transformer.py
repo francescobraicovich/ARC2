@@ -4,6 +4,9 @@ import torch.nn.functional as F
 
 from typing import Optional, Tuple
 
+from utils.util import set_device
+
+device = set_device()
 # ---------------------------------------------------------------------
 # Example placeholders for configs and the PyTorch version of TransformerLayer.
 # Adjust these imports or definitions as needed to match your project.
@@ -251,7 +254,6 @@ class EncoderTransformer(nn.Module):
         if self.config.scaled_position_embeddings:
             # pos_row_embed is nn.Embedding(1, emb_dim). We'll "lookup" zeros, shape -> [R, emb_dim].
             # Then multiply by torch.arange(1, R+1).
-            device = pairs.device
             row_vec = torch.zeros((R,), dtype=torch.long, device=device)
             col_vec = torch.zeros((C,), dtype=torch.long, device=device)
 
@@ -271,7 +273,6 @@ class EncoderTransformer(nn.Module):
             pos_embed = pos_row_embeds + pos_col_embeds  # [R, C, 1, emb_dim]
         else:
             # Normal indexing (0..R-1), (0..C-1)
-            device = pairs.device
             row_ids = torch.arange(R, device=device, dtype=torch.long)
             col_ids = torch.arange(C, device=device, dtype=torch.long)
             row_embed = self.pos_row_embed(row_ids)  # [R, emb_dim]
@@ -369,7 +370,6 @@ class EncoderTransformer(nn.Module):
         print(f"Colors embed shape: {colors_embed.shape}")
 
         # Position embeddings
-        device = pairs.device
         if self.config.scaled_position_embeddings:
             row_vec = torch.zeros((R,), dtype=torch.long, device=device)
             col_vec = torch.zeros((C,), dtype=torch.long, device=device)
@@ -383,9 +383,6 @@ class EncoderTransformer(nn.Module):
             row_embed = self.pos_row_embed(row_vec)
             col_embed = self.pos_col_embed(col_vec)
 
-            print(f"Row embed shape (scaled): {row_embed.shape}")
-            print(f"Col embed shape (scaled): {col_embed.shape}")
-
             row_scales = torch.arange(1, R + 1, device=device, dtype=row_embed.dtype).unsqueeze(-1)
             col_scales = torch.arange(1, C + 1, device=device, dtype=col_embed.dtype).unsqueeze(-1)
 
@@ -394,17 +391,10 @@ class EncoderTransformer(nn.Module):
 
             pos_row_embeds = pos_row_embeds.unsqueeze(1).unsqueeze(2)
             pos_col_embeds = pos_col_embeds.unsqueeze(0).unsqueeze(2)
-
-            print(f"Position row embeds shape (scaled): {pos_row_embeds.shape}")
-            print(f"Position col embeds shape (scaled): {pos_col_embeds.shape}")
-
             pos_embed = pos_row_embeds + pos_col_embeds
         else:
             row_ids = torch.arange(R, device=device, dtype=torch.long)
             col_ids = torch.arange(C, device=device, dtype=torch.long)
-
-            print(f"Row IDs: {row_ids}")
-            print(f"Col IDs: {col_ids}")
 
             # Check position embedding indices
             if row_ids.min() < 0 or row_ids.max() >= self.pos_row_embed.num_embeddings:
