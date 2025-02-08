@@ -431,6 +431,14 @@ class EncoderTransformer(nn.Module):
             print('Memory summary after emptying cache')
             print(torch.cuda.memory_summary(DEVICE))
 
+            row_embed_cpu = row_embed.cpu()
+            col_embed_cpu = col_embed.cpu()
+
+            # Now check for NaNs/Infs on CPU
+            print(f"NaNs in row_embed: {torch.isnan(row_embed_cpu).any().item()}, Infs in row_embed: {torch.isinf(row_embed_cpu).any().item()}")
+            print(f"NaNs in col_embed: {torch.isnan(col_embed_cpu).any().item()}, Infs in col_embed: {torch.isinf(col_embed_cpu).any().item()}")
+
+
 
             print(torch.__version__)
             print(torch.version.cuda)
