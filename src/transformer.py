@@ -228,6 +228,121 @@ class EncoderTransformer(nn.Module):
             latent_logvar = None
         return latent_mu#, latent_logvar
 
+    def embed_grids(
+        self,
+        pairs: torch.Tensor,
+        grid_shapes: torch.Tensor,
+        dropout_eval: bool = False
+    ) -> torch.Tensor:
+        """
+        Creates the token embeddings for:
+          - Colors
+          - Positions (row/col)
+          - Channels
+          - Grid shapes
+          - CLS
+        Returns:
+          x of shape (batch, 1 + 4 + 2 * R * C, emb_dim)
+        """
+        batch_size = pairs.shape[0]
+        R = pairs.shape[1]
+        C = pairs.shape[2]
+
+        # Embedding for color tokens: shape (B, R, C, 2) -> (B, R, C, 2, emb_dim)
+        colors_embed = self.colors_embed(pairs.long())
+
+        # Position embeddings
+        if self.config.scaled_position_embeddings:
+            # pos_row_embed is nn.Embedding(1, emb_dim). We'll "lookup" zeros, shape -> [R, emb_dim].
+            # Then multiply by torch.arange(1, R+1).
+            row_vec = torch.zeros((R,), dtype=torch.long, device=DEVICE)
+            col_vec = torch.zeros((C,), dtype=torch.long, device=DEVICE)
+
+            row_embed = self.pos_row_embed(row_vec)  # shape [R, emb_dim]
+            col_embed = self.pos_col_embed(col_vec)  # shape [C, emb_dim]
+
+            # scale them by the row/col indices
+            row_scales = torch.arange(1, R + 1, device=DEVICE, dtype=row_embed.dtype).unsqueeze(-1)
+            col_scales = torch.arange(1, C + 1, device=DEVICE, dtype=col_embed.dtype).unsqueeze(-1)
+
+            pos_row_embeds = row_scales * row_embed  # [R, emb_dim]
+            pos_col_embeds = col_scales * col_embed  # [C, emb_dim]
+
+            # shape [R, C, 1, emb_dim] for broadcast
+            pos_row_embeds = pos_row_embeds.unsqueeze(1).unsqueeze(2)
+            pos_col_embeds = pos_col_embeds.unsqueeze(0).unsqueeze(2)
+            pos_embed = pos_row_embeds + pos_col_embeds  # [R, C, 1, emb_dim]
+        else:
+            # Normal indexing (0..R-1), (0..C-1)
+            row_ids = torch.arange(R, device=DEVICE, dtype=torch.long)
+            col_ids = torch.arange(C, device=DEVICE, dtype=torch.long)
+            row_embed = self.pos_row_embed(row_ids)  # [R, emb_dim]
+            col_embed = self.pos_col_embed(col_ids)  # [C, emb_dim]
+            row_embed = row_embed.unsqueeze(1).unsqueeze(2)  # [R, 1, 1, emb_dim]
+            col_embed = col_embed.unsqueeze(0).unsqueeze(2)  # [1, C, 1, emb_dim]
+            pos_embed = row_embed + col_embed  # [R, C, 1, emb_dim]
+
+        # Channels embedding
+        # shape [2, emb_dim], then broadcast to [R, C, 2, emb_dim].
+        channel_ids = torch.arange(2, device=pairs.DEVICE, dtype=torch.long)
+        channel_emb = self.channels_embed(channel_ids)  # [2, emb_dim]
+        # reshape to [1, 1, 2, emb_dim] for broadcast
+        channel_emb = channel_emb.unsqueeze(0).unsqueeze(0)
+
+        # Combine: [B, R, C, 2, emb_dim] + [R, C, 1, emb_dim] + [R, C, 2, emb_dim]
+        # We can reshape pos_embed to [R, C, 1, emb_dim], it will broadcast across batch & channel.
+        # channel_emb is [1, 1, 2, emb_dim], it will broadcast across R, C, batch.
+        x = colors_embed + pos_embed + channel_emb  # [B, R, C, 2, emb_dim]
+
+        # Flatten [R, C, 2] -> single sequence dim
+        x = x.view(batch_size, R * C * 2, self.config.emb_dim)  # (B, 2*R*C, emb_dim)
+
+        # --------------------------------------------------------------------
+        # Embed the grid shape tokens
+        # grid_shapes has shape (B, 2, 2): e.g. [[R_in,R_out],[C_in,C_out]].
+        # We'll embed each row/col count. Then add channel_emb again for clarity.
+        # --------------------------------------------------------------------
+        # grid_shapes[..., 0, :] => shape (B, 2) for row [R_in, R_out].
+        # grid_shapes[..., 1, :] => shape (B, 2) for col [C_in, C_out].
+        # They are in [1..max_rows] or [1..max_cols], but the embedding is 0-based -> subtract 1.
+        grid_shapes = grid_shapes.long()
+        row_part = self.grid_shapes_row_embed(grid_shapes[:, 0, :] - 1)  # [B, 2, emb_dim]
+        col_part = self.grid_shapes_col_embed(grid_shapes[:, 1, :] - 1)  # [B, 2, emb_dim]
+
+        # Add channel embedding to them as well:
+        # channel_emb for shape tokens => shape [2, emb_dim].
+        # We want to add this per 'input' or 'output' channel, so broadcast:
+        row_part = row_part + channel_emb.squeeze(0)  # channel_emb.squeeze(0) => shape [1, 2, emb_dim]
+        col_part = col_part + channel_emb.squeeze(0)  # same
+
+        # Concat along "sequence" dimension => [B, 4, emb_dim]
+        grid_shapes_embed = torch.cat([row_part, col_part], dim=1)  # [B, 4, emb_dim]
+
+        # Now we prepend these 4 tokens to x => final shape [B, 4 + 2*R*C, emb_dim]
+        x = torch.cat([grid_shapes_embed, x], dim=1)
+
+        # --------------------------------------------------------------------
+        # Add the CLS token => shape [B, 1, emb_dim] to the front
+        # --------------------------------------------------------------------
+        cls_ids = torch.zeros((batch_size, 1), dtype=torch.long, device=DEVICE)
+        cls_token = self.cls_token(cls_ids)  # [B, 1, emb_dim]
+        x = torch.cat([cls_token, x], dim=1)  # [B, 1 + 4 + 2*R*C, emb_dim]
+
+        # Check final size is 1 + 4 + 2*max_len
+        # NOTE: we rely on R = max_rows, C = max_cols for the shape to match exactly.
+        # If R or C < max_rows/cols for a given example, the mask will handle it.
+        # But the length is still allocated for the full max. That's consistent
+        # with the original approach in JAX.
+
+        # Apply dropout
+        if dropout_eval:
+            embed_dropout_p = 0.0
+        else:
+            embed_dropout_p = self.config.transformer_layer.dropout_rate
+
+        x = F.dropout(x, p=embed_dropout_p, training=not dropout_eval)
+        return x
+    
 
     def make_pad_mask(self, grid_shapes: torch.Tensor) -> torch.Tensor:
         """
