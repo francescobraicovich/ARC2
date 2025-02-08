@@ -127,7 +127,7 @@ def set_device():
     except ImportError:
         if torch.cuda.is_available():
             device = torch.device("cuda:0")
-            print("Using CUDA GPU")
+            print("Using CUDA:0 GPU")
         elif torch.backends.mps.is_available():
             device = torch.device("mps")
             print("Using Apple Silicon MPS")
