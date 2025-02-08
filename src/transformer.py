@@ -420,7 +420,7 @@ class EncoderTransformer(nn.Module):
 
             print(f"Unsqueezed rows and columns embeds")
 
-            pos_embed = row_embed + col_embed
+            pos_embed = torch.add(row_embed, col_embed)
 
             print(f"Combined position embeds")
 
