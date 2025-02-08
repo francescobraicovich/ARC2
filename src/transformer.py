@@ -274,8 +274,8 @@ class EncoderTransformer(nn.Module):
             pos_embed = pos_row_embeds + pos_col_embeds  # [R, C, 1, emb_dim]
         else:
             # Normal indexing (0..R-1), (0..C-1)
-            row_ids = torch.arange(R, device=device, dtype=torch.long)
-            col_ids = torch.arange(C, device=device, dtype=torch.long)
+            row_ids = torch.arange(R, device=DEVICE, dtype=torch.long)
+            col_ids = torch.arange(C, device=DEVICE, dtype=torch.long)
             row_embed = self.pos_row_embed(row_ids)  # [R, emb_dim]
             col_embed = self.pos_col_embed(col_ids)  # [C, emb_dim]
             row_embed = row_embed.unsqueeze(1).unsqueeze(2)  # [R, 1, 1, emb_dim]
@@ -284,7 +284,7 @@ class EncoderTransformer(nn.Module):
 
         # Channels embedding
         # shape [2, emb_dim], then broadcast to [R, C, 2, emb_dim].
-        channel_ids = torch.arange(2, device=pairs.device, dtype=torch.long)
+        channel_ids = torch.arange(2, device=pairs.DEVICE, dtype=torch.long)
         channel_emb = self.channels_embed(channel_ids)  # [2, emb_dim]
         # reshape to [1, 1, 2, emb_dim] for broadcast
         channel_emb = channel_emb.unsqueeze(0).unsqueeze(0)
@@ -324,7 +324,7 @@ class EncoderTransformer(nn.Module):
         # --------------------------------------------------------------------
         # Add the CLS token => shape [B, 1, emb_dim] to the front
         # --------------------------------------------------------------------
-        cls_ids = torch.zeros((batch_size, 1), dtype=torch.long, device=pairs.device)
+        cls_ids = torch.zeros((batch_size, 1), dtype=torch.long, device=DEVICE)
         cls_token = self.cls_token(cls_ids)  # [B, 1, emb_dim]
         x = torch.cat([cls_token, x], dim=1)  # [B, 1 + 4 + 2*R*C, emb_dim]
 
@@ -368,12 +368,13 @@ class EncoderTransformer(nn.Module):
 
         # Embedding for color tokens
         colors_embed = self.colors_embed(pairs.long())
+        print('colors embed device:', colors_embed.device)
         print(f"Colors embed shape: {colors_embed.shape}")
 
         # Position embeddings
         if self.config.scaled_position_embeddings:
-            row_vec = torch.zeros((R,), dtype=torch.long, device=device)
-            col_vec = torch.zeros((C,), dtype=torch.long, device=device)
+            row_vec = torch.zeros((R,), dtype=torch.long, device=DEVICE)
+            col_vec = torch.zeros((C,), dtype=torch.long, device=DEVICE)
 
             # Check position embedding indices
             if row_vec.min() < 0 or row_vec.max() >= self.pos_row_embed.num_embeddings:
@@ -384,8 +385,8 @@ class EncoderTransformer(nn.Module):
             row_embed = self.pos_row_embed(row_vec)
             col_embed = self.pos_col_embed(col_vec)
 
-            row_scales = torch.arange(1, R + 1, device=device, dtype=row_embed.dtype).unsqueeze(-1)
-            col_scales = torch.arange(1, C + 1, device=device, dtype=col_embed.dtype).unsqueeze(-1)
+            row_scales = torch.arange(1, R + 1, device=DEVICE, dtype=row_embed.dtype).unsqueeze(-1)
+            col_scales = torch.arange(1, C + 1, device=DEVICE, dtype=col_embed.dtype).unsqueeze(-1)
 
             pos_row_embeds = row_scales * row_embed
             pos_col_embeds = col_scales * col_embed
@@ -395,8 +396,8 @@ class EncoderTransformer(nn.Module):
             pos_embed = pos_row_embeds + pos_col_embeds
         else:
             print(f"Rows: {R}, Columns: {C}")
-            row_ids = torch.arange(R, device=device, dtype=torch.long)
-            col_ids = torch.arange(C, device=device, dtype=torch.long)
+            row_ids = torch.arange(R, device=DEVICE, dtype=torch.long)
+            col_ids = torch.arange(C, device=DEVICE, dtype=torch.long)
 
             print('Device of row_ids:', row_ids.device)
             print('Device of col_ids:', col_ids.device)
@@ -424,7 +425,7 @@ class EncoderTransformer(nn.Module):
             print(f"Combined position embeds")
 
         # Channels embedding
-        channel_ids = torch.arange(2, device=device, dtype=torch.long)
+        channel_ids = torch.arange(2, device=DEVICE, dtype=torch.long)
         print('Created channel IDs')
 
         channel_emb = self.channels_embed(channel_ids)
@@ -463,7 +464,7 @@ class EncoderTransformer(nn.Module):
         print(f"Embed shape after adding grid shapes: {x.shape}")
 
         # Add CLS token
-        cls_ids = torch.zeros((batch_size, 1), dtype=torch.long, device=device)
+        cls_ids = torch.zeros((batch_size, 1), dtype=torch.long, device=DEVICE)
         if cls_ids.min() < 0 or cls_ids.max() >= self.cls_token.num_embeddings:
             raise ValueError(f"CLS token indices out of range: {cls_ids}")
 
@@ -503,7 +504,7 @@ class EncoderTransformer(nn.Module):
         used_tokens = 1 + 4 + 2 * (rows_used * cols_used)  # shape (B,)
 
         # Initialize mask with all False (no padding)
-        key_padding_mask = torch.zeros((B, T), dtype=torch.bool, device=grid_shapes.device)
+        key_padding_mask = torch.zeros((B, T), dtype=torch.bool, device=DEVICE)
 
         # Set True for padding positions
         for b in range(B):
