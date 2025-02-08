@@ -405,8 +405,8 @@ class EncoderTransformer(nn.Module):
             row_embed = self.pos_row_embed(row_ids)
             col_embed = self.pos_col_embed(col_ids)
 
-            print(f"Row embed shape: {row_embed.shape}")
-            print(f"Col embed shape: {col_embed.shape}")
+            #print(f"Row embed shape: {row_embed.shape}")
+            #print(f"Col embed shape: {col_embed.shape}")
 
             row_embed = row_embed.unsqueeze(1).unsqueeze(2)
             col_embed = col_embed.unsqueeze(0).unsqueeze(2)
