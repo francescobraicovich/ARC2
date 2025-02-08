@@ -34,7 +34,7 @@ def config_encoder(latent_dim=32):
     )
 
     cfg = EncoderTransformerConfig(
-        vocab_size=10,
+        vocab_size=11,
         max_rows=30,
         max_cols=30,
         emb_dim=32,
