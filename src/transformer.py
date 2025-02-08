@@ -423,6 +423,11 @@ class EncoderTransformer(nn.Module):
             print(f"Row embed shape: {row_embed.shape}")
             print(f"Col embed shape: {col_embed.shape}")
 
+
+            import os
+            os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
+
+
             pos_embed = torch.add(row_embed, col_embed)
 
             print(f"Combined position embeds")
