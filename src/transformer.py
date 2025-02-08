@@ -408,6 +408,7 @@ class EncoderTransformer(nn.Module):
 
             row_embed = self.pos_row_embed(row_ids)
             col_embed = self.pos_col_embed(col_ids)
+            print(f'Embedded rows and columns')
 
             #print(f"Row embed shape: {row_embed.shape}")
             #print(f"Col embed shape: {col_embed.shape}")
@@ -415,33 +416,28 @@ class EncoderTransformer(nn.Module):
             row_embed = row_embed.unsqueeze(1).unsqueeze(2)
             col_embed = col_embed.unsqueeze(0).unsqueeze(2)
 
-            print(f"Row embed shape after unsqueeze: {row_embed.shape}")
-            print(f"Col embed shape after unsqueeze: {col_embed.shape}")
+            print(f"Unsqueezed rows and columns embeds")
 
             pos_embed = row_embed + col_embed
 
-        print(f"Position embed shape: {pos_embed.shape}")
+            print(f"Combined position embeds")
 
         # Channels embedding
         channel_ids = torch.arange(2, device=device, dtype=torch.long)
-        print(f"Channel IDs: {channel_ids}")
-
-        if channel_ids.min() < 0 or channel_ids.max() >= self.channels_embed.num_embeddings:
-            raise ValueError(f"Channel indices out of range: {channel_ids}")
+        print('Created channel IDs')
 
         channel_emb = self.channels_embed(channel_ids)
-        print(f"Channel embed shape: {channel_emb.shape}")
+        print('Embedded channels')
 
         channel_emb = channel_emb.unsqueeze(0).unsqueeze(0)
-        print(f"Channel embed shape after unsqueeze: {channel_emb.shape}")
+        print('Unsqueezed channels')
 
         # Combine
         x = colors_embed + pos_embed + channel_emb
-        print(f"Combined embed shape: {x.shape}")
+        print(f"Combined color, position, and channel embeds")
 
         # Flatten
         x = x.view(batch_size, R * C * 2, self.config.emb_dim)
-        print(f"Flattened embed shape: {x.shape}")
 
         # Embed grid shape tokens
         grid_shapes = grid_shapes.long()
