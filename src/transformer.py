@@ -393,13 +393,17 @@ class EncoderTransformer(nn.Module):
             pos_col_embeds = pos_col_embeds.unsqueeze(0).unsqueeze(2)
             pos_embed = pos_row_embeds + pos_col_embeds
         else:
+            print(f"Rows: {R}, Columns: {C}")
             row_ids = torch.arange(R, device=device, dtype=torch.long)
             col_ids = torch.arange(C, device=device, dtype=torch.long)
 
+            print('Device of row_ids:', row_ids.device)
+            print('Device of col_ids:', col_ids.device)
+
             # Check position embedding indices
-            if row_ids.min() < 0 or row_ids.max() >= self.pos_row_embed.num_embeddings:
+            if row_ids.min() < 0 or row_ids.max() > self.pos_row_embed.num_embeddings:
                 raise ValueError(f"Row IDs out of range: {row_ids}")
-            if col_ids.min() < 0 or col_ids.max() >= self.pos_col_embed.num_embeddings:
+            if col_ids.min() < 0 or col_ids.max() > self.pos_col_embed.num_embeddings:
                 raise ValueError(f"Col IDs out of range: {col_ids}")
 
             row_embed = self.pos_row_embed(row_ids)
