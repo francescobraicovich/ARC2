@@ -422,6 +422,8 @@ class EncoderTransformer(nn.Module):
 
             print(f"Row embed shape: {row_embed.shape}")
             print(f"Col embed shape: {col_embed.shape}")
+            print(f"Row embed device: {row_embed.device}")
+            print(f"Col embed device: {col_embed.device}")
 
             print('Memory summary before emptying cache')
             print(torch.cuda.memory_summary(DEVICE))
@@ -438,6 +440,8 @@ class EncoderTransformer(nn.Module):
             os.environ['TORCH_USE_CUDA_DSA'] = '1'
 
 
+            torch.cuda.synchronize()  # Sync before operation
+            print('syncronized')
 
             pos_embed = torch.add(row_embed, col_embed)
 
