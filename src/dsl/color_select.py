@@ -2,150 +2,201 @@ import numpy as np
 from dsl.utilities.checks import check_color_rank, check_integer
 from scipy.ndimage import find_objects, label
 
-# ColorSelector class that contains methods to select colors from a grid.
-
-# Implemented methods:
-# - mostcolor(grid): Return the most common color in the grid.
-# - leastcolor(grid): Return the least common color in the grid.
-# - rankcolor(grid, rank): Return the rank-th common color in the grid.
-# - rank_largest_shape_color_nodiag(grid, rank): Return the color of the rank-th largest shape in the grid without considering diagonal connections.
-# - rank_largest_shape_color_diag(grid, rank): Return the color of the rank-th largest shape in the grid considering diagonal connections.
-# - color_number(grid, color): Return the color number if the color is not in the grid. This method should only be used when the color is not in the grid.
 
 class ColorSelector:
+    """
+    Class for selecting colors from a grid using various strategies.
+
+    Implemented methods:
+      - mostcolor: Returns the most common color in the grid.
+      - leastcolor: Returns the least common color in the grid.
+      - rankcolor: Returns the rank-th most common color in the grid.
+      - rank_largest_shape_color_nodiag: Returns the color of the rank-th largest connected shape
+                                           (without considering diagonal connectivity).
+      - rank_largest_shape_color_diag: Returns the color of the rank-th largest connected shape
+                                         (with diagonal connectivity; deprecated).
+      - color_number: Returns a given color number if that color is not present in the grid.
+    """
+
     def __init__(self, num_colors: int = 10):
+        """
+        Initialize the ColorSelector.
+
+        Args:
+            num_colors (int): Total number of possible colors. Default is 10.
+        """
         self.num_colors = num_colors
         self.all_colors = np.arange(num_colors)
-        self.invalid_color = -10 # Return this value if the color is invalid so the selection doesn't select anything.
-        self.big_number = 1000000 # A big number to use for sorting colors by decreasing count (otherwise colors wihth 0 count will be selected).
+        self.invalid_color = -10  # Returned when the color is invalid or present in the grid.
+        self.big_number = 1000000  # Large number used to penalize zero counts when sorting.
 
     def mostcolor(self, grid: np.ndarray) -> int:
-        """ most common color """
+        """
+        Return the most common color in the grid.
+
+        Args:
+            grid (np.ndarray): The grid array containing color values.
+
+        Returns:
+            int: The most common color.
+        """
         values = grid.flatten()
         counts = np.bincount(values, minlength=self.num_colors)
-        return np.argmax(counts)
-    
+        return int(np.argmax(counts))
+
     def leastcolor(self, grid: np.ndarray) -> int:
-        """ least common color """
+        """
+        Return the least common color in the grid.
+
+        Args:
+            grid (np.ndarray): The grid array containing color values.
+
+        Returns:
+            int: The least common color.
+        """
         values = grid.flatten()
         counts = np.bincount(values, minlength=self.num_colors)
+        # Replace zero counts with a big number to avoid selecting a color that is not present.
         counts[counts == 0] = self.big_number
-        return np.argmin(counts)
-    
+        return int(np.argmin(counts))
+
     def rankcolor(self, grid: np.ndarray, rank: int) -> int:
-        """Rank-th common color"""
+        """
+        Return the rank-th most common color in the grid.
+
+        Args:
+            grid (np.ndarray): The grid array.
+            rank (int): Rank (0-based) to select the color.
+
+        Returns:
+            int: The color corresponding to the given rank.
+
+        Raises:
+            ValueError: If rank is not a non-negative integer.
+        """
         if not isinstance(rank, int) or rank < 0:
             raise ValueError("Rank must be a non-negative integer.")
-        
-        # Get unique colors and their counts
+
+        # Get unique colors and their occurrence counts.
         unique_colors, counts = np.unique(grid, return_counts=True)
-        sorted_indices = np.argsort(-counts)  # Indices of colors sorted by descending frequency
-        
+        # Sort indices by counts in descending order.
+        sorted_indices = np.argsort(-counts)
+
         if rank < len(unique_colors):
-            # Return the color corresponding to the rank-th most common occurrence
-            return unique_colors[sorted_indices[rank]]
+            return int(unique_colors[sorted_indices[rank]])
         else:
-            # If rank exceeds the number of unique colors, return the last color with a count > 0
-            last_nonzero_index = sorted_indices[-1]  # Last index in sorted order
-            return unique_colors[last_nonzero_index]
-    
+            # If rank exceeds available unique colors, return the least common among those present.
+            last_nonzero_index = sorted_indices[-1]
+            return int(unique_colors[last_nonzero_index])
+
     def rank_largest_shape_color_nodiag(self, grid: np.ndarray, rank: int) -> int:
-        """ the color of the rank-th largest shape """
+        """
+        Return the color of the rank-th largest connected shape in the grid (without diagonal connectivity).
+
+        Args:
+            grid (np.ndarray): The grid array containing color values.
+            rank (int): Rank (0-based) for the largest shape.
+
+        Returns:
+            int: The color corresponding to the rank-th largest shape.
+
+        Raises:
+            ValueError: If rank is not a non-negative integer or if the grid is empty or non-integer.
+        """
         if not isinstance(rank, int) or rank < 0:
             raise ValueError("Rank must be a non-negative integer.")
         if not np.issubdtype(grid.dtype, np.integer) or grid.size == 0:
             raise ValueError("Grid must be a non-empty array of integers.")
-        
+
         unique_colors = np.unique(grid)
         num_colors = len(unique_colors)
+        # Array to store the size of the largest connected shape for each unique color.
         dimension_of_biggest_shape = np.zeros(num_colors, dtype=int)
-        
+
         for i, color in enumerate(unique_colors):
             color_mask = grid == color
-            labeled_grid, num_labels = label(color_mask.astype(int))
+            # Label connected regions in the binary mask.
+            labeled_grid, _ = label(color_mask.astype(int))
+            # Get counts for each label; ignore the background (label 0).
             _, counts = np.unique(labeled_grid, return_counts=True)
-            counts = counts[1:]  # Exclude background (label 0)
-            dimension_of_biggest_shape[i] = np.max(counts) if len(counts) > 0 else 0
-        
+            counts = counts[1:]  # Exclude background
+            dimension_of_biggest_shape[i] = np.max(counts) if counts.size > 0 else 0
+
+        # Sort colors by the size of their largest connected component in descending order.
         sorted_indices = np.argsort(-dimension_of_biggest_shape)
         if rank >= len(sorted_indices):
-            smallest_non_zero_index = np.argmin(
+            # If rank is out-of-bounds, return the smallest non-zero shape or the first color if none.
+            smallest_nonzero_index = np.argmin(
                 np.where(dimension_of_biggest_shape > 0, dimension_of_biggest_shape, np.inf)
             )
-        
-            return unique_colors[smallest_non_zero_index] if dimension_of_biggest_shape[smallest_non_zero_index] > 0 else unique_colors[0]
-        
-        return unique_colors[sorted_indices[rank]]
+            return int(unique_colors[smallest_nonzero_index]) if dimension_of_biggest_shape[smallest_nonzero_index] > 0 else int(unique_colors[0])
+
+        return int(unique_colors[sorted_indices[rank]])
 
     def rank_largest_shape_color_diag(self, grid: np.ndarray, rank: int) -> int:
-        """ The color of the rank-th largest shape, considering diagonal connections """
+        """
+        Return the color of the rank-th largest connected shape in the grid (considering diagonal connectivity).
+
+        NOTE: This method is deprecated. Use rank_largest_shape_color_nodiag instead.
+
+        Args:
+            grid (np.ndarray): The grid array containing color values.
+            rank (int): Rank (0-based) for the largest shape.
+
+        Raises:
+            DeprecationWarning: Always raised since this method is deprecated.
+        """
         raise DeprecationWarning("This method is deprecated. Use rank_largest_shape_color_nodiag instead.")
-        
-        # Find the unique colors in the grid
+
+        # Deprecated implementation (kept for reference):
         unique_colors = np.unique(grid)
         num_colors = len(unique_colors)
-        
-        # Ensure rank is valid
+
         if not isinstance(rank, int) or rank < 0:
             raise ValueError("Rank must be a non-negative integer.")
-        
+
         dimension_of_biggest_shape = np.zeros(num_colors, dtype=int)
-        
-        # Define connectivity for diagonal connections (8-connectivity for 2D grids)
-        connectivity = np.ones((3, 3), dtype=int)  # A 3x3 grid of ones includes diagonals
-        
-        # Loop over all unique colors and label the connected components
+        # Define 8-connectivity (includes diagonals) for labeling.
+        connectivity = np.ones((3, 3), dtype=int)
+
         for i, color in enumerate(unique_colors):
             copied_grid = np.copy(grid)
-            # Create a mask where the current color exists in the grid
             color_mask = copied_grid == color
             copied_grid[color_mask] = 1
             copied_grid[~color_mask] = 0
-            # Label connected regions with diagonal connectivity
-            labeled_grid, num_labels = label(copied_grid, structure=connectivity)
-            unique, counts = np.unique(labeled_grid, return_counts=True)
-            # Remove the background label (0) from the counts
-            unique, counts = unique[1:], counts[1:]
-            # Handle empty components
-            biggest_count = np.max(counts) if len(counts) > 0 else 0
-            # Store the size of the largest connected component for that color
+            labeled_grid, _ = label(copied_grid, structure=connectivity)
+            unique_labels, counts = np.unique(labeled_grid, return_counts=True)
+            unique_labels, counts = unique_labels[1:], counts[1:]
+            biggest_count = np.max(counts) if counts.size > 0 else 0
             dimension_of_biggest_shape[i] = biggest_count
-        
-        # Sort the colors based on the size of their largest connected component (descending order)
+
         sorted_indices = np.argsort(-dimension_of_biggest_shape)
-        
-        # Handle out-of-bound ranks by falling back to the smallest non-zero shape
         if rank >= len(sorted_indices):
             non_zero_sizes = dimension_of_biggest_shape[dimension_of_biggest_shape > 0]
-            if len(non_zero_sizes) == 0:  # If no non-zero shapes exist
+            if non_zero_sizes.size == 0:
                 return 0
-            smallest_non_zero_index = np.argmin(dimension_of_biggest_shape + (dimension_of_biggest_shape == 0) * np.max(dimension_of_biggest_shape))
-            return unique_colors[smallest_non_zero_index]
+            smallest_nonzero_index = np.argmin(
+                dimension_of_biggest_shape + (dimension_of_biggest_shape == 0) * np.max(dimension_of_biggest_shape)
+            )
+            return int(unique_colors[smallest_nonzero_index])
 
-        # Otherwise, return the color corresponding to the rank-th largest shape
         index = sorted_indices[rank]
-        return unique_colors[index]
-    
+        return int(unique_colors[index])
+
     def color_number(self, grid: np.ndarray, color: int) -> int:
-        """ Select the number of cells with the given color only if the color is not in the grid """
-        if check_integer(color, 0, self.num_colors) == False:
+        """
+        Return the given color if it is not present in the grid; otherwise, return an invalid color indicator.
+
+        Args:
+            grid (np.ndarray): The grid array.
+            color (int): The color number to check.
+
+        Returns:
+            int: The color number if it is not in the grid, otherwise the invalid color value.
+        """
+        if not check_integer(color, 0, self.num_colors):
             return self.invalid_color
         unique_colors = np.unique(grid)
         if color in unique_colors:
             return self.invalid_color
         return color
-
-def palette(self, grid: np.ndarray) -> set:
-    """Return the set of unique colors in the grid."""
-    return set(np.unique(grid))
-
-def numcolors(self, grid: np.ndarray) -> int:
-    """Return the number of unique colors in the grid."""
-    return len(palette(grid))
-
-def colorcount(self, grid: np.ndarray, value: int) -> int:
-    """Return the number of cells with the given color."""
-    return np.sum(grid == value)
-    
-
-    
