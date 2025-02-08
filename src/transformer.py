@@ -423,9 +423,20 @@ class EncoderTransformer(nn.Module):
             print(f"Row embed shape: {row_embed.shape}")
             print(f"Col embed shape: {col_embed.shape}")
 
+            print('Memory summary before emptying cache')
+            print(torch.cuda.memory_summary(DEVICE))
+            torch.cuda.empty_cache()
+            print('Memory summary after emptying cache')
+            print(torch.cuda.memory_summary(DEVICE))
+
+
+            print(torch.__version__)
+            print(torch.version.cuda)
 
             import os
             os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
+            os.environ['TORCH_USE_CUDA_DSA'] = '1'
+
 
 
             pos_embed = torch.add(row_embed, col_embed)
