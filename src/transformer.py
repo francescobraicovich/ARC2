@@ -423,12 +423,6 @@ class EncoderTransformer(nn.Module):
             print(f"Row embed shape: {row_embed.shape}")
             print(f"Col embed shape: {col_embed.shape}")
 
-            print(f"NaNs in row_embed: {torch.isnan(row_embed).any()}")
-            print(f"Infs in row_embed: {torch.isinf(row_embed).any()}")
-            print(f"NaNs in col_embed: {torch.isnan(col_embed).any()}")
-            print(f"Infs in col_embed: {torch.isinf(col_embed).any()}")
-
-            
             pos_embed = torch.add(row_embed, col_embed)
 
             print(f"Combined position embeds")
