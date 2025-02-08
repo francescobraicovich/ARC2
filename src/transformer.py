@@ -349,38 +349,31 @@ class EncoderTransformer(nn.Module):
         grid_shapes: torch.Tensor,
         dropout_eval: bool = False
     ) -> torch.Tensor:
-        """
-        Creates the token embeddings for:
-          - Colors
-          - Positions (row/col)
-          - Channels
-          - Grid shapes
-          - CLS
-        Returns:
-          x of shape (batch, 1 + 4 + 2 * R * C, emb_dim)
-        """
+        print("Starting embed_grids function")
+
         batch_size = pairs.shape[0]
         R = pairs.shape[1]
         C = pairs.shape[2]
 
-        print('vocab_size:', self.config.vocab_size)
         print(f"Batch size: {batch_size}, Rows: {R}, Columns: {C}")
+        print(f"Input pairs shape: {pairs.shape}, device: {pairs.device}, dtype: {pairs.dtype}")
 
-        # Embedding for color tokens
+        # --------------------------- Colors Embedding ---------------------------
+        print("\n--- Embedding color tokens ---")
         colors_embed = self.colors_embed(pairs.long())
-        print('colors embed device:', colors_embed.device)
-        print(f"Colors embed shape: {colors_embed.shape}")
+        torch.cuda.synchronize()
 
-        # Position embeddings
+        print(f"Colors embed shape: {colors_embed.shape}, device: {colors_embed.device}")
+        print(f"Colors embed dtype: {colors_embed.dtype}")
+        print(f"NaNs in colors_embed: {torch.isnan(colors_embed).any().item()}, Infs: {torch.isinf(colors_embed).any().item()}")
+        print(f"Sample colors_embed values: {colors_embed.flatten()[:5]}")
+
+        # --------------------------- Position Embeddings ---------------------------
+        print("\n--- Position Embeddings ---")
         if self.config.scaled_position_embeddings:
+            print("Using scaled position embeddings")
             row_vec = torch.zeros((R,), dtype=torch.long, device=DEVICE)
             col_vec = torch.zeros((C,), dtype=torch.long, device=DEVICE)
-
-            # Check position embedding indices
-            if row_vec.min() < 0 or row_vec.max() >= self.pos_row_embed.num_embeddings:
-                raise ValueError(f"Row indices out of range: {row_vec}")
-            if col_vec.min() < 0 or col_vec.max() >= self.pos_col_embed.num_embeddings:
-                raise ValueError(f"Col indices out of range: {col_vec}")
 
             row_embed = self.pos_row_embed(row_vec)
             col_embed = self.pos_col_embed(col_vec)
@@ -395,123 +388,97 @@ class EncoderTransformer(nn.Module):
             pos_col_embeds = pos_col_embeds.unsqueeze(0).unsqueeze(2)
             pos_embed = pos_row_embeds + pos_col_embeds
         else:
-            print(f"Rows: {R}, Columns: {C}")
+            print("Using standard position embeddings")
+            
+            # Create row and column IDs
             row_ids = torch.arange(R, device=DEVICE, dtype=torch.long)
             col_ids = torch.arange(C, device=DEVICE, dtype=torch.long)
 
-            print('Device of row_ids:', row_ids.device)
-            print('Device of col_ids:', col_ids.device)
+            print(f"Row IDs: {row_ids}")
+            print(f"Col IDs: {col_ids}")
 
-            # Check position embedding indices
-            #if row_ids.min() < 0 or row_ids.max() > self.pos_row_embed.num_embeddings:
-            #    raise ValueError(f"Row IDs out of range: {row_ids}")
-            #if col_ids.min() < 0 or col_ids.max() > self.pos_col_embed.num_embeddings:
-            #    raise ValueError(f"Col IDs out of range: {col_ids}")
+            # Embed row and column positions
+            row_embed = self.pos_row_embed(row_ids)
+            col_embed = self.pos_col_embed(col_ids)
 
-            row_embed = self.pos_row_embed(row_ids).to(DEVICE)
-            col_embed = self.pos_col_embed(col_ids).to(DEVICE)
-            print(f'Embedded rows and columns')
+            torch.cuda.synchronize()
+            print(f"Row embed shape: {row_embed.shape}, device: {row_embed.device}")
+            print(f"Col embed shape: {col_embed.shape}, device: {col_embed.device}")
 
-            #print(f"Row embed shape: {row_embed.shape}")
-            #print(f"Col embed shape: {col_embed.shape}")
+            # Check for NaNs/Infs before unsqueeze
+            print(f"NaNs in row_embed: {torch.isnan(row_embed).any().item()}, Infs: {torch.isinf(row_embed).any().item()}")
+            print(f"NaNs in col_embed: {torch.isnan(col_embed).any().item()}, Infs: {torch.isinf(col_embed).any().item()}")
 
+            # Unsqueeze row and column embeddings
             row_embed = row_embed.unsqueeze(1).unsqueeze(2)
             col_embed = col_embed.unsqueeze(0).unsqueeze(2)
 
-            print(f"Unsqueezed rows and columns embeds")
+            print("\nPrepared to add row_embed and col_embed:")
+            print(f"Row embed (after unsqueeze) shape: {row_embed.shape}, dtype: {row_embed.dtype}")
+            print(f"Col embed (after unsqueeze) shape: {col_embed.shape}, dtype: {col_embed.dtype}")
 
-            print(f"Row embed shape: {row_embed.shape}")
-            print(f"Col embed shape: {col_embed.shape}")
-            print(f"Row embed device: {row_embed.device}")
-            print(f"Col embed device: {col_embed.device}")
+            # Check values before addition
+            print(f"Sample row_embed values: {row_embed.flatten()[:5]}")
+            print(f"Sample col_embed values: {col_embed.flatten()[:5]}")
 
-            print('Memory summary before emptying cache')
-            print(torch.cuda.memory_summary(DEVICE))
-            torch.cuda.empty_cache()
-            print('Memory summary after emptying cache')
-            print(torch.cuda.memory_summary(DEVICE))
+            # Final NaN/Inf checks before addition
+            print(f"NaNs in row_embed before add: {torch.isnan(row_embed).any().item()}, Infs: {torch.isinf(row_embed).any().item()}")
+            print(f"NaNs in col_embed before add: {torch.isnan(col_embed).any().item()}, Infs: {torch.isinf(col_embed).any().item()}")
 
-            row_embed_cpu = row_embed.cpu()
-            col_embed_cpu = col_embed.cpu()
+            # Attempt to add row and column embeddings
+            try:
+                pos_embed = torch.add(row_embed, col_embed)
+                torch.cuda.synchronize()
+                print("Position embeddings combined successfully")
+            except RuntimeError as e:
+                print(f"\nError during position embedding addition: {e}")
+                print("Attempting to move tensors to CPU for inspection...")
 
-            # Now check for NaNs/Infs on CPU
-            print(f"NaNs in row_embed: {torch.isnan(row_embed_cpu).any().item()}, Infs in row_embed: {torch.isinf(row_embed_cpu).any().item()}")
-            print(f"NaNs in col_embed: {torch.isnan(col_embed_cpu).any().item()}, Infs in col_embed: {torch.isinf(col_embed_cpu).any().item()}")
+                row_embed_cpu = row_embed.cpu()
+                col_embed_cpu = col_embed.cpu()
+                
+                print(f"NaNs in row_embed_cpu: {torch.isnan(row_embed_cpu).any()}, Infs: {torch.isinf(row_embed_cpu).any()}")
+                print(f"NaNs in col_embed_cpu: {torch.isnan(col_embed_cpu).any()}, Infs: {torch.isinf(col_embed_cpu).any()}")
+                print(f"Sample row_embed_cpu values: {row_embed_cpu.flatten()[:5]}")
+                print(f"Sample col_embed_cpu values: {col_embed_cpu.flatten()[:5]}")
+                raise e
 
-
-
-            print(torch.__version__)
-            print(torch.version.cuda)
-
-            import os
-            os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
-            os.environ['TORCH_USE_CUDA_DSA'] = '1'
-
-
-            torch.cuda.synchronize()  # Sync before operation
-            print('syncronized')
-
-            pos_embed = torch.add(row_embed, col_embed)
-
-            print(f"Combined position embeds")
-
-        # Channels embedding
+        # --------------------------- Channels Embedding ---------------------------
+        print("\n--- Embedding channels ---")
         channel_ids = torch.arange(2, device=DEVICE, dtype=torch.long)
-        print('Created channel IDs')
-
         channel_emb = self.channels_embed(channel_ids)
-        print('Embedded channels')
+
+        torch.cuda.synchronize()
+        print(f"Channel embedding shape: {channel_emb.shape}, device: {channel_emb.device}")
+        print(f"NaNs in channel_emb: {torch.isnan(channel_emb).any().item()}, Infs: {torch.isinf(channel_emb).any().item()}")
+        print(f"Sample channel_emb values: {channel_emb.flatten()[:5]}")
 
         channel_emb = channel_emb.unsqueeze(0).unsqueeze(0)
-        print('Unsqueezed channels')
+        print(f"Channel embedding after unsqueeze: {channel_emb.shape}")
 
-        # Combine
-        x = colors_embed + pos_embed + channel_emb
-        print(f"Combined color, position, and channel embeds")
+        # --------------------------- Combining Embeddings ---------------------------
+        print("\n--- Combining embeddings ---")
+        try:
+            x = colors_embed + pos_embed + channel_emb
+            torch.cuda.synchronize()
+            print(f"Combined embeddings shape: {x.shape}")
+            print(f"NaNs in combined embeddings: {torch.isnan(x).any().item()}, Infs: {torch.isinf(x).any().item()}")
+        except RuntimeError as e:
+            print(f"Error during embedding combination: {e}")
+            raise e
 
-        # Flatten
+        # --------------------------- Flattening Embeddings ---------------------------
+        print("\n--- Flattening embeddings ---")
         x = x.view(batch_size, R * C * 2, self.config.emb_dim)
+        print(f"Flattened embedding shape: {x.shape}")
 
-        # Embed grid shape tokens
-        grid_shapes = grid_shapes.long()
-        if (grid_shapes[:, 0, :] - 1).min() < 0 or (grid_shapes[:, 0, :] - 1).max() >= self.grid_shapes_row_embed.num_embeddings:
-            raise ValueError(f"Grid shape row indices out of range: {grid_shapes[:, 0, :]}")
-        if (grid_shapes[:, 1, :] - 1).min() < 0 or (grid_shapes[:, 1, :] - 1).max() >= self.grid_shapes_col_embed.num_embeddings:
-            raise ValueError(f"Grid shape col indices out of range: {grid_shapes[:, 1, :]}")
+        # Final sync to catch errors
+        torch.cuda.synchronize()
+        print("Completed embed_grids function successfully")
+        assert False, "Stopping execution to inspect variables"
 
-        row_part = self.grid_shapes_row_embed(grid_shapes[:, 0, :] - 1)
-        col_part = self.grid_shapes_col_embed(grid_shapes[:, 1, :] - 1)
-
-        print(f"Row part shape: {row_part.shape}")
-        print(f"Col part shape: {col_part.shape}")
-
-        row_part = row_part + channel_emb.squeeze(0)
-        col_part = col_part + channel_emb.squeeze(0)
-
-        grid_shapes_embed = torch.cat([row_part, col_part], dim=1)
-        print(f"Grid shapes embed shape: {grid_shapes_embed.shape}")
-
-        x = torch.cat([grid_shapes_embed, x], dim=1)
-        print(f"Embed shape after adding grid shapes: {x.shape}")
-
-        # Add CLS token
-        cls_ids = torch.zeros((batch_size, 1), dtype=torch.long, device=DEVICE)
-        if cls_ids.min() < 0 or cls_ids.max() >= self.cls_token.num_embeddings:
-            raise ValueError(f"CLS token indices out of range: {cls_ids}")
-
-        cls_token = self.cls_token(cls_ids)
-        print(f"CLS token shape: {cls_token.shape}")
-
-        x = torch.cat([cls_token, x], dim=1)
-        print(f"Final embed shape after adding CLS token: {x.shape}")
-
-        # Apply dropout
-        embed_dropout_p = 0.0 if dropout_eval else self.config.transformer_layer.dropout_rate
-        x = F.dropout(x, p=embed_dropout_p, training=not dropout_eval)
-
-        print(f"Final output shape after dropout: {x.shape}")
-        assert False
         return x
+
 
 
 
