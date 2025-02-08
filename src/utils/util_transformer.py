@@ -33,7 +33,7 @@ class EncoderTransformerConfig:
     """
     transformer_layer: TransformerLayerConfig = field(default_factory=TransformerLayerConfig)
     vocab_size: int = 11
-    output_vocab_size: int = 10
+    output_vocab_size: int = 11
     num_layers: int = 1
     latent_dim: int = 96
     variational: bool = False
