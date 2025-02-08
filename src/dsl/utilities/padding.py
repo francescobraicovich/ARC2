@@ -14,7 +14,7 @@ def pad_grid(grid: np.ndarray, desired_dim: tuple[int, int]=(30, 30)) -> np.ndar
     """
     desired_rows, desired_cols = desired_dim
     n_rows, n_cols = grid.shape
-    padded_grid = - np.ones((desired_rows, desired_cols), dtype=dtype)
+    padded_grid = -np.ones((desired_rows, desired_cols), dtype=dtype)
     padded_grid[:n_rows, :n_cols] = grid
     return padded_grid
 
