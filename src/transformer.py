@@ -374,3 +374,36 @@ class EncoderTransformer(nn.Module):
 
         return key_padding_mask
     
+    def make_pad_mask(self, grid_shapes: torch.Tensor) -> torch.Tensor:
+        B = grid_shapes.shape[0]
+        T = 1 + 4 + 2 * (self.config.max_rows * self.config.max_cols)
+
+        print(f"Batch size (B): {B}, Total tokens (T): {T}")
+        print(f"grid_shapes: {grid_shapes}")
+
+        # Compute used tokens: 1 CLS + 4 grid shapes + 2*(R*C)
+        rows_used = torch.max(grid_shapes[:, 0, :], dim=-1)[0]
+        cols_used = torch.max(grid_shapes[:, 1, :], dim=-1)[0]
+
+        print(f"rows_used: {rows_used}")
+        print(f"cols_used: {cols_used}")
+
+        used_tokens = 1 + 4 + 2 * (rows_used * cols_used)
+        print(f"used_tokens: {used_tokens}")
+
+        # Initialize mask with all False (no padding)
+        key_padding_mask = torch.zeros((B, T), dtype=torch.bool, device=DEVICE)
+
+        for b in range(B):
+            n = used_tokens[b].long().item()
+
+            if n < 0 or n > T:
+                print(f"Invalid token count at batch {b}: n={n}, T={T}")
+                continue  # Skip this batch to avoid errors
+
+            if n < T:
+                key_padding_mask[b, n:] = True  # Mask out padding tokens
+
+        return key_padding_mask
+
+    
