@@ -14,7 +14,7 @@ def pad_grid(grid: np.ndarray, desired_dim: tuple[int, int]=(30, 30)) -> np.ndar
     """
     desired_rows, desired_cols = desired_dim
     n_rows, n_cols = grid.shape
-    padded_grid = np.ones((desired_rows, desired_cols), dtype=dtype)*10
+    padded_grid = -np.ones((desired_rows, desired_cols), dtype=dtype)
     padded_grid[:n_rows, :n_cols] = grid
     return padded_grid
 
@@ -22,7 +22,7 @@ def unpad_grid(grid: np.ndarray) -> np.ndarray:
     """
     Extract the original grid from the padded grid while preserving its original shape.
     """
-    mask = (grid != 10)
+    mask = (grid != -1)
     rows, cols = np.where(mask)
     if rows.size == 0 and cols.size == 0:
         return np.zeros((0, 0), dtype=int)
