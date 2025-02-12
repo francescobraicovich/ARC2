@@ -254,6 +254,9 @@ def filter_by_change(action_space, env, num_experiments, threshold):
     n = len(actions)
     equal_ratios = np.zeros(n, dtype=np.float64)
 
+    if threshold == 0:
+        return actions
+
     for i in range(n):
         action = actions[i]
         num_equal = 0
