@@ -1,6 +1,7 @@
 from utils.util import to_tensor
 import numpy as np
 import torch
+import os
 from dsl.utilities.plot import plot_step
 
 def train(continuous, env, agent, max_episode, max_actions, warmup, save_model_dir, max_episode_length, logger, save_per_epochs):
@@ -8,6 +9,8 @@ def train(continuous, env, agent, max_episode, max_actions, warmup, save_model_d
     step = episode = episode_steps = episode_positive_rewards = num_equal_rewards = actions = 0
     episode_reward = 0.
     s_t = None
+    positive_rewards = []
+    rewards = []
     while episode < max_episode and actions < max_actions:
         while True:
             if s_t is None:
@@ -58,6 +61,17 @@ def train(continuous, env, agent, max_episode, max_actions, warmup, save_model_d
                         episode, episode_reward, episode_steps, num_equal_rewards, episode_positive_rewards, agent.epsilon
                     )
                 )
+
+                positive_rewards.append(episode_positive_rewards)
+                rewards.append(episode_reward)
+
+                # save the number of positive rewards in a directory
+                # if the directory does not exist, create it
+                os.makedirs(f"{save_model_dir}/positive_rewards", exist_ok=True)
+                os.makedirs(f"{save_model_dir}/rewards", exist_ok=True)
+
+                np.save(f"{save_model_dir}/positive_rewards/_positive_rewards.npy", np.array(positive_rewards))
+                np.save(f"{save_model_dir}/rewards/rewards.npy", np.array(rewards))
                 
                 """"
                 agent.memory.append(
@@ -81,6 +95,10 @@ def train(continuous, env, agent, max_episode, max_actions, warmup, save_model_d
         if step > warmup and episode > 0 and episode % save_per_epochs == 0:
             agent.save_model(save_model_dir)
             logger.info(f"### Model Saved in {save_model_dir} before Ep:{episode} ###")
+
+
+
+
 
 def test(env, agent, model_path, test_episode, max_episode_length, logger):
 
