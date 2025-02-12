@@ -37,8 +37,8 @@ class WolpertingerAgent(DDPG):
         self.critic_target.to(self.device)
 
         self.n_policy_updates = 0
-        self.policy_print_freq = 2000
-        self.plot_freq = 2000
+        self.policy_print_freq = 5000
+        self.plot_freq = 5000
 
         self.actor_gradients = []
         self.critic_gradients = []
@@ -193,7 +193,19 @@ class WolpertingerAgent(DDPG):
 
         
         plt.tight_layout()
+
+        # Save the plot
+        j = self.n_policy_updates // self.plot_freq
+
+        # Create the directory if it does not exist
+        os.makedirs('.plots/{}'.format(self.experiment), exist_ok=True)
+
+        plt.savefig(f'.plots/{self.experiment}/gradients_and_losses_{j}.png')
+
+
         plt.show()
+
+
 
     def update_policy(self):
 
