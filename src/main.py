@@ -10,6 +10,9 @@ from enviroment import ARC_Env
 from action_space import ARCActionSpace
 from utils.util import set_device
 import torch
+from utils.util import get_output_folder, setup_logger
+from wolp_agent import WolpertingerAgent
+
 
 if __name__ == "__main__":
 
@@ -24,9 +27,7 @@ if __name__ == "__main__":
 
     os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu_ids)[1:-1]
 
-    from utils.util import get_output_folder, setup_logger
-    from wolp_agent import WolpertingerAgent
-
+    
     args.save_model_dir = get_output_folder('../output', args.env)
     challenge_dictionary = json.load(open('data/RAW_DATA_DIR/arc-prize-2024/arc-agi_training_challenges.json'))
 
