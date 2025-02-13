@@ -126,7 +126,7 @@ def set_device():
         print("Using TPU")
     except ImportError:
         if torch.cuda.is_available():
-            device = torch.device("cuda:0")
+            device = torch.device("cuda")
             print("Using CUDA:0 GPU")
         elif torch.backends.mps.is_available():
             device = torch.device("mps")
