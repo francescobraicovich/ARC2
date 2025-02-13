@@ -84,8 +84,8 @@ class CNNFeatureExtractor(nn.Module):
         self.resnet.fc = nn.Identity()
 
         # Self-attention, fully connected layers, etc.
-        self.self_attention = SelfAttention(in_dim=256)
-        self.fc1 = nn.Linear(256 * 4 * 4, hidden1)
+        self.self_attention = SelfAttention(in_dim=512)
+        self.fc1 = nn.Linear(512 * 4 * 4, hidden1)
         self.dropout = nn.Dropout(p=dropout_prob)
         self.activation = nn.GELU()
 
@@ -103,7 +103,7 @@ class CNNFeatureExtractor(nn.Module):
             bias=False
         )
         # Remove the last ResNet layer (layer4)
-        del self.resnet.layer4
+        #del self.resnet.layer4
 
     def _modify_resnet_architecture(self):
         # Modify layer2: keep downsampling and adjust dilation/padding as needed
@@ -115,6 +115,16 @@ class CNNFeatureExtractor(nn.Module):
         # Modify layer3: prevent downsampling in the first block and adjust dilation/padding
         layer3 = self.resnet.layer3
         for i, block in enumerate(layer3):
+            if i == 0:
+                block.conv1.stride = (1, 1)  # Prevent downsampling
+                if block.downsample is not None:
+                    block.downsample[0].stride = (1, 1)
+            block.conv2.dilation = (2, 2)
+            block.conv2.padding = (2, 2)
+
+        # Modify layer3: prevent downsampling in the first block and adjust dilation/padding
+        layer4 = self.resnet.layer4
+        for i, block in enumerate(layer4):
             if i == 0:
                 block.conv1.stride = (1, 1)  # Prevent downsampling
                 if block.downsample is not None:
@@ -149,6 +159,7 @@ class CNNFeatureExtractor(nn.Module):
         x = self.resnet.layer1(x)
         x = self.resnet.layer2(x)
         x = self.resnet.layer3(x)
+        x = self.resnet.layer4(x)
         x = self.self_attention(x)  # (B, 256, H', W')
         x = nn.AdaptiveAvgPool2d((4, 4))(x)
         x = x.view(x.size(0), -1)
