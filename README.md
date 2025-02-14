@@ -6,7 +6,7 @@
 This repository offers a reinforcement learning framework designed to tackle tasks from the Abstraction and Reasoning Corpus (ARC). It includes a Domain-Specific Language (DSL) for solving ARC problems sequentially and a custom RL environment. The implemented model is a Wolpertinger Actor-Critic, featuring a choice of feature extractors—either LPN or CNN, both of which are provided.
 
 ## Paper
-📄 [Read the Paper](https://yourusername.github.io/yourrepo/)
+📄 [Read the Paper](https://francescobraicovich.github.io/ARC/)
 
 ## Installation
 1. Clone this repository.  
