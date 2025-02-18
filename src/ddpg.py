@@ -38,14 +38,18 @@ class DDPG(object):
         self.nb_states = nb_states
         self.nb_actions = nb_actions
 
+        # Hyperparameters for the noise in the policy update
+        self.policy_noise = args.policy_noise
+        self.noise_clip = args.noise_clip
+        self.policy_delay = args.policy_delay
+
         # Network configuration for the Actor and Critic networks
         net_cfg = {
             'hidden1': args.hidden1,
             'hidden2': args.hidden2,
             'init_w': args.init_w,
             'type': args.actor_critic_type,
-            'latent_dim': args.latent_dim,
-            'chunk_size': args.chunk_size
+            'latent_dim': args.latent_dim           
         }
 
         actor_cfg = {
@@ -59,13 +63,17 @@ class DDPG(object):
         self.actor_target = Actor(self.nb_states, self.nb_actions, **actor_cfg).to(self.device)
         self.actor_optim = Adam(self.actor.parameters(), lr=args.p_lr, weight_decay=args.weight_decay)
 
-        self.critic = Critic(self.nb_states, self.nb_actions, **net_cfg).to(self.device)
-        self.critic_target = Critic(self.nb_states, self.nb_actions, **net_cfg).to(self.device)
-        self.critic_optim = Adam(self.critic.parameters(), lr=args.c_lr, weight_decay=args.weight_decay)
+        self.critic1 = Critic(self.nb_states, self.nb_actions, **net_cfg).to(self.device)
+        self.critic1_target = Critic(self.nb_states, self.nb_actions, **net_cfg).to(self.device)
+        self.critic1_optim = Adam(self.critic1.parameters(), lr=args.c_lr, weight_decay=args.weight_decay)
+        self.critic2 = Critic(self.nb_states, self.nb_actions, **net_cfg).to(self.device)
+        self.critic2_target = Critic(self.nb_states, self.nb_actions, **net_cfg).to(self.device)
+        self.critic2_optim = Adam(self.critic2.parameters(), lr=args.c_lr, weight_decay=args.weight_decay)
 
         # Synchronize target networks with the primary networks
         hard_update(self.actor_target, self.actor)
-        hard_update(self.critic_target, self.critic)
+        hard_update(self.critic1_target, self.critic1)
+        hard_update(self.critic2_target, self.critic2)
 
         # Initialize replay buffer for experience replay
         self.memory = SequentialMemory(limit=args.rmsize)
@@ -105,8 +113,10 @@ class DDPG(object):
         """
         self.actor.eval()
         self.actor_target.eval()
-        self.critic.eval()
-        self.critic_target.eval()
+        self.critic1.eval()
+        self.critic1_target.eval()
+        self.critic2.eval()
+        self.critic2_target.eval()
 
     def cuda(self):
         """
@@ -114,8 +124,10 @@ class DDPG(object):
         """
         self.actor.to(self.device)
         self.actor_target.to(self.device)
-        self.critic.to(self.device)
-        self.critic_target.to(self.device)
+        self.critic1.to(self.device)
+        self.critic1_target.to(self.device)
+        self.critic2.to(self.device)
+        self.critic2_target.to(self.device)
 
     def observe(self, r_t, s_t1, shape1, done):
         """
@@ -207,7 +219,8 @@ class DDPG(object):
 
         # Update target networks
         hard_update(self.actor_target, self.actor)
-        hard_update(self.critic_target, self.critic)
+        hard_update(self.critic1_target, self.critic)
+        hard_update(self.critic2_target, self.critic)
 
 
 
@@ -227,10 +240,16 @@ class DDPG(object):
         )
         torch.save(actor_state_dict, os.path.join(output, "actor.pt"))
 
-        # Save the Critic model
-        critic_state_dict = (
-            self.critic.module.state_dict() if hasattr(self.critic, "module") else self.critic.state_dict()
+        # Save the Critic 1 model
+        critic1_state_dict = (
+            self.critic1.module.state_dict() if hasattr(self.critic1, "module") else self.critic1.state_dict()
         )
-        torch.save(critic_state_dict, os.path.join(output, "critic.pt"))
+        torch.save(critic1_state_dict, os.path.join(output, "critic1.pt"))
+
+        # Save the Critic 2 model
+        critic2_state_dict = (
+            self.critic2.module.state_dict() if hasattr(self.critic2, "module") else self.critic2.state_dict()
+        )
+        torch.save(critic2_state_dict, os.path.join(output, "critic2.pt"))
 
         print(f"Models saved to {output}")
