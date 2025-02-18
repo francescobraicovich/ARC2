@@ -43,6 +43,8 @@ class WolpertingerAgent(DDPG):
 
         super().__init__(args, nb_states, nb_actions)
 
+        print('Using 1-epsilon instead of gamma for target Q-value.')
+
         # Automatically determine the device
         self.device = set_device()
         print(f"[WolpertingerAgent] Using device: {self.device}")
@@ -221,7 +223,7 @@ class WolpertingerAgent(DDPG):
             # Evaluate next Q with target critic
             next_q = self.critic_target((next_state_batch, next_shape_batch), next_emb_act)
 
-        target_q = reward_batch + self.gamma * (1 - terminal_batch.float()) * next_q
+        target_q = reward_batch + (1-self.epsilon) * (1 - terminal_batch.float()) * next_q
 
         # ---- Critic update ----
         self.critic_optim.zero_grad()
