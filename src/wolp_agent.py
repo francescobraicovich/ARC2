@@ -231,6 +231,7 @@ class WolpertingerAgent(DDPG):
         value_loss = criterion(q, target_q)
 
         value_loss.backward()
+        actor_grad_norm = get_grad_norm(self.actor.parameters())
         torch.nn.utils.clip_grad_norm_(self.critic.parameters(), max_norm=1.0)
         self.critic_optim.step()
 
@@ -242,6 +243,7 @@ class WolpertingerAgent(DDPG):
         policy_loss = -q_actor.mean()
 
         policy_loss.backward()
+        critic_grad_norm = get_grad_norm(self.critic.parameters())
         torch.nn.utils.clip_grad_norm_(self.actor.parameters(), max_norm=1.0)
         self.actor_optim.step()
 
@@ -262,6 +264,6 @@ class WolpertingerAgent(DDPG):
             "train/actor_diff": actor_diff,
             "train/critic_diff": critic_diff,
             # Optionally log gradient norms:
-            "train/grad_norm_actor": get_grad_norm(self.actor.parameters()),
-            "train/grad_norm_critic": get_grad_norm(self.critic.parameters()),
+            "train/grad_norm_actor": actor_grad_norm,
+            "train/grad_norm_critic": critic_grad_norm
         })
