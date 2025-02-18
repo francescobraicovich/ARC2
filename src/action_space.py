@@ -65,6 +65,7 @@ class ARCActionSpace(Space):
         print('Creating the action space')
 
         self.args = args
+        self.k_neighbors = args.k_neighbors # Number of nearest neighbors to consider
 
         # Initialize the function selectors/transformers
         self.color_selector = ColorSelector()
@@ -163,11 +164,10 @@ class ARCActionSpace(Space):
         """
         Create and fit the NearestNeighbors model using the embedded actions.
         """
-        self.nearest_neighbors = NearestNeighbors(n_neighbors=None, algorithm='auto')
+        self.nearest_neighbors = NearestNeighbors(n_neighbors=self.k_neighbors, algorithm='auto')
         self.nearest_neighbors.fit(self.embedding)
 
         print('NearestNeighbors model created with {} neighbors'.format(self.nearest_neighbors.n_neighbors))
-        print
 
     def search_point(self, query_actions, k=5):
         """
