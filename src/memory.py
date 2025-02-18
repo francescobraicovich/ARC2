@@ -14,7 +14,7 @@ from utils.util import set_device
 # Device selection: CUDA -> MPS -> CPU
 # ---------------------------------------------------------------
 DEVICE = set_device()
-print("Using device:", DEVICE)
+print("Using device for memory:", DEVICE)
 
 # ---------------------------------------------------------------
 # Experience namedtuple
