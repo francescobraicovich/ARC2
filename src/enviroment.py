@@ -5,6 +5,7 @@ import gymnasium as gym
 from gymnasium import spaces
 from collections import deque
 from utils.util import *
+import json
 from scipy.signal import correlate2d
 import copy
 
@@ -79,16 +80,19 @@ def maximum_overlap_regions(array1, array2):
     return best_overlap1, best_overlap2, overlap_score
 
 class ARC_Env(gym.Env):
-    def __init__(self, challenge_dictionary, action_space, dim=30, seed=None):
+    def __init__(self, path_to_challenges, action_space, dim=30, seed=None):
         super(ARC_Env, self).__init__()
         
         # Set the seed
         if seed is not None:
             np.random.seed(seed)
 
-        self.challenge_dictionary = challenge_dictionary # dictionary of challenges
-        self.dictionary_keys = list(challenge_dictionary.keys()) # list of keys in the dictionary
-        self.num_challenges = len(challenge_dictionary) # number of challenges in the dictionary
+        self.challenge_dictionary = json.load(
+        open(path_to_challenges)
+        )
+
+        self.dictionary_keys = list(self.challenge_dictionary.keys()) # list of keys in the dictionary
+        self.num_challenges = len(self.challenge_dictionary) # number of challenges in the dictionary
         self.dim = dim # maximum dimension of the problem
         self.observation_shape = (dim, dim, 2) # shape of the grid
 
