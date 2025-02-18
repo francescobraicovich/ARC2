@@ -87,7 +87,7 @@ def train(
         # Observe and update policy
         agent.observe(r_t, next_state, next_shape, done)
         if step > warmup:
-            agent.update_policy()
+            agent.update_policy(step)
 
         step += 1
         episode_steps += 1
