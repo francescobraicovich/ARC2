@@ -7,6 +7,7 @@ from typing import Optional, Tuple
 from utils.util import set_device
 
 DEVICE = set_device()
+print("Using device for EncoderTransformer:", DEVICE)
 # ---------------------------------------------------------------------
 # Example placeholders for configs and the PyTorch version of TransformerLayer.
 # Adjust these imports or definitions as needed to match your project.
