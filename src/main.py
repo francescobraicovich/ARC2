@@ -1,123 +1,139 @@
 import os
-import numpy as np
-import logging
-from train_test import train, test
 import warnings
-import json
-from arg_parser import init_parser
+import logging
+import wandb
+import torch
+import numpy as np
+
 from setproctitle import setproctitle as ptitle
+from arg_parser import init_parser
+
+from utils.util import (
+    set_device,
+    get_output_folder,
+    setup_logger
+)
+
 from enviroment import ARC_Env
 from action_space import ARCActionSpace
-from utils.util import set_device
-import torch
-from utils.util import get_output_folder, setup_logger
 from wolp_agent import WolpertingerAgent
+from train_test import train, evaluate
 
-
-if __name__ == "__main__":
-
-    device = set_device()
-    print('Using device: {}'.format(device))
-
-
-    ptitle('WOLP_DDPG')
+def main():
     warnings.filterwarnings('ignore')
+
+    # 1. Parse arguments
     parser = init_parser('WOLP_DDPG')
     args = parser.parse_args()
 
+    # 2. Set CUDA visible devices
     os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu_ids)[1:-1]
+    device = set_device()
+    print(f'Using device: {device}')
 
-    
+    # 3. Optionally set a process title
+    ptitle('WOLP_DDPG')
+
+    # 4. Prepare output folder
     args.save_model_dir = get_output_folder('../output', args.env)
-    challenge_dictionary = json.load(open('data/RAW_DATA_DIR/arc-prize-2024/arc-agi_training_challenges.json'))
 
-    action_space_args = {
-        'num_experiments_filter': args.num_experiments_filter, 
-        'filter_threshold': args.filter_threshold, 
-        'num_experiments_similarity': args.num_experiments_similarity,
-        'load': args.load_action_embedding
-    }
+    # 5. Initialize wandb (only if training)
+    if args.mode == 'train' and wandb.run is None:
+        wandb.init(project="arc-v1", config=vars(args), mode="online")
 
     action_space = ARCActionSpace(args)
-    env = ARC_Env(challenge_dictionary, action_space)
-    continuous = None
 
-    # discrete action for 1 dimension
-    # TODO: change the nb_states to the shape of the grid
-    nb_states = 1805  # 60 x 30 grid ravels to 1800 + 4 for the dimensions of the grid + 1 for cls embedding
-    nb_actions = 20  # the dimension of actions, usually it is 1. Depend on the environment.
-    continuous = False
+    # 6. Create training and evaluation environments
+    train_env = ARC_Env(
+        path_to_challenges='data/RAW_DATA_DIR/arc-prize-2024/arc-agi_training_challenges.json',
+        action_space=action_space
+    )
+    eval_env = ARC_Env(
+        path_to_challenges='data/RAW_DATA_DIR/arc-prize-2024/arc-agi_evaluation_challenges.json',
+        action_space=action_space
+    )
 
+    # 7. Set seeds
     if args.seed > 0:
         np.random.seed(args.seed)
-        env.seed(args.seed)
-  
+        torch.manual_seed(args.seed)
+        train_env.seed(args.seed)
+        eval_env.seed(args.seed)
+
+    # 8. Define state and action dimensions
+    nb_states = 1805
+    nb_actions = 20
+    continuous = False
+
+    # 9. Create the agent
     agent_args = {
         'nb_states': nb_states,
         'nb_actions': nb_actions,
         'args': args,
         'k': args.k_neighbors,
-        'action_space': action_space
+        'action_space': ARCActionSpace(args)
     }
-
     agent = WolpertingerAgent(**agent_args)
-    
+
+    # 10. Optionally load model weights
     if args.load:
         agent.load_weights(args.load_model_dir)
 
+    # 11. Move agent to GPU if requested
     if args.gpu_ids[0] >= 0 and args.gpu_nums > 0 and torch.cuda.is_available():
         agent.cuda_convert()
 
-    # set logger, log args here
-    log = {}
+    # 12. Set up logger
     if args.mode == 'train':
-        setup_logger('RS_log', r'{}/RS_train_log'.format(args.save_model_dir))
+        setup_logger('RS_log', f'{args.save_model_dir}/RS_train_log')
     elif args.mode == 'test':
-        setup_logger('RS_log', r'{}/RS_test_log'.format(args.save_model_dir))
+        setup_logger('RS_log', f'{args.save_model_dir}/RS_test_log')
     else:
-        raise RuntimeError('undefined mode {}'.format(args.mode))
-    
-    log['RS_log'] = logging.getLogger('RS_log')
+        raise RuntimeError(f'Undefined mode {args.mode}')
+    logger = logging.getLogger('RS_log')
+
+    # 13. Log hyperparameters
     d_args = vars(args)
-    d_args['max_actions'] = args.max_actions
-    
-    for key in agent_args.keys():
-        if key == 'args':
-            continue
-        d_args[key] = agent_args[key]
-    for k in d_args.keys():
-        log['RS_log'].info('{0}: {1}'.format(k, d_args[k]))
+    d_args['nb_states'] = nb_states
+    d_args['nb_actions'] = nb_actions
+    d_args['continuous'] = continuous
+    for k, v in d_args.items():
+        logger.info(f"{k}: {v}")
 
+    # 14. Run training or (separate) test
     if args.mode == 'train':
-        print('Training')
-
-        train_args = {
-            'continuous': continuous,
-            'env': env,
-            'agent': agent,
-            'max_episode': args.max_episode,
-            'max_actions': args.max_actions,
-            'warmup': args.warmup,
-            'save_model_dir': args.save_model_dir,
-            'max_episode_length': args.max_episode_length,
-            'logger': log['RS_log'],
-            'save_per_epochs': args.save_per_epochs
-        }
-
-        train(**train_args)
+        logger.info('Starting Training...')
+        train(
+            continuous=continuous,
+            train_env=train_env,
+            eval_env=eval_env,
+            agent=agent,
+            max_episode=args.max_episode,
+            max_actions=args.max_actions,
+            warmup=args.warmup,
+            save_model_dir=args.save_model_dir,
+            max_episode_length=args.max_episode_length,
+            logger=logger,
+            save_per_epochs=args.save_per_epochs,
+            eval_interval=args.eval_interval,     # e.g. evaluate every 10 episodes
+            eval_episodes=args.eval_episodes     # e.g. 5 episodes each evaluation
+        )
+        # finish wandb run
+        wandb.finish()
 
     elif args.mode == 'test':
-
-        test_args = {
-            'env': env,
-            'agent': agent,
-            'model_path': args.load_model_dir,
-            'test_episode': args.test_episode,
-            'max_episode_length': args.max_episode_length,
-            'logger': log['RS_log'],
-        }
-
-        test(**test_args)
-
+        logger.info('Starting Testing...')
+        # You could reuse the 'evaluate' or a separate 'test(...)' function
+        from train_test import evaluate
+        evaluate(
+            agent=agent,
+            eval_env=eval_env,
+            episodes=args.test_episode,
+            max_episode_length=args.max_episode_length,
+            logger=logger
+        )
     else:
-        raise RuntimeError('undefined mode {}'.format(args.mode))
+        raise RuntimeError(f'Undefined mode {args.mode}')
+
+if __name__ == "__main__":
+    main()
