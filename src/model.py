@@ -7,6 +7,7 @@ from cnn import CNNFeatureExtractor
 
 # Determine the device: CUDA -> MPS -> CPU
 DEVICE = set_device()
+print("Using device for model:", DEVICE)
 
 from utils.util_transformer import EncoderTransformerConfig, TransformerLayerConfig
 from transformer import EncoderTransformer
