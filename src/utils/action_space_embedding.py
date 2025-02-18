@@ -239,7 +239,8 @@ def filter_by_change(action_space, env, num_experiments, threshold):
 
     For each action in the action space, the function tests it on random ARC problems.
     If the action leaves the state unchanged too often (equal ratio above threshold),
-    it is filtered out.
+    it is filtered out. Additionally, actions that always turn the entire grid 
+    into a single unique color are also removed.
 
     Args:
         action_space: The action space object.
@@ -253,6 +254,7 @@ def filter_by_change(action_space, env, num_experiments, threshold):
     actions = action_space.get_space()
     n = len(actions)
     equal_ratios = np.zeros(n, dtype=np.float64)
+    always_single_color = np.zeros(n, dtype=bool)  # Track actions that always result in a single color
 
     if threshold == 0:
         return actions
@@ -260,15 +262,26 @@ def filter_by_change(action_space, env, num_experiments, threshold):
     for i in range(n):
         action = actions[i]
         num_equal = 0
+        num_single_color = 0
 
         for _ in range(num_experiments):
             random_problem = random_arc_problem(env)
             new_state = env.act(random_problem, action)[0, :, :]
+
+            # Check if the action leaves the state unchanged
             if np.array_equal(random_problem, new_state):
                 num_equal += 1
 
+            # Check if the entire grid is converted to a single unique color
+            if np.unique(new_state).size == 1:
+                num_single_color += 1
+
         equal_ratio = num_equal / num_experiments
         equal_ratios[i] = equal_ratio
+
+        # If an action *always* results in a single color, mark it for removal
+        if num_single_color == num_experiments:
+            always_single_color[i] = True
 
         if i % 500 == 0:
             # Clear the line
@@ -277,8 +290,11 @@ def filter_by_change(action_space, env, num_experiments, threshold):
             print(f'\rFiltered {i} out of {n} actions', end='', flush=True)
 
     print('Average equal ratio:', np.mean(equal_ratios))
+    print('Transformations that always result in a single color:', np.sum(always_single_color))
+    
+    # Actions that have too high an "unchanged" ratio are filtered out
     change_ratios = 1 - equal_ratios
-    mask = change_ratios > threshold
+    mask = (change_ratios > threshold) & ~always_single_color  # Also remove actions that always turn the grid into a single color
 
     print(f'Out of {n} actions, only {np.sum(mask)} are used.')
     cleaned_actions = actions[mask]
@@ -312,7 +328,10 @@ def create_approximate_similarity_matrix(action_space, num_experiments_filter, f
     challenge_dictionary = json.load(
         open('data/RAW_DATA_DIR/arc-prize-2024/arc-agi_training_challenges.json')
     )
-    env = ARC_Env(challenge_dictionary=challenge_dictionary, action_space=action_space)
+    env = ARC_Env(
+        path_to_challenges='data/RAW_DATA_DIR/arc-prize-2024/arc-agi_training_challenges.json',
+        action_space=action_space
+    )
 
     # Filter actions based on their ability to change the environment.
     cleaned_actions = filter_by_change(action_space, env, num_experiments_filter, filter_threshold)
