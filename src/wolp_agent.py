@@ -1,11 +1,22 @@
 from ddpg import DDPG
 from utils.util import *
-import torch.nn as nn
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
 import wandb
 import numpy as np
 
-criterion = nn.MSELoss()
+def get_grad_norm(parameters):
+    """
+    Compute the global 2-norm of gradients for a list of parameters.
+    Useful for logging/troubleshooting exploding gradients.
+    """
+    total_norm = 0.0
+    for p in parameters:
+        if p.grad is not None:
+            param_norm = p.grad.data.norm(2)
+            total_norm += param_norm.item() ** 2
+    return total_norm ** 0.5
 
 def get_grad_norm(parameters):
     """
@@ -60,8 +71,10 @@ class WolpertingerAgent(DDPG):
         # Move all base DDPG networks to device
         self.actor.to(self.device)
         self.actor_target.to(self.device)
-        self.critic.to(self.device)
-        self.critic_target.to(self.device)
+        self.critic1.to(self.device)
+        self.critic2.to(self.device)
+        self.critic1_target.to(self.device)
+        self.critic2_target.to(self.device)
 
         # For caching range arrays if using batches
         self.np_aranges = {}
@@ -101,7 +114,9 @@ class WolpertingerAgent(DDPG):
 
         # 4) Evaluate Q(s, a) for each candidate. The critic expects (state, shape) tuple + action
         with torch.no_grad():
-            q_values = self.critic((s_t_tiled, shape_tiled), embedded_actions)
+            q1_values = self.critic1((s_t_tiled, shape_tiled), embedded_actions)
+            q2_values = self.critic2((s_t_tiled, shape_tiled), embedded_actions)
+            q_values = torch.min(q1_values, q2_values)
 
         # 5) Find index of the candidate with maximum Q
         #    If batch_size=1, it's a simple argmax over dimension=0;
@@ -138,7 +153,8 @@ class WolpertingerAgent(DDPG):
         """
         # Put networks in eval mode to avoid any training side effects
         self.actor.eval()
-        self.critic.eval()
+        self.critic1.eval()
+        self.critic2.eval()
 
         # Get proto_action (and its embedding) from the DDPG actor
         proto_action, proto_embedded_action = super().select_action(
@@ -154,7 +170,8 @@ class WolpertingerAgent(DDPG):
 
         # Switch back to training mode
         self.actor.train()
-        self.critic.train()
+        self.critic1.train()
+        self.critic2.train()
 
         return wolp_act, wolp_embedded
 
@@ -194,78 +211,118 @@ class WolpertingerAgent(DDPG):
 
         return wolp_act, wolp_embedded
 
-    def update_policy(self):
-        """
-        Sample a batch from the replay buffer, compute the target Q,
-        update the critic (value function), then update the actor (policy),
-        and finally do a soft update of the target networks.
-        Also logs relevant metrics to wandb.
-        """
+
+    def update_policy(self, step):
+
+
+
         # ---- Parameter differences for debugging/logging ----
         actor_diff = torch.norm(
             torch.cat([p.view(-1) for p in self.actor.parameters()]) -
             torch.cat([p.view(-1) for p in self.actor_target.parameters()])
         ).item()
 
-        critic_diff = torch.norm(
-            torch.cat([p.view(-1) for p in self.critic.parameters()]) -
-            torch.cat([p.view(-1) for p in self.critic_target.parameters()])
+        critic1_diff = torch.norm(
+            torch.cat([p.view(-1) for p in self.critic1.parameters()]) -
+            torch.cat([p.view(-1) for p in self.critic1_target.parameters()])
         ).item()
 
-        # ---- Sample a batch from replay buffer ----
+        critic2_diff = torch.norm(
+            torch.cat([p.view(-1) for p in self.critic2.parameters()]) -
+            torch.cat([p.view(-1) for p in self.critic2_target.parameters()])
+        ).item()
+
+        # ---- Sample a batch from replay buffer
         (state_batch, shape_batch, action_batch,
-         reward_batch, next_state_batch, next_shape_batch, terminal_batch) = self.memory.sample_and_split(self.batch_size)
+        reward_batch, next_state_batch, next_shape_batch, terminal_batch) = \
+            self.memory.sample_and_split(self.batch_size)
 
-        # ---- Compute target Q-value ----
+        # ---------------------------------------------------------
+        # 1) Compute target actions (with smoothing) using actor_target
+        # ---------------------------------------------------------
         with torch.no_grad():
-            # Next action from target actor + Wolpertinger
-            next_act, next_emb_act = self.select_target_action(next_state_batch, next_shape_batch)
-            # Evaluate next Q with target critic
-            next_q = self.critic_target((next_state_batch, next_shape_batch), next_emb_act)
+            proto_embedded_action = self.actor_target((next_state_batch, next_shape_batch))
+            
+            # -- TD3: Add clipped noise for smoothing
+            noise = (torch.randn_like(proto_embedded_action) * self.policy_noise
+                    ).clamp(-self.noise_clip, self.noise_clip)
+            proto_embedded_action = proto_embedded_action + noise
+            proto_embedded_action = torch.clamp(proto_embedded_action,
+                                                self.min_embedding, self.max_embedding)
+            
+            # Wolpertinger: find best discrete neighbor
+            #   (proto_embedded_action is a Tensor; if your search_point needs numpy,
+            #   convert to numpy, do the search, then come back to Tensor.)
+            wolp_act, wolp_embedded = self.wolp_action(
+                next_state_batch, next_shape_batch, to_numpy(proto_embedded_action)
+            )
 
-        target_q = reward_batch + (1-self.epsilon) * self.gamma * (1 - terminal_batch.float()) * next_q
+            # Evaluate both target critics
+            next_q1 = self.critic1_target((next_state_batch, next_shape_batch), wolp_embedded)
+            next_q2 = self.critic2_target((next_state_batch, next_shape_batch), wolp_embedded)
 
-        # ---- Critic update ----
-        self.critic_optim.zero_grad()
+            # TD3: Take the minimum of the two critics for the target
+            next_q = torch.min(next_q1, next_q2)
 
-        q = self.critic((state_batch, shape_batch), action_batch)
-        td_error = q - target_q
-        value_loss = criterion(q, target_q)
+            # Build the target Q
+            # (If you really want (1-self.epsilon)*gamma, keep it, otherwise just use gamma.)
+            target_q = reward_batch + self.gamma * (1 - terminal_batch.float()) * next_q
 
-        value_loss.backward()
-        critic_grad_norm = get_grad_norm(self.critic.parameters())
-        torch.nn.utils.clip_grad_norm_(self.critic.parameters(), max_norm=1.0)
-        self.critic_optim.step()
+        # ---------------------------------------------------------
+        # 2) Update both critics
+        # ---------------------------------------------------------
+        # Critic 1
+        self.critic1_optim.zero_grad()
+        current_q1 = self.critic1((state_batch, shape_batch), action_batch)
+        loss_q1 = F.smooth_l1_loss(current_q1, target_q)
+        loss_q1.backward()
+        critic1_grad_norm = get_grad_norm(self.critic1.parameters())
+        torch.nn.utils.clip_grad_norm_(self.critic1.parameters(), 1.0)
+        self.critic1_optim.step()
 
-        # ---- Actor update ----
-        self.actor_optim.zero_grad()
+        # Critic 2
+        self.critic2_optim.zero_grad()
+        current_q2 = self.critic2((state_batch, shape_batch), action_batch)
+        loss_q2 = F.smooth_l1_loss(current_q2, target_q)
+        loss_q2.backward()
+        critic2_grad_norm = get_grad_norm(self.critic2.parameters())
+        torch.nn.utils.clip_grad_norm_(self.critic2.parameters(), 1.0)
+        self.critic2_optim.step()
 
-        proto_action_batch = self.actor((state_batch, shape_batch))  # continuous proto-action
-        q_actor = self.critic((state_batch, shape_batch), proto_action_batch)
-        policy_loss = -q_actor.mean()
+        # ---------------------------------------------------------
+        # 3) Delayed policy update (actor + target nets)
+        # ---------------------------------------------------------
+        if step % self.policy_delay == 0:
+            # Actor update
+            self.actor_optim.zero_grad()
+            proto_action_batch = self.actor((state_batch, shape_batch))
+            q_actor = self.critic1((state_batch, shape_batch), proto_action_batch)
+            policy_loss = -q_actor.mean()
+            policy_loss.backward()
+            actor_grad_norm = get_grad_norm(self.actor.parameters())
+            torch.nn.utils.clip_grad_norm_(self.actor.parameters(), 1.0)
+            self.actor_optim.step()
 
-        policy_loss.backward()
-        actor_grad_norm = get_grad_norm(self.actor.parameters())
-        torch.nn.utils.clip_grad_norm_(self.actor.parameters(), max_norm=1.0)
-        self.actor_optim.step()
+            # Soft update of targets
+            soft_update(self.actor_target, self.actor, self.tau_update)
+            soft_update(self.critic1_target, self.critic1, self.tau_update)
+            soft_update(self.critic2_target, self.critic2, self.tau_update)
+        else:
+            policy_loss = torch.tensor(0.)  # no actor update this step
+            actor_grad_norm = 0.
 
-        # ---- Soft update targets ----
-        soft_update(self.actor_target, self.actor, self.tau_update)
-        soft_update(self.critic_target, self.critic, self.tau_update)
-
-        # ---- (Optional) log metrics to wandb ----
-        #   * If you want to batch metrics, you can do so in your training loop.
-        #   * Otherwise, here is an immediate log of relevant metrics.
-        td_mean = td_error.mean().item()
-        td_std = td_error.std().item()
+        # ---------------------------------------------------------
+        # 4) Logging with wandb (optional)
+        # ---------------------------------------------------------
         wandb.log({
-            "train/critic_loss": value_loss.item(),
+            "train/critic1_loss": loss_q1.item(),
+            "train/critic2_loss": loss_q2.item(),
             "train/actor_loss": policy_loss.item(),
-            "train/td_error_mean": td_mean,
-            "train/td_error_std": td_std,
-            "train/actor_diff": actor_diff,
-            "train/critic_diff": critic_diff,
-            # Optionally log gradient norms:
             "train/grad_norm_actor": actor_grad_norm,
-            "train/grad_norm_critic": critic_grad_norm
+            "train/grad_norm_critic1": critic1_grad_norm,
+            "train/grad_norm_critic2": critic2_grad_norm,
+            "train/actor_diff": actor_diff,
+            "train/critic1_diff": critic1_diff,
+            "train/critic2_diff": critic2_diff
         })
+
