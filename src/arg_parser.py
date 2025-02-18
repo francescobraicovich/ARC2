@@ -53,7 +53,7 @@ def init_parser(alg):
         parser.add_argument('--gpu-nums', type=int, default=8, help='Number of GPUs to use (default: 1)')
 
         # Action Embedding & Filtering
-        parser.add_argument('--load_action_embedding', default=True, type=bool, help='Load action embedding or not')
+        parser.add_argument('--load_action_embedding', default=False, type=bool, help='Load action embedding or not')
         parser.add_argument('--num_experiments_filter', default=120, type=int, help='Number of problems used for filtering actions')
         parser.add_argument('--filter_threshold', default=0.0, type=float, help='Threshold percentage for filtering actions')
         parser.add_argument('--num_experiments_similarity', default=120, type=int, help='Number of problems used for similarity matrix calculation')
