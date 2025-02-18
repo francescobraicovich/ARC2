@@ -123,17 +123,13 @@ def set_device():
     try:
         import torch_xla.core.xla_model as xm
         device = xm.xla_device()
-        print("Using TPU")
     except ImportError:
         if torch.cuda.is_available():
             device = torch.device("cuda")
-            print("Using CUDA GPU")
         elif torch.backends.mps.is_available():
             device = torch.device("mps")
-            print("Using Apple Silicon MPS")
         else:
             device = torch.device("cpu")
-            print("Using CPU")
     return device
 
 def clip_and_boost_gradients(parameters, min_norm=0.1, max_norm=1.0):
@@ -150,7 +146,6 @@ def clip_and_boost_gradients(parameters, min_norm=0.1, max_norm=1.0):
                 scaling_factor = min_norm / (grad_norm + 1e-6)  # Avoid division by zero
                 param.grad.data.mul_(scaling_factor)  # Rescale the gradient
     return total_norm
-
 
 def calculate_gradient_norm(model, PRINT):
     n_params = 0
