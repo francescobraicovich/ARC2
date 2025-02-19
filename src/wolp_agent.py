@@ -54,8 +54,6 @@ class WolpertingerAgent(DDPG):
 
         super().__init__(args, nb_states, nb_actions)
 
-        print('Using 1-epsilon instead of gamma for target Q-value.')
-
         # Automatically determine the device
         self.device = set_device()
         print(f"[WolpertingerAgent] Using device: {self.device}")
@@ -267,8 +265,7 @@ class WolpertingerAgent(DDPG):
             # TD3: Take the minimum of the two critics for the target
             next_q = torch.min(next_q1, next_q2)
 
-            # Build the target Q
-            # (If you really want (1-self.epsilon)*gamma, keep it, otherwise just use gamma.)
+            # Build the target Q-value
             target_q = reward_batch + self.gamma * (1 - terminal_batch.float()) * next_q
 
         # ---------------------------------------------------------
@@ -329,4 +326,3 @@ class WolpertingerAgent(DDPG):
             "train/diff/critic2_diff": critic2_diff,
             "train/diff/critics_diff": critics_diff
         })
-
