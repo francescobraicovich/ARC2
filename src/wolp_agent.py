@@ -315,14 +315,14 @@ class WolpertingerAgent(DDPG):
         # 4) Logging with wandb (optional)
         # ---------------------------------------------------------
         wandb.log({
-            "train/critic1_loss": loss_q1.item(),
-            "train/critic2_loss": loss_q2.item(),
-            "train/actor_loss": policy_loss.item(),
-            "train/grad_norm_actor": actor_grad_norm,
-            "train/grad_norm_critic1": critic1_grad_norm,
-            "train/grad_norm_critic2": critic2_grad_norm,
-            "train/actor_diff": actor_diff,
-            "train/critic1_diff": critic1_diff,
-            "train/critic2_diff": critic2_diff
+            "train/loss/critic1_loss": loss_q1.item(),
+            "train/loss/critic2_loss": loss_q2.item(),
+            "train/loss/actor_loss": policy_loss.item(),
+            "train/grad/grad_norm_actor": actor_grad_norm,
+            "train/grad/grad_norm_critic1": critic1_grad_norm,
+            "train/grad/grad_norm_critic2": critic2_grad_norm,
+            "train/diff/actor_diff": actor_diff,
+            "train/diff/critic1_diff": critic1_diff,
+            "train/diff/critic2_diff": critic2_diff
         })
 
