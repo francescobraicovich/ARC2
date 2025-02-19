@@ -17,7 +17,7 @@ def init_parser(alg):
 
         # Episode & Training Settings
         parser.add_argument('--max-episode-length', type=int, default=50, metavar='M', help='Max episode length (default: 50)')  # Changed from 1440
-        parser.add_argument('--max-episode', type=int, default=20000, help='Maximum number of episodes')
+        parser.add_argument('--max-episode', type=int, default=80000, help='Maximum number of episodes')
         parser.add_argument('--max-actions', default=1e8, type=int, help='# max actions')
         parser.add_argument('--test-episode', type=int, default=20, help='Maximum testing episodes')
         parser.add_argument('--warmup', default=200, type=int, help='Time without training but only filling the replay memory')
@@ -26,7 +26,7 @@ def init_parser(alg):
 
         # Policy Update Settings
         parser.add_argument('--gamma', type=float, default=0.99, metavar='G', help='Discount factor for rewards (default: 0.99)')
-        parser.add_argument('--policy-noise', default=0.1, type=float, help='Noise added to target policy during critic update')
+        parser.add_argument('--policy-noise', default=0, type=float, help='Noise added to target policy during critic update')
         parser.add_argument('--noise-clip', default=0.25, type=float, help='Range to clip target policy noise')
         parser.add_argument('--policy-delay', default=2, type=int, help='Delay policy updates')
         parser.add_argument('--c-lr', default=3e-4, type=float, help='Critic network learning rate')
@@ -36,8 +36,8 @@ def init_parser(alg):
         
                             
         # Neural Network Architecture
-        parser.add_argument('--hidden1', default=1024, type=int, help='Hidden units in the first fully connected layer')
-        parser.add_argument('--hidden2', default=1024, type=int, help='Hidden units in the second fully connected layer')
+        parser.add_argument('--hidden1', default=512, type=int, help='Hidden units in the first fully connected layer')
+        parser.add_argument('--hidden2', default=512, type=int, help='Hidden units in the second fully connected layer')
         parser.add_argument('--actor_critic_type', default='cnn', type=str, help='Type of model (lpn, cnn, mlp)')
         parser.add_argument('--latent_dim', default=48, type=int, help='Latent dimension for encoder')
 
@@ -53,9 +53,9 @@ def init_parser(alg):
         parser.add_argument('--gpu-nums', type=int, default=8, help='Number of GPUs to use (default: 1)')
 
         # Action Embedding & Filtering
-        parser.add_argument('--load_action_embedding', default=False, type=bool, help='Load action embedding or not')
+        parser.add_argument('--load_action_embedding', default=True, type=bool, help='Load action embedding or not')
         parser.add_argument('--num_experiments_filter', default=120, type=int, help='Number of problems used for filtering actions')
-        parser.add_argument('--filter_threshold', default=0.0, type=float, help='Threshold percentage for filtering actions')
+        parser.add_argument('--filter_threshold', default=0.3, type=float, help='Threshold percentage for filtering actions')
         parser.add_argument('--num_experiments_similarity', default=120, type=int, help='Number of problems used for similarity matrix calculation')
         parser.add_argument('--max_embedding', default=1., type=float, help='Maximum value for embedding matrix')
         parser.add_argument('--min_embedding', default=-1., type=float, help='Minimum value for embedding matrix')
