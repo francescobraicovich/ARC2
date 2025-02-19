@@ -189,37 +189,56 @@ def plot_grid(grid, title=None):
     grid_3d = np.expand_dims(grid, axis=0)
     plot_grid_3d(grid_3d, title)
 
-def plot_step(state0, state1, shape0, shape1, r_t, info):
-    # make the figure to contain 4 square subplots
+def plot_step(state, next_state, shape, next_shape, r_t, info):
     fig, axs = plt.subplots(2, 2, figsize=(8, 8))
 
-    state0 = to_numpy(state0)
-    state1 = to_numpy(state1)
+    # Convert tensors to numpy (using your custom to_numpy function)
+    st = to_numpy(state)
+    nxt_st = to_numpy(next_state)
 
-    current0 = state0[:, :, 0]
-    current1 = state1[:, :, 0]
+    # Extract channels
+    current_state_data = st[:, :, 0]
+    target_state_data  = st[:, :, 1]
+    next_state_data    = nxt_st[:, :, 0]
 
-    target0 = state0[:, :, 1]
-    target1 = state1[:, :, 1]
+    # Determine if current and next states are identical
+    is_identical = np.array_equal(current_state_data, next_state_data)
 
-    # plot the current state
-    axs[0, 0].imshow(current0, cmap=cmap, norm=norm)
-    axs[0, 1].imshow(target0, cmap=cmap, norm=norm)
-    axs[1, 0].imshow(current1, cmap=cmap, norm=norm)
-    axs[1, 1].imshow(target1, cmap=cmap, norm=norm)
-
+    # Prepare the text (action info, reward, identical boolean)
     last_action = info['action_strings'][-1]
-    action_values = [last_action[k] for k in last_action.keys()]
-    string = '\n'.join(action_values)
-    reward_string = 'reward: {}'.format(np.round(r_t, 2))
-    string += '\n' + reward_string + '\n\n.'
-  
-    # set string as title
-    fig.suptitle(string)
-    shape0_string = 'shape0: {}'.format(torch.flatten(shape0).tolist())
-    shape1_string = 'shape1: {}'.format(torch.flatten(shape1).tolist())
+    # Each key-value pair on its own line
+    reward_line = f"Reward: {r_t:.2f}"
+    identical_line = f"States identical: {is_identical}"
 
-    axs[0, 0].set_title(shape0_string)
-    axs[1, 0].set_title(shape1_string)
+    text_str = f"{reward_line}\n{identical_line}"
 
+    # (0,0): text only
+    axs[0, 0].text(0.5, 0.5, text_str, ha='center', va='center', fontsize=12)
+    axs[0, 0].set_axis_off()  # Hide the axes
+
+    # (0,1): current state
+    axs[0, 1].imshow(current_state_data, cmap=cmap, norm=norm)
+    axs[0, 1].set_title("Current State")
+
+    # (1,0): target state
+    axs[1, 0].imshow(target_state_data, cmap=cmap, norm=norm)
+    axs[1, 0].set_title("Target State")
+
+    # (1,1): next state
+    axs[1, 1].imshow(next_state_data, cmap=cmap, norm=norm)
+    axs[1, 1].set_title("Next State")
+
+    # --- Action text across three lines ---
+    last_action = info['action_strings'][-1]
+    # Collect all dictionary values, one per line
+    action_lines = [str(val) for val in last_action.values()]
+    # Combine them and add a line for the reward
+    action_text = "\n".join(action_lines) + f"\nReward: {np.round(r_t, 2)}\n"
+    # Put into suptitle, slightly smaller font, extra vertical space
+    fig.suptitle(action_text, fontsize=9, y=0.98)
+
+    plt.tight_layout()
     plt.show()
+
+
+
