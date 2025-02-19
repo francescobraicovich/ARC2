@@ -71,7 +71,7 @@ def main():
         'nb_actions': nb_actions,
         'args': args,
         'k': args.k_neighbors,
-        'action_space': ARCActionSpace(args)
+        'action_space': action_space
     }
     agent = WolpertingerAgent(**agent_args)
 
