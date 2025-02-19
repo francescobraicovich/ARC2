@@ -5,6 +5,8 @@ import wandb
 
 from utils.util import to_tensor
 
+from dsl.utilities.plot import plot_step
+
 def train(
     continuous,
     train_env,
@@ -114,10 +116,6 @@ def train(
                 "train/positive_rewards": episode_positive_rewards,
                 "train/epsilon": agent.epsilon
             })
-
-            # Save stats
-            positive_rewards_history.append(episode_positive_rewards)
-            rewards_history.append(episode_reward)
 
             # Reset for next episode
             s_t = None
