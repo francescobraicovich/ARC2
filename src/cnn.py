@@ -74,7 +74,7 @@ class MultiHeadSelfAttention(nn.Module):
         return self.layer_norm(out)
 
 class CNNFeatureExtractor(nn.Module):
-    def __init__(self, hidden1=256, dropout_prob=0, pretrained=True):
+    def __init__(self, hidden1=256, dropout_prob=0, pretrained=False):
         super(CNNFeatureExtractor, self).__init__()
         self.resnet = models.resnet18(pretrained=pretrained)
         self._modify_first_conv_layer()
