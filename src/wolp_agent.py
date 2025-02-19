@@ -214,8 +214,6 @@ class WolpertingerAgent(DDPG):
 
     def update_policy(self, step):
 
-
-
         # ---- Parameter differences for debugging/logging ----
         actor_diff = torch.norm(
             torch.cat([p.view(-1) for p in self.actor.parameters()]) -
@@ -230,6 +228,11 @@ class WolpertingerAgent(DDPG):
         critic2_diff = torch.norm(
             torch.cat([p.view(-1) for p in self.critic2.parameters()]) -
             torch.cat([p.view(-1) for p in self.critic2_target.parameters()])
+        ).item()
+
+        critics_diff = torch.norm(
+            torch.cat([p.view(-1) for p in self.critic1.parameters()]) -
+            torch.cat([p.view(-1) for p in self.critic2.parameters()])
         ).item()
 
         # ---- Sample a batch from replay buffer
@@ -323,6 +326,7 @@ class WolpertingerAgent(DDPG):
             "train/grad/grad_norm_critic2": critic2_grad_norm,
             "train/diff/actor_diff": actor_diff,
             "train/diff/critic1_diff": critic1_diff,
-            "train/diff/critic2_diff": critic2_diff
+            "train/diff/critic2_diff": critic2_diff,
+            "train/diff/critics_diff": critics_diff
         })
 
