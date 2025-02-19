@@ -115,6 +115,9 @@ class ARCActionSpace(Space):
         else:
             self.cleaned_space, self.embedding = self.embed_actions()
 
+        if not (max(self.embedding.flatten()) == self.max_embedding and min(self.embedding.flatten()) == self.min_embedding):
+            self.embedding = (self.embedding - min(self.embedding.flatten())) / (max(self.embedding.flatten()) - min(self.embedding.flatten())) * (self.max_embedding - self.min_embedding) + self.min_embedding
+
         print('Number of actions filtered:', len(self.cleaned_space))
 
         # Create the k-NN model for nearest neighbor search in the embedded space
@@ -145,7 +148,7 @@ class ARCActionSpace(Space):
         embedded_actions = mds_embed(distance_matrix)
 
         # Scale the embedded actions to the range [-10, 10]
-        scaler = MinMaxScaler(feature_range=(-10, 10))
+        scaler = MinMaxScaler(feature_range=(self.min_embedding, self.max_embedding))
         embedded_actions = scaler.fit_transform(embedded_actions)
 
         # Directory path based on your existing code
@@ -213,6 +216,14 @@ class ARCActionSpace(Space):
         Return the number of actions in the action space.
         """
         return len(self.space)
+    
+    def __repr__(self):
+        """
+        Return a string representation of the action space.
+        """
+        # return the first 10 actions embedded in the continuous space
+        return str(self.embedding[:10])
+    
 
     def uniformise_density(self, dictionary):
         """
