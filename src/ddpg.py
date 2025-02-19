@@ -75,6 +75,30 @@ class DDPG(object):
         hard_update(self.critic1_target, self.critic1)
         hard_update(self.critic2_target, self.critic2)
 
+        print('-'*50)
+        print('At initialization:')
+        print('Difference between actor and actor_target: ', torch.norm(
+            torch.cat([p.view(-1) for p in self.actor.parameters()]) -
+            torch.cat([p.view(-1) for p in self.actor_target.parameters()])
+        ).item())
+        print('Difference between critic1 and critic1_target: ', torch.norm(
+            torch.cat([p.view(-1) for p in self.critic1.parameters()]) -
+            torch.cat([p.view(-1) for p in self.critic1_target.parameters()])
+        ).item())
+        print('Difference between critic2 and critic2_target: ', torch.norm(
+            torch.cat([p.view(-1) for p in self.critic2.parameters()]) -
+            torch.cat([p.view(-1) for p in self.critic2_target.parameters()])
+        ).item())
+        print('Difference between critic1 and critic2: ', torch.norm(
+            torch.cat([p.view(-1) for p in self.critic1.parameters()]) -
+            torch.cat([p.view(-1) for p in self.critic2.parameters()])
+                ).item())
+        print('Difference between critic1_target and critic2_target: ', torch.norm(
+            torch.cat([p.view(-1) for p in self.critic1_target.parameters()]) -
+            torch.cat([p.view(-1) for p in self.critic2_target.parameters()])
+                ).item())
+        print('-'*50)
+
         # Initialize replay buffer for experience replay
         self.memory = SequentialMemory(limit=args.rmsize)
 
@@ -135,6 +159,7 @@ class DDPG(object):
         """
         if self.is_training:
             assert isinstance(self.a_t, torch.Tensor)
+            assert isinstance(self.s_t, torch.Tensor)
             self.memory.append(self.s_t, self.shape, self.a_t, r_t, done)
             self.s_t = s_t1
             self.shape = shape1
