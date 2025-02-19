@@ -100,9 +100,9 @@ class ARC_Env(gym.Env):
         self.STEP_PENALTY = 1
         self.SHAPE_PENALTY = 1
         self.TRUNCATION_PENALTY = 100
-        self.MAXIMUM_SIMILARITY = 50
+        self.MAXIMUM_SIMILARITY = 60
         self.COMPLETION_REWARD = 25
-        self.NO_CHANGE_REWARD = -5.0
+        self.NO_CHANGE_PENALTY = 5
         self.MAX_STATES_PER_ACTION = 1
 
         # Define the action space: a sequence of 9 integers
@@ -167,7 +167,7 @@ class ARC_Env(gym.Env):
 
         if np.all(current_state_unpadded.shape == previous_state_unpadded.shape):
             if np.all(current_state_unpadded == previous_state_unpadded):
-                return self.NO_CHANGE_REWARD, False
+                return -self.NO_CHANGE_PENALTY, False
         
         # Calculate the overlap between the previous state and the target state
         r1, r2, previous_score = maximum_overlap_regions(previous_state_unpadded, target_state_unpadded)
@@ -183,8 +183,9 @@ class ARC_Env(gym.Env):
             if np.all(current_state_unpadded == target_state_unpadded):
                 return self.COMPLETION_REWARD, True
 
-        similarity_reward = (current_score - previous_score) * self.MAXIMUM_SIMILARITY
-        reward = similarity_reward - step_penalty 
+        reward = (current_score - previous_score) * self.MAXIMUM_SIMILARITY
+        if reward <= 0:
+            reward =- step_penalty
         return reward, False
 
     
