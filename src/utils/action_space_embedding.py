@@ -256,9 +256,6 @@ def filter_by_change(action_space, env, num_experiments, threshold):
     equal_ratios = np.zeros(n, dtype=np.float64)
     always_single_color = np.zeros(n, dtype=bool)  # Track actions that always result in a single color
 
-    if threshold == 0:
-        return actions
-
     for i in range(n):
         action = actions[i]
         num_equal = 0
