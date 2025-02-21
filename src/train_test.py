@@ -171,6 +171,8 @@ def evaluate(
         agent.reset(state, shape)
 
         episode_reward = 0.0
+        episode_positive_rewards = 0
+        num_equal_states = 0
         done = False
         truncated = False
         steps = 0
@@ -183,6 +185,13 @@ def evaluate(
             next_shape = to_tensor(next_shape, device=agent.device, requires_grad=False)
 
             episode_reward += reward
+            if reward > 0:
+                episode_positive_rewards += 1
+            if reward == -3:
+                num_equal_states += 1
+            if done:
+                print("episode solved")
+                print('info: ', info)
             steps += 1
 
             state = next_state
@@ -192,7 +201,7 @@ def evaluate(
                 truncated = True
 
         total_rewards.append(episode_reward)
-        logger.info(f"[Eval] Ep:{ep+1}/{episodes} | Reward: {episode_reward:.2f} | Steps: {steps}")
+        logger.info(f"[Eval] Ep:{ep+1}/{episodes} | Reward: {episode_reward:.2f} | Steps: {steps} | PosR: {episode_positive_rewards} | EqualStates: {num_equal_states}")
 
     avg_eval_reward = np.mean(total_rewards)
     logger.info(f"[Eval] Average Reward over {episodes} episodes: {avg_eval_reward:.2f}")
