@@ -224,6 +224,9 @@ class DDPG(object):
         actor_path = f"../output/{dir}/actor.pt"
         critic1_path = f"../output/{dir}/critic1.pt"
         critic2_path = f"../output/{dir}/critic2.pt"
+        actor_target_path = os.path.join(dir, "actor_target.pt")
+        critic1_target_path = os.path.join(dir, "critic1_target.pt")
+        critic2_target_path = os.path.join(dir, "critic2_target.pt")
 
         # Define map_location based on your device.
         # Ensure self.device is set correctly (see note below).
@@ -255,7 +258,32 @@ class DDPG(object):
         else:
             self.critic2.load_state_dict(torch.load(critic2_path, map_location=map_location))
 
-        print(f"Actor and Critic models loaded from {dir}")
+        # Load target networks; if target files are missing, fallback to hard_update
+        if os.path.exists(actor_target_path):
+            if hasattr(self.actor_target, 'module'):
+                self.actor_target.module.load_state_dict(torch.load(actor_target_path, map_location=map_location))
+            else:
+                self.actor_target.load_state_dict(torch.load(actor_target_path, map_location=map_location))
+        else:
+            hard_update(self.actor_target, self.actor)
+
+        if os.path.exists(critic1_target_path):
+            if hasattr(self.critic1_target, 'module'):
+                self.critic1_target.module.load_state_dict(torch.load(critic1_target_path, map_location=map_location))
+            else:
+                self.critic1_target.load_state_dict(torch.load(critic1_target_path, map_location=map_location))
+        else:
+            hard_update(self.critic1_target, self.critic1)
+
+        if os.path.exists(critic2_target_path):
+            if hasattr(self.critic2_target, 'module'):
+                self.critic2_target.module.load_state_dict(torch.load(critic2_target_path, map_location=map_location))
+            else:
+                self.critic2_target.load_state_dict(torch.load(critic2_target_path, map_location=map_location))
+        else:
+            hard_update(self.critic2_target, self.critic2)
+
+        print(f"Actor and Critic models and target networks loaded from {dir}")
 
         # Update target networks
         hard_update(self.actor_target, self.actor)
@@ -274,22 +302,37 @@ class DDPG(object):
         # Ensure the output directory exists
         os.makedirs(output, exist_ok=True)
 
-        # Save the Actor model
+        # Save primary models
         actor_state_dict = (
             self.actor.module.state_dict() if hasattr(self.actor, "module") else self.actor.state_dict()
         )
         torch.save(actor_state_dict, os.path.join(output, "actor.pt"))
 
-        # Save the Critic 1 model
         critic1_state_dict = (
             self.critic1.module.state_dict() if hasattr(self.critic1, "module") else self.critic1.state_dict()
         )
         torch.save(critic1_state_dict, os.path.join(output, "critic1.pt"))
 
-        # Save the Critic 2 model
         critic2_state_dict = (
             self.critic2.module.state_dict() if hasattr(self.critic2, "module") else self.critic2.state_dict()
         )
         torch.save(critic2_state_dict, os.path.join(output, "critic2.pt"))
 
-        print(f"Models saved to {output}")
+        # Save target models
+        actor_target_state_dict = (
+            self.actor_target.module.state_dict() if hasattr(self.actor_target, "module") else self.actor_target.state_dict()
+        )
+        torch.save(actor_target_state_dict, os.path.join(output, "actor_target.pt"))
+
+        critic1_target_state_dict = (
+            self.critic1_target.module.state_dict() if hasattr(self.critic1_target, "module") else self.critic1_target.state_dict()
+        )
+        torch.save(critic1_target_state_dict, os.path.join(output, "critic1_target.pt"))
+
+        critic2_target_state_dict = (
+            self.critic2_target.module.state_dict() if hasattr(self.critic2_target, "module") else self.critic2_target.state_dict()
+        )
+        torch.save(critic2_target_state_dict, os.path.join(output, "critic2_target.pt"))
+
+        print(f"Models and target networks saved to {output}")
+
