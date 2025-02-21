@@ -2,6 +2,7 @@ import os
 import numpy as np
 import torch
 import wandb
+import copy
 
 from utils.util import to_tensor
 
@@ -214,3 +215,64 @@ def evaluate(
 
     # Switch agent back to training mode
     agent.is_training = True
+
+def Test_1(agent, env, max_episode_length, logger, max_iterations=1000):
+    """
+    Custom test function that trains on a single ARC problem until complete overfitting.
+    Each episode begins with reloading the base pretrained weights.
+    The function logs the challenge key and the sequence of actions applied.
+    """
+    # Save base pretrained weights
+    base_actor_state = copy.deepcopy(agent.actor.state_dict())
+    base_critic1_state = copy.deepcopy(agent.critic1.state_dict())
+    base_critic2_state = copy.deepcopy(agent.critic2.state_dict())
+    
+    # Obtain fixed ARC problem
+    initial_state, initial_shape = env.reset()
+    fixed_challenge_key = env.info['key']
+    logger.info(f"Fixed challenge key: {fixed_challenge_key}")
+
+    solved = False
+    episode = 0
+    optimal_actions = None
+
+    while not solved and episode < max_iterations:
+        # Reset agent to base pretrained weights for each episode
+        agent.actor.load_state_dict(base_actor_state)
+        agent.critic1.load_state_dict(base_critic1_state)
+        agent.critic2.load_state_dict(base_critic2_state)
+        
+        # Reset environment to fixed problem
+        current_state, current_shape = initial_state, initial_shape
+        agent.reset(
+            to_tensor(current_state, device=agent.device, requires_grad=True),
+            to_tensor(current_shape, device=agent.device, requires_grad=True)
+        )
+        actions_sequence = []
+        done = False
+        steps = 0
+
+        while not (done or steps >= max_episode_length):
+            # Select action without decaying exploration
+            action, _ = agent.select_action(
+                to_tensor(current_state, device=agent.device, requires_grad=True),
+                to_tensor(current_shape, device=agent.device, requires_grad=True),
+                decay_epsilon=False
+            )
+            actions_sequence.append(action)
+            (next_state, next_shape), reward, done, truncated, info = env.step(action)
+            current_state, current_shape = next_state, next_shape
+            steps += 1
+            if done:
+                solved = True
+                optimal_actions = actions_sequence
+                logger.info(f"Solved in episode {episode} after {steps} steps.")
+                logger.info(f"Optimal sequence of actions: {actions_sequence}")
+                logger.info(f"Challenge key: {fixed_challenge_key}")
+                break
+
+        if not solved:
+            logger.info(f"Episode {episode} ended without solution. Restarting from base model.")
+        episode += 1
+
+    return fixed_challenge_key, optimal_actions
