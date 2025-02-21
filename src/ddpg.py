@@ -222,30 +222,40 @@ class DDPG(object):
 
         # Construct paths for the weights
         actor_path = f"../output/{dir}/actor.pt"
-        critic_path = f"../output/{dir}/critic.pt"
-        
+        critic1_path = f"../output/{dir}/critic1.pt"
+        critic2_path = f"../output/{dir}/critic2.pt"
+
         # Define map_location based on your device.
         # Ensure self.device is set correctly (see note below).
         map_location = lambda storage, loc: storage.to(device=self.device)
-        
+
+        # Define map_location properly
+        if torch.backends.mps.is_available():
+            map_location = torch.device("mps")  # Use MPS if available
+        elif torch.cuda.is_available():
+            map_location = torch.device("cuda")  # Use CUDA if available
+        else:
+            map_location = torch.device("cpu")  # Default to CPU if no GPU is available
+
         # Load Actor model
         if hasattr(self.actor, 'module'):
             self.actor.module.load_state_dict(torch.load(actor_path, map_location=map_location))
         else:
             self.actor.load_state_dict(torch.load(actor_path, map_location=map_location))
         
-        # Load Critic model
-        if hasattr(self.critic, 'module'):
-            self.critic.module.load_state_dict(torch.load(critic_path, map_location=map_location))
+        # Load Critic1 model
+        if hasattr(self.critic1, 'module'):
+            self.critic1.module.load_state_dict(torch.load(critic1_path, map_location=map_location))
         else:
-            self.critic.load_state_dict(torch.load(critic_path, map_location=map_location))
+            self.critic1.load_state_dict(torch.load(critic1_path, map_location=map_location))
         
-        print(f"Actor and Critic models loaded from {dir}")
+         # Load Critic1 model
+        if hasattr(self.critic2, 'module'):
+            self.critic2.module.load_state_dict(torch.load(critic2_path, map_location=map_location))
+        else:
+            self.critic2.load_state_dict(torch.load(critic2_path, map_location=map_location))
 
-        # Move models to the correct device
-        self.actor.to(self.device)
-        self.critic1.to(self.device)
-        self.critic2.to(self.device)
+        print(f"Actor and Critic models loaded from {dir}")
 
         # Update target networks
         hard_update(self.actor_target, self.actor)
