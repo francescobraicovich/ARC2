@@ -276,3 +276,97 @@ def Test_1(agent, env, max_episode_length, logger, max_iterations=1000):
         episode += 1
 
     return fixed_challenge_key, optimal_actions
+
+
+def Test_2(agent, env_list, max_episode_length, logger, max_iterations=1000):
+    """
+    Inferencial test function that evaluates the trained model on multiple instances of the same challenge key.
+    
+    Requisites:
+        - Inference only: the model predicts the next action without performing any training.
+        - A partially found sequence of actions (global_sequence) is used, which if it produces positive rewards on an example,
+          is applied to other examples to verify its generalizability.
+        - If the partial sequence fails (receives non-positive reward) on an example, the extension on that environment is interrupted
+          and another instance is tried.
+        - The cycle continues until a complete sequence that solves the environment is found or until the maximum number of iterations is reached. 
+    
+    Args:
+      agent: Trained agent.
+      env_list: List of environments (instances) sharing the same challenge key.
+      max_episode_length: Maximum number of steps for extending the sequence in each attempt.
+      logger: Logger instance.
+      max_iterations: Maximum total number of iterations to try.
+      
+    Returns:
+      A tuple: containing the challenge key and the global sequence of actions found (if complete).
+    """
+    # Set the agent to evaluation mode
+    agent.eval()
+    challenge_key = env_list[0].info['key']
+    logger.info(f"[Test_2] Challenge key: {challenge_key}")
+    
+    # Global sequence that will be extended progressively
+    global_sequence = []
+    iteration = 0
+    
+    # Main loop, which terminates when max_iterations is reached
+    while iteration < max_iterations:
+        # Switch between instances in round-robin fashion
+        for env in env_list:
+            iteration += 1
+            logger.info(f"[Test_2] Itaration {iteration} on new episode.")
+            
+            # Reset of the environment and obtain the initial state
+            state, shape = env.reset()
+            
+            # Replay of the already found global sequence to bring the environment to the corresponding state
+            valid_sequence = True
+            for action in global_sequence:
+                (state, shape), reward, done, truncated, info = env.step(action)
+                # If a transformation does not produce positive reward, the sequence is not valid on this example
+                if reward <= 0:
+                    logger.info("[Test_2] The partial sequence did not produce a positve reward; skipping this example.")
+                    valid_sequence = False
+                    break
+                # If the environment is already solved during the replay, we return the found sequence
+                if done:
+                    logger.info("[Test_2] Episode solved using the exiusting sequence!")
+                    return challenge_key, global_sequence
+            
+            # If the global sequence does not work on this example, we move on to the next one
+            if not valid_sequence:
+                continue
+            
+            # Preparing the current state to extend the sequence
+            state_tensor = to_tensor(state, device=agent.device, requires_grad=False)
+            shape_tensor = to_tensor(shape, device=agent.device, requires_grad=False)
+            agent.reset(state_tensor, shape_tensor)
+            
+            steps = 0
+            # Try to extend the sequence starting from the reached state
+            while steps < max_episode_length:
+                # Prediction of the action in inference mode (without epsilon decay)
+                action, _ = agent.select_action(state_tensor, shape_tensor, decay_epsilon=False)
+                (next_state, next_shape), reward, done, truncated, info = env.step(action)
+                logger.info(f"[Test_2] Step {steps} - reward: {reward}")
+                
+                # If the action is not valid, we interrupt the extension on this example
+                if reward > 0:
+                    global_sequence.append(action)
+                    logger.info(f"[Test_2] Extended sequence: {global_sequence}")
+                else:
+                    logger.info("[Test_2] Invalid action (negative reward). Interrupting extension on this example.")
+                    break
+                
+                # If the environment signals completion, we have found a solution
+                if done:
+                    logger.info("[Test_2] Episode solved with the exteded sequence!")
+                    return challenge_key, global_sequence
+                
+                # Update the state for the next step
+                state_tensor = to_tensor(next_state, device=agent.device, requires_grad=False)
+                shape_tensor = to_tensor(next_shape, device=agent.device, requires_grad=False)
+                steps += 1
+
+    logger.info("[Test_2] No complete solution found, maximum iteration number reached.")
+    return challenge_key, global_sequence
