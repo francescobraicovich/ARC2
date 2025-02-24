@@ -285,12 +285,6 @@ class DDPG(object):
 
         print(f"Actor and Critic models and target networks loaded from {dir}")
 
-        # Update target networks
-        hard_update(self.actor_target, self.actor)
-        hard_update(self.critic1_target, self.critic1)
-        hard_update(self.critic2_target, self.critic2)
-
-
 
     def save_model(self, output):
         """
