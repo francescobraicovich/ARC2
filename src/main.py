@@ -79,10 +79,6 @@ def main():
     if args.load:
         agent.load_weights(args.load_model_dir)
 
-    # 11. Move agent to GPU if requested
-    if args.gpu_ids[0] >= 0 and args.gpu_nums > 0 and torch.cuda.is_available():
-        agent.cuda_convert()
-
     # 12. Set up logger
     if args.mode == 'train':
         setup_logger('RS_log', f'{args.save_model_dir}/RS_train_log')
