@@ -100,7 +100,7 @@ class ARC_Env(gym.Env):
         self.STEP_PENALTY = 1
         self.SHAPE_PENALTY = 1
         self.TRUNCATION_PENALTY = 100
-        self.MAXIMUM_SIMILARITY = 60
+        self.MAXIMUM_SIMILARITY = 100
         self.COMPLETION_REWARD = 25
         self.NO_CHANGE_PENALTY = 5
         self.MAX_STATES_PER_ACTION = 1
