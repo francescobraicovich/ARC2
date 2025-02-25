@@ -10,8 +10,8 @@ def init_parser(alg):
         parser.add_argument('--env', default='ARC', metavar='ENV', help='Environment to train on')
         parser.add_argument('--mode', default='train', type=str, help='Mode: train/test')
         parser.add_argument('--id', default='0', type=str, help='Experiment ID')
-        parser.add_argument('--load', default=False, metavar='L', help='Load a trained model')
-        parser.add_argument('--load-model-dir', default='ARC-run780', metavar='LMD', help='Folder to load trained models from')
+        parser.add_argument('--load', default=True, metavar='L', help='Load a trained model')
+        parser.add_argument('--load-model-dir', default='ARC-run8', metavar='LMD', help='Folder to load trained models from')
         parser.add_argument('--eval-interval', default=300, type=int, help='Evaluate model every X episodes')
         parser.add_argument('--eval-episodes', default=25, type=int, help='Number of episodes to evaluate')
 
@@ -25,7 +25,7 @@ def init_parser(alg):
         parser.add_argument('--rmsize', default=100000, type=int, help='Replay memory size')
 
         # Policy Update Settings
-        parser.add_argument('--gamma', type=float, default=0.5, metavar='G', help='Discount factor for rewards (default: 0.99)')
+        parser.add_argument('--gamma', type=float, default=0.99, metavar='G', help='Discount factor for rewards (default: 0.99)')
         parser.add_argument('--policy-noise', default=0, type=float, help='Noise added to target policy during critic update')
         parser.add_argument('--noise-clip', default=0.25, type=float, help='Range to clip target policy noise')
         parser.add_argument('--policy-delay', default=2, type=int, help='Delay policy updates')
@@ -42,7 +42,7 @@ def init_parser(alg):
         parser.add_argument('--latent_dim', default=48, type=int, help='Latent dimension for encoder')
 
         # Exploration & Noise
-        parser.add_argument('--epsilon', default=250000, type=int, help='Linear decay of exploration policy')
+        parser.add_argument('--epsilon', default=300000, type=int, help='Linear decay of exploration policy')
         parser.add_argument('--epsilon_start', default=1.0, type=float, help='Starting epsilon value for resuming training')
         parser.add_argument('--ou_theta', default=0.5, type=float, help='Ornstein-Uhlenbeck noise theta')
         parser.add_argument('--ou_sigma', default=0.2, type=float, help='Ornstein-Uhlenbeck noise sigma')
