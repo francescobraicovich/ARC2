@@ -21,7 +21,7 @@ def init_parser(alg):
         parser.add_argument('--max-actions', default=1e9, type=int, help='# max actions')
         parser.add_argument('--test-episode', type=int, default=20, help='Maximum testing episodes')
         parser.add_argument('--warmup', default=250, type=int, help='Time without training but only filling the replay memory')
-        parser.add_argument('--bsize', default=32, type=int, help='Minibatch size')
+        parser.add_argument('--bsize', default=16, type=int, help='Minibatch size')
         parser.add_argument('--rmsize', default=100000, type=int, help='Replay memory size')
 
         # Policy Update Settings
