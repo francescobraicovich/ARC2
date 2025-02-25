@@ -75,10 +75,7 @@ class DDPG(object):
         hard_update(self.actor_target, self.actor)
         hard_update(self.critic1_target, self.critic1)
         hard_update(self.critic2_target, self.critic2)
-
-        # Set all on device
-        self.cuda()
-
+        
         print('-'*50)
         print('At initialization:')
         print('Difference between actor and actor_target: ', torch.norm(
@@ -232,17 +229,8 @@ class DDPG(object):
         critic1_target_path = os.path.join(dir, "critic1_target.pt")
         critic2_target_path = os.path.join(dir, "critic2_target.pt")
 
-        # Define map_location based on your device.
-        # Ensure self.device is set correctly (see note below).
-        #map_location = lambda storage, loc: storage.to(device=self.device)
-
-        # Define map_location properly
-        if torch.backends.mps.is_available():
-            map_location = torch.device("mps")  # Use MPS if available
-        elif torch.cuda.is_available():
-            map_location = torch.device("cuda")  # Use CUDA if available
-        else:
-            map_location = torch.device("cpu")  # Default to CPU if no GPU is available
+        # Always load weights on CPU
+        map_location = torch.device("cpu")
 
         # Load Actor model
         if hasattr(self.actor, 'module'):
@@ -256,7 +244,7 @@ class DDPG(object):
         else:
             self.critic1.load_state_dict(torch.load(critic1_path, map_location=map_location))
         
-         # Load Critic1 model
+        # Load Critic2 model
         if hasattr(self.critic2, 'module'):
             self.critic2.module.load_state_dict(torch.load(critic2_path, map_location=map_location))
         else:
@@ -287,7 +275,15 @@ class DDPG(object):
         else:
             hard_update(self.critic2_target, self.critic2)
 
-        print(f"Actor and Critic models and target networks loaded from {dir}")
+        # Now move all models to self.device
+        self.actor.to(self.device)
+        self.critic1.to(self.device)
+        self.critic2.to(self.device)
+        self.actor_target.to(self.device)
+        self.critic1_target.to(self.device)
+        self.critic2_target.to(self.device)
+
+        print(f"Actor and Critic models and target networks loaded from {dir} and moved to {self.device}")
 
 
     def save_model(self, output):
