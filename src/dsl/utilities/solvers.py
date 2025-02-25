@@ -1,7 +1,8 @@
 import numpy as np
-from color_select import ColorSelector
-from select import Selector
-from transform import Transformer, select_color
+import json
+from dsl.color_select import ColorSelector
+from dsl.select import Selector
+from dsl.transform import Transformer
 
 
 """
@@ -26,16 +27,54 @@ This DSL was constructed following key design principles to ensure simplicity, f
 
 # Note: An action is defined as (color_selection, selection, transformation).
 
+
 class Solver:
-    def __init__(self):
-        pass
+    def __init__(self, path_to_challenges, dim=30, ColorSelector=ColorSelector, Selector=Selector, Transformer=Transformer):
         
+        #Setup the dataset
+        self.challenge_dictionary = json.load(open(path_to_challenges))
+        self.dictionary_keys = list(self.challenge_dictionary.keys()) # list of keys in the dictionary
+        self.num_challenges = len(self.challenge_dictionary) # number of challenges in the dictionary
+        self.dim = dim # maximum dimension of the problem
+        self.observation_shape = (dim, dim, 2) # shape of the grid
+
+        # Initialize the function selectors/transformers
+        self.color_selector = ColorSelector()
+        self.selector = Selector()
+        self.transformer = Transformer()
+
+    # -------------------------------------------------------------------------
+    # Utils
+    # -------------------------------------------------------------------------
+    def setup_grid(challenge_key):
+        """
+        Setup the grid for the challenge
+        """
+        challenge = self.challenge_dictionary[challenge_key]
+        challenge_test = challenge["test"]
+        input = np.array(challenge_test["input"])
+        output = np.array(challenge_test["output"])
+        grid = np.array(input, output)
+        return grid
+    
+    def check_correct(input, output):
+        """
+        Check if the output is correct
+        """
+        return np.array_equal(input, output)
+    
+    # -------------------------------------------------------------------------
+    # Solvers
+    # -------------------------------------------------------------------------
     def solve_007bbfb7(self):
+        challenge_key = "007bbfb7"
         # Input size different from output
         pass
 
-    def solve_00d62c1b(self):
-        a1 = [color_number(4), select_connected_shapes_diag(), fill_with_color()]
+    def solve_00d62c1b(self, grid):
+        challenge_key = "007bbfb7"
+        self.setupgrid(challenge_key)
+        a1 = [colsel.color_number(4), sel.select_connected_shapes_diag(), trans.fill_with_color()]
         # Insert color select as difference between input and output
         pass
 
@@ -44,4 +83,4 @@ class Solver:
         pass
 
     def solve_025d127b(self):
-        a1 = 
+        
