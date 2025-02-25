@@ -185,7 +185,7 @@ class ARC_Env(gym.Env):
 
         reward = (current_score - previous_score) * self.MAXIMUM_SIMILARITY
         if reward <= 0:
-            reward =- step_penalty
+            reward -= step_penalty
         return reward, False
 
     
