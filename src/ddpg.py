@@ -61,14 +61,15 @@ class DDPG(object):
         # Initialize Actor and Critic networks (both primary and target)
         self.actor = Actor(self.nb_states, self.nb_actions, **actor_cfg).to(self.device)
         self.actor_target = Actor(self.nb_states, self.nb_actions, **actor_cfg).to(self.device)
-        self.actor_optim = Adam(self.actor.parameters(), lr=args.p_lr, weight_decay=args.weight_decay)
+        self.actor_optim = Adam(self.actor.parameters(), lr=args.p_lr)
 
         self.critic1 = Critic(self.nb_states, self.nb_actions, **net_cfg).to(self.device)
         self.critic1_target = Critic(self.nb_states, self.nb_actions, **net_cfg).to(self.device)
-        self.critic1_optim = Adam(self.critic1.parameters(), lr=args.c_lr, weight_decay=args.weight_decay)
+        self.critic1_optim = Adam(self.critic1.parameters(), lr=args.c_lr)
+
         self.critic2 = Critic(self.nb_states, self.nb_actions, **net_cfg).to(self.device)
         self.critic2_target = Critic(self.nb_states, self.nb_actions, **net_cfg).to(self.device)
-        self.critic2_optim = Adam(self.critic2.parameters(), lr=args.c_lr, weight_decay=args.weight_decay)
+        self.critic2_optim = Adam(self.critic2.parameters(), lr=args.c_lr)
 
         # Synchronize target networks with the primary networks
         hard_update(self.actor_target, self.actor)
