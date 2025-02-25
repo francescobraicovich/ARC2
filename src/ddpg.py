@@ -76,6 +76,9 @@ class DDPG(object):
         hard_update(self.critic1_target, self.critic1)
         hard_update(self.critic2_target, self.critic2)
 
+        # Set all on device
+        self.cuda()
+
         print('-'*50)
         print('At initialization:')
         print('Difference between actor and actor_target: ', torch.norm(
