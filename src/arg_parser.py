@@ -11,7 +11,7 @@ def init_parser(alg):
         parser.add_argument('--mode', default='train', type=str, help='Mode: train/test')
         parser.add_argument('--id', default='0', type=str, help='Experiment ID')
         parser.add_argument('--load', default=True, metavar='L', help='Load a trained model')
-        parser.add_argument('--load-model-dir', default='ARC-run8', metavar='LMD', help='Folder to load trained models from')
+        parser.add_argument('--load-model-dir', default='ARC-run13', metavar='LMD', help='Folder to load trained models from')
         parser.add_argument('--eval-interval', default=300, type=int, help='Evaluate model every X episodes')
         parser.add_argument('--eval-episodes', default=25, type=int, help='Number of episodes to evaluate')
 
@@ -21,7 +21,7 @@ def init_parser(alg):
         parser.add_argument('--max-actions', default=1e9, type=int, help='# max actions')
         parser.add_argument('--test-episode', type=int, default=20, help='Maximum testing episodes')
         parser.add_argument('--warmup', default=250, type=int, help='Time without training but only filling the replay memory')
-        parser.add_argument('--bsize', default=16, type=int, help='Minibatch size')
+        parser.add_argument('--bsize', default=4, type=int, help='Minibatch size')
         parser.add_argument('--rmsize', default=100000, type=int, help='Replay memory size')
 
         # Policy Update Settings
