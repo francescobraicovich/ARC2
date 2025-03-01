@@ -260,10 +260,8 @@ class Critic(nn.Module):
         state, shape = x
         reshape = False
 
-        if len(a.shape) == 3:
-            reshape = True
-            B, N, nb_actions = a.shape
-            a = torch.reshape(a, (B * N, nb_actions))
+        B, K, nb_actions = a.shape
+        a = torch.reshape(a, (B * K, nb_actions)) # Reshape to (B*K, nb_actions)
 
         if self.type == 'lpn':
             latent = latent = self.encoder(state, shape)
@@ -276,15 +274,15 @@ class Critic(nn.Module):
             latent = self.relu(self.fc1(state))
         
         # Combine latent + action
-        concatenated = torch.cat([latent, a], dim=-1)  # => (N*B, hidden1 + nb_actions)
+        latent_tiled = latent.repeat_interleave(K, dim=0) # => (K*B, hidden1)
+        concatenated = torch.cat([latent_tiled, a], dim=-1)  # => (K*B, hidden1 + nb_actions)
         out = self.fc2(concatenated)
         out = self.relu(out)
         out = self.fc3(out)
         out = self.normalizaton(out)
         out = self.relu(out)
         out = self.fc4(out)
-        if reshape:
-            out = out.reshape(B, N, -1)
+        out = out.reshape(B, K, -1) # Reshape to (B, K, 1)
         out = torch.squeeze(out)
         return out
 
