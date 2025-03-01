@@ -109,20 +109,26 @@ class WolpertingerAgent(DDPG):
             self.torch_aranges[batch_size] = torch.arange(batch_size, device=self.device)
 
         # 3) Tile the current states so we can evaluate each candidate with the critic
-        s_t_tiled = torch.tile(s_t, (self.k_nearest_neighbors, 1, 1, 1))
-        shape_tiled = torch.tile(shape, (self.k_nearest_neighbors, 1, 1))
+        #s_t_tiled = torch.tile(s_t, (self.k_nearest_neighbors, 1, 1, 1))
+        #shape_tiled = torch.tile(shape, (self.k_nearest_neighbors, 1, 1))
+
+        s_t_tiled = torch.tile(s_t, (1, 1, 1, 1))
+        shape_tiled = torch.tile(shape, (1, 1, 1))
+        embedded_actions_tiled = torch.tile(embedded_actions, (1, 1, 1))
 
         # 4) Evaluate Q(s, a) for each candidate. The critic expects (state, shape) tuple + action
         with torch.no_grad():
-            q1_values = self.critic1((s_t_tiled, shape_tiled), embedded_actions)
-            q2_values = self.critic2((s_t_tiled, shape_tiled), embedded_actions)
+            q1_values = self.critic1((s_t_tiled, shape_tiled), embedded_actions_tiled)
+            q2_values = self.critic2((s_t_tiled, shape_tiled), embedded_actions_tiled)
             q_values = torch.min(q1_values, q2_values)
 
         # 5) Find index of the candidate with maximum Q
         #    If batch_size=1, it's a simple argmax over dimension=0;
         #    Otherwise, we do argmax over dimension=1 if the shape is (k, B, ...)
-        axis = 0 if batch_size == 1 else 1
-        max_q_indices = torch.argmax(q_values, dim=axis)
+        if batch_size == 1:
+            max_q_indices = torch.argmax(q_values)
+        else:
+            max_q_indices = torch.argmax(q_values, 1)
 
         if batch_size == 1:
             # Single state: Just pick the best index
@@ -141,7 +147,6 @@ class WolpertingerAgent(DDPG):
             
             selected_action = reshaped_actions[max_q_indices_np, np_arange, :]
             selected_embedded_action = reshaped_embedded_actions[max_q_indices, self.torch_aranges[batch_size], :]
-
 
         return selected_action, selected_embedded_action
 
@@ -239,6 +244,8 @@ class WolpertingerAgent(DDPG):
         (state_batch, shape_batch, action_batch,
         reward_batch, next_state_batch, next_shape_batch, terminal_batch) = \
             self.memory.sample_and_split(self.batch_size)
+        
+        action_batch = torch.unsqueeze(action_batch, 1) # Add back the k-neighrest neighbor dimension
 
         # ---------------------------------------------------------
         # 1) Compute target actions (with smoothing) using actor_target
@@ -259,6 +266,7 @@ class WolpertingerAgent(DDPG):
             wolp_act, wolp_embedded = self.wolp_action(
                 next_state_batch, next_shape_batch, to_numpy(proto_embedded_action)
             )
+            wolp_embedded = torch.unsqueeze(wolp_embedded, 1) # Add back the k-neighrest neighbor dimension
 
             # Evaluate both target critics
             next_q1 = self.critic1_target((next_state_batch, next_shape_batch), wolp_embedded)
@@ -298,6 +306,7 @@ class WolpertingerAgent(DDPG):
             # Actor update
             self.actor_optim.zero_grad()
             proto_action_batch = self.actor((state_batch, shape_batch))
+            proto_action_batch = torch.unsqueeze(proto_action_batch, 1) # Add back the k-neighrest neighbor dimension
             q_actor = self.critic1_target((state_batch, shape_batch), proto_action_batch)
             policy_loss = -q_actor.mean()
             policy_loss.backward()
