@@ -64,7 +64,9 @@ class WolpertingerAgent(DDPG):
         self.k_nearest_neighbors = k
         self.max_embedding = args.max_embedding
         self.min_embedding = args.min_embedding
+        self.MAX_GRAD_NORM = 5.0
         print(f"[WolpertingerAgent] Using {self.k_nearest_neighbors} nearest neighbors.")
+
 
         # Move all base DDPG networks to device
         self.actor.to(self.device)
@@ -277,7 +279,7 @@ class WolpertingerAgent(DDPG):
         loss_q1 = F.smooth_l1_loss(current_q1, target_q)
         loss_q1.backward()
         critic1_grad_norm = get_grad_norm(self.critic1.parameters())
-        torch.nn.utils.clip_grad_norm_(self.critic1.parameters(), 1.0)
+        torch.nn.utils.clip_grad_norm_(self.critic1.parameters(), self.MAX_GRAD_NORM)
         self.critic1_optim.step()
 
         # Critic 2
@@ -286,7 +288,7 @@ class WolpertingerAgent(DDPG):
         loss_q2 = F.smooth_l1_loss(current_q2, target_q)
         loss_q2.backward()
         critic2_grad_norm = get_grad_norm(self.critic2.parameters())
-        torch.nn.utils.clip_grad_norm_(self.critic2.parameters(), 1.0)
+        torch.nn.utils.clip_grad_norm_(self.critic2.parameters(), self.MAX_GRAD_NORM)
         self.critic2_optim.step()
 
         # ---------------------------------------------------------
@@ -300,7 +302,7 @@ class WolpertingerAgent(DDPG):
             policy_loss = -q_actor.mean()
             policy_loss.backward()
             actor_grad_norm = get_grad_norm(self.actor.parameters())
-            torch.nn.utils.clip_grad_norm_(self.actor.parameters(), 1.0)
+            torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.MAX_GRAD_NORM)
             self.actor_optim.step()
 
             # Soft update of targets
