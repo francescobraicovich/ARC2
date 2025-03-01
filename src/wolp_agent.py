@@ -296,7 +296,7 @@ class WolpertingerAgent(DDPG):
             # Actor update
             self.actor_optim.zero_grad()
             proto_action_batch = self.actor((state_batch, shape_batch))
-            q_actor = self.critic1((state_batch, shape_batch), proto_action_batch)
+            q_actor = self.critic1_target((state_batch, shape_batch), proto_action_batch)
             policy_loss = -q_actor.mean()
             policy_loss.backward()
             actor_grad_norm = get_grad_norm(self.actor.parameters())

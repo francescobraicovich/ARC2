@@ -161,6 +161,8 @@ def evaluate(
     :param logger: Logger
     """
     agent.is_training = False
+    saved_epsilon = agent.epsilon # Save epsilon value for restoration after evaluation
+    agent.epsilon = 0.0 # Set epsilon to 0 for evaluation so that no exploration is performed
     agent.eval()
 
     total_rewards = []
@@ -215,6 +217,7 @@ def evaluate(
 
     # Switch agent back to training mode
     agent.is_training = True
+    agent.epsilon = saved_epsilon # Restore epsilon value
 
 def Test_1(agent, env, max_episode_length, logger, max_iterations=1000):
     """
