@@ -223,7 +223,6 @@ class Critic(nn.Module):
         self.relu = nn.LeakyReLU()
         self.normalizaton = nn.LayerNorm(hidden2).to(DEVICE)  # LayerNorm
 
-
         self.init_weights(init_w)
         self.to(DEVICE)  # Move the network to the selected device
     
