@@ -300,7 +300,7 @@ class ColorSelector:
             for i in range(rows):
                 for j in range(cols):
                     mask[i, j] = (grid[i, j] == color) 
-            max_sizes[color] = self.rank_largest_shape_color_diag(mask.astype(np.int64))
+            max_sizes[color] = np.sum(mask)  # Count the number of pixels of this color.
         # Create an array of color indices.
         sorted_indices = np.empty(num_colors, dtype=np.int64)
         for i in range(num_colors):
