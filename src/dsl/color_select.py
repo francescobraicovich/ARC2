@@ -247,7 +247,7 @@ class ColorSelector:
         
         
     @nb.njit
-    def rank_largest_shape_color_nodiag(grid: np.ndarray, num_colors: int, rank: int) -> int:
+    def rank_largest_shape_color_nodiag(self, grid: np.ndarray, num_colors: int, rank: int) -> int:
         """
         Return the color of the rank-th largest connected shape in the grid (without diagonal connectivity).
 
@@ -299,8 +299,8 @@ class ColorSelector:
             mask = np.empty((rows, cols), dtype=np.bool_)
             for i in range(rows):
                 for j in range(cols):
-                    mask[i, j] = (grid[i, j] == color) # DOUBLE CHECK THIS
-            max_sizes[color] = rank_largest_shape_color_diag(mask) # DOUBLE CHECK THIS
+                    mask[i, j] = (grid[i, j] == color) 
+            max_sizes[color] = self.rank_largest_shape_color_diag(mask.astype(np.int64))
         # Create an array of color indices.
         sorted_indices = np.empty(num_colors, dtype=np.int64)
         for i in range(num_colors):
@@ -326,7 +326,7 @@ class ColorSelector:
 
 
     @nb.njit
-    def color_number(self, grid: np.ndarray, color: int) -> int:
+    def color_number(grid: np.ndarray, num_colors: int, color: int, invalid_color) -> int:
         """
         Return the given color if it is not present in the grid; otherwise, return an invalid color indicator.
 
