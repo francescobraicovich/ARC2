@@ -9,8 +9,7 @@ import wandb
 import copy
 
 from utils.util import to_tensor
-
-from dsl.utilities.plot import plot_step
+from errors_optimizer_le import max_overlap_loss, get_grad_norm, update_with_adamw
 
 from model_le import FullTransitionModel
 
@@ -30,14 +29,13 @@ def pretrain_embedding(
     model.train()
     
     optimizer = optim.Adam(model.parameters(), lr=lr)
+
     '''
     # For continuous next-state images, we use MSE loss.
     criterion_next_state = nn.MSELoss()
     # For discrete action reconstruction, use cross-entropy loss.
     criterion_action_recon = nn.CrossEntropyLoss()
     '''
-    
-
     
     for epoch in range(num_epochs):
         total_loss = 0.0
@@ -48,14 +46,7 @@ def pretrain_embedding(
             state_img = state_img.to(device)           # [B, 3, H, W]
             action_idx = action_idx.to(device)           # [B]
             next_state_img = next_state_img.to(device)   # [B, 3, H, W]
-            
-            # For a U-net based transition model you can choose:
-            # - to use the clean next state directly, or
-            # - add a small noise as data augmentation (optional)
-            if noise_level > 0.0:
-                input_next_state = add_noise(next_state_img, noise_level=noise_level)
-            else:
-                input_next_state = next_state_img
+            input_next_state = next_state_img
             
             # Forward pass through the model:
             # The model returns:
@@ -68,7 +59,7 @@ def pretrain_embedding(
             )
             
             # Compute next-state loss.
-            loss_next_state = criterion_next_state(predicted_next_state, next_state_img)
+            loss_next_state = max_overlap_loss(predicted_next_state, next_state_img)
             # Compute action reconstruction loss.
             loss_action_recon = criterion_action_recon(reconstructed_action_logits, action_idx)
             

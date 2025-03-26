@@ -133,7 +133,6 @@ class FullTransitionModel(nn.Module):
         observation_shape: Tuple defining the padded grid shape (H, W, C)
         """
         super(FullTransitionModel, self).__init__()
-        self.observation_shape = observation_shape
         self.action_embedding = ActionEmbedding(num_actions, action_embed_dim)
         self.state_encoder = StateEncoderViT(state_embed_dim)
         cond_dim = state_embed_dim + action_embed_dim
