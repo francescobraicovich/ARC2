@@ -3,88 +3,12 @@ import numpy as np
 import torch
 import wandb
 import copy
-import logging
 import json
 from utils.util import to_tensor
 from dsl.utilities.plot import plot_step
 from collections import deque
 
-def extract_challenge(env, challenge_key, use_test=False, example_index=None, challenges_path='data/RAW_DATA_DIR/arc-prize-2024/arc-agi_training_challenges.json'):
-    """
-    Extracts a specific challenge from the challenges file and sets up the environment state.
-    
-    Args:
-        env: The ARC environment instance
-        challenge_key: The specific challenge key to extract
-        use_test: Whether to use the test example (True) or a training example (False)
-        example_index: If provided, use this specific training example index instead of random
-        challenges_path: Path to the challenges JSON file
-        
-    Returns:
-        tuple: (state, shape, challenge_key) where:
-            - state: The initial state of the environment
-            - shape: The shape information for the state
-            - challenge_key: The key of the selected challenge
-    """
-    # Load challenges
-    with open(challenges_path, 'r') as f:
-        challenges = json.load(f)
-    
-    if challenge_key not in challenges:
-        raise ValueError(f"Challenge key {challenge_key} not found in challenges file")
-    
-    # Get the challenge data
-    challenge = challenges[challenge_key]
-    
-    if use_test:
-        # Use the test example
-        challenge_data = challenge['test']
-    else:
-        # Use training examples
-        challenge_data = challenge['train']
-        if example_index is None:
-            # Get a random training example if no specific index provided
-            example_index = np.random.randint(0, len(challenge_data))
-        challenge_data = challenge_data[example_index]
-    
-    # Get input and output
-    input_grid = np.array(challenge_data['input'])
-    output_grid = np.array(challenge_data['output'])
-    
-    # Get shapes
-    nrows, ncols = input_grid.shape
-    nrows_target, ncols_target = output_grid.shape
-    shape = np.array([[nrows, nrows_target], [ncols, ncols_target]])
-    
-    # Pad the grids
-    training_grid = np.zeros(env.observation_shape, dtype=np.int16)
-    training_grid[:, :, 0] = env.pad_grid(input_grid)
-    training_grid[:, :, 1] = env.pad_grid(output_grid)
-    
-    # Reset environment state
-    env.new_states = deque()
-    env.infos = deque()
-    env.done = False
-    
-    # Create initial state and info
-    initial_state = (training_grid, shape)
-    info = {
-        'key': challenge_key,
-        'actions': [],
-        'action_strings': [],
-        'num_actions': 0,
-        'solved': False,
-        'is_test': use_test,
-        'example_index': example_index if not use_test else None
-    }
-    
-    # Update environment state
-    env.new_states.append(initial_state)
-    env.infos.append(info)
-    env.state = env.new_states.popleft()
-    env.info = env.infos.popleft()
-    
-    return env.state, challenge_key
+
 
 def overfit_train(
     train_env,
@@ -126,21 +50,8 @@ def overfit_train(
     total_actions_taken = 0
 
     s_t = None
- 
 
-    # Load the challenge to get number of training examples
-    with open('data/RAW_DATA_DIR/arc-prize-2024/arc-agi_training_challenges.json', 'r') as f:
-        challenges = json.load(f)
-    num_training_examples = len(challenges[challenge_key]['train'])
     
-    # Get the initial state using reset_overfit
-    initial_state, initial_shape = reset_overfit(train_env, challenge_key, use_test=False)
-    s_t = to_tensor(initial_state, device=agent.device, requires_grad=True)
-    shape = to_tensor(initial_shape, device=agent.device, requires_grad=True)
-    agent.reset(s_t, shape)
-    
-    logger.info(f"Starting fine-tuning on challenge key: {challenge_key} with {num_training_examples} training examples")
-    logger.info("Using pre-trained weights as starting point")
 
     while episode < max_episode and total_actions_taken < max_actions:
         if s_t is None:
