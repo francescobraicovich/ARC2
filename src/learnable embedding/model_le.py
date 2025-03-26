@@ -6,7 +6,6 @@ from torch.nn.functional import relu
 import numpy as np  # added import
 from dsl.utilities.padding import pad_grid
 
-#TODO actual action
 #TODO intialise models
 class ActionEmbedding(nn.Module):
     def __init__(self, num_actions, embed_dim):
