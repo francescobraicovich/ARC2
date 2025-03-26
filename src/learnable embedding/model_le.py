@@ -3,6 +3,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models as models
 from torch.nn.functional import relu
+import numpy as np  # added import
+from dsl.utilities.padding import pad_grid
+
+
 
 class ActionEmbedding(nn.Module):
     def __init__(self, num_actions, embed_dim):
@@ -35,14 +39,15 @@ class StateEncoderViT(nn.Module):
         # Returns: state embedding of shape [batch_size, embed_dim]
         return self.vit(state_img)
 
-class TransitionDiffusionModel(nn.Module):
+# Modified UNet version for transitions:
+class TransitionUNETModel(nn.Module):
     def __init__(self, in_channels, cond_dim, out_channels):
         """
-        in_channels: Number of channels in the noisy next-state input.
+        in_channels: Number of channels in the training grid (e.g., 3).
         cond_dim: Dimension of the conditioning vector (state_embed_dim + action_embed_dim).
         out_channels: Number of channels in the predicted next state.
         """
-        super(TransitionDiffusionModel, self).__init__()
+        super(TransitionUNETModel, self).__init__()
         # Encoder path: Downsampling layers
         self.enc1 = nn.Sequential(
             nn.Conv2d(in_channels, 64, kernel_size=3, padding=1),
@@ -56,12 +61,12 @@ class TransitionDiffusionModel(nn.Module):
             nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),
             nn.ReLU()
         )
-        # Bottleneck layer
+        # Bottleneck
         self.bottleneck = nn.Sequential(
             nn.Conv2d(256, 256, kernel_size=3, padding=1),
             nn.ReLU()
         )
-        # Decoder path: Upsampling with transposed convolutions and skip connections
+        # Decoder path with skip connections
         self.dec3 = nn.Sequential(
             nn.ConvTranspose2d(256 + cond_dim, 128, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.ReLU()
@@ -74,28 +79,29 @@ class TransitionDiffusionModel(nn.Module):
             nn.Conv2d(64 + 64, out_channels, kernel_size=3, padding=1)
         )
 
-    def forward(self, noisy_state, cond):
+    def forward(self, training_grid, cond):
         """
-        noisy_state: tensor [B, in_channels, H, W] representing the noisy next state.
-        cond: Conditioning vector [B, cond_dim] (concatenation of state and action embeddings).
+        training_grid: tensor of shape [B, H, W, C] representing the padded grid.
+        cond: Conditioning vector [B, cond_dim].
         """
-        B, _, H, W = noisy_state.shape
+        # Convert to channels-first [B, C, H, W]
+        x = training_grid.permute(0, 3, 1, 2)
+        B, _, H, W = x.shape
         # Encoder
-        x1 = self.enc1(noisy_state)      # [B, 64, H, W]
-        x2 = self.enc2(x1)               # [B, 128, H/2, W/2]
-        x3 = self.enc3(x2)               # [B, 256, H/4, W/4]
+        x1 = self.enc1(x)         # [B, 64, H, W]
+        x2 = self.enc2(x1)        # [B, 128, H/2, W/2]
+        x3 = self.enc3(x2)        # [B, 256, H/4, W/4]
         # Bottleneck
-        x_b = self.bottleneck(x3)        # [B, 256, H/4, W/4]
-        # Expand conditioning vector to match bottleneck spatial dimensions
+        x_b = self.bottleneck(x3)  # [B, 256, H/4, W/4]
+        # Expand cond to spatial dims
         cond_expanded = cond.unsqueeze(-1).unsqueeze(-1).expand(B, cond.shape[-1], H//4, W//4)
-        # Concatenate condition with bottleneck output
-        x_b_cond = torch.cat([x_b, cond_expanded], dim=1)  # [B, 256+cond_dim, H/4, W/4]
+        x_b_cond = torch.cat([x_b, cond_expanded], dim=1)
         # Decoder with skip connections
-        d3 = self.dec3(x_b_cond)         # [B, 128, H/2, W/2]
+        d3 = self.dec3(x_b_cond)      # [B, 128, H/2, W/2]
         d3_cat = torch.cat([d3, x2], dim=1)  # [B, 128+128, H/2, W/2]
-        d2 = self.dec2(d3_cat)           # [B, 64, H, W]
+        d2 = self.dec2(d3_cat)        # [B, 64, H, W]
         d2_cat = torch.cat([d2, x1], dim=1)  # [B, 64+64, H, W]
-        out = self.dec1(d2_cat)          # [B, out_channels, H, W]
+        out = self.dec1(d2_cat)       # [B, out_channels, H, W]
         return out
 
 class ActionReconstructionEmbedding(nn.Module):
@@ -118,53 +124,61 @@ class ActionReconstructionEmbedding(nn.Module):
         logits = torch.matmul(predicted_action_emb, self.embedding.weight.t())  # [B, num_actions]
         return logits
 
+
+
 class FullTransitionModel(nn.Module):
     def __init__(self, num_actions, action_embed_dim, state_embed_dim,
-                 diffusion_in_channels, diffusion_out_channels):
+                 unet_in_channels, unet_out_channels, observation_shape):
         """
-        num_actions: Total discrete actions (e.g., 50,000)
-        action_embed_dim: Dimension for the action embedding.
-        state_embed_dim: Dimension for the state embedding (output from the Vision Transformer).
-        diffusion_in_channels: Channels of the noisy next state input.
-        diffusion_out_channels: Channels of the predicted next state.
-        
-        The conditioning vector for the diffusion model is the concatenation of state and action embeddings.
+        observation_shape: Tuple defining the padded grid shape (H, W, C)
         """
         super(FullTransitionModel, self).__init__()
+        self.observation_shape = observation_shape
         self.action_embedding = ActionEmbedding(num_actions, action_embed_dim)
         self.state_encoder = StateEncoderViT(state_embed_dim)
-        
-        cond_dim = state_embed_dim + action_embed_dim  # Conditioning dimension.
-        self.diffusion_model = TransitionDiffusionModel(diffusion_in_channels, cond_dim, diffusion_out_channels)
-        
-        # Function f implemented as an nn.Embedding for action reconstruction.
+        cond_dim = state_embed_dim + action_embed_dim
+        # Replace diffusion_model with transition_model (UNet)
+        self.transition_model = TransitionUNETModel(unet_in_channels, cond_dim, unet_out_channels)
         self.action_reconstruction = ActionReconstructionEmbedding(num_actions, action_embed_dim)
         
-    def forward(self, state_img, action_idx, noisy_next_state, predicted_action_emb=None):
+    def forward(self, state_img, action_idx, predicted_action_emb=None):
         """
-        state_img: tensor [B, 3, H, W] representing the current state as an image.
+        state_img: tensor [B, 3, H, W] or np.ndarray representing the current state as a training grid.
         action_idx: tensor [B] with discrete action indices.
-        noisy_next_state: tensor [B, diffusion_in_channels, H, W] representing the noisy next state.
-        predicted_action_emb (optional): if provided, use this embedding as the output of the internal policy.
-                                        Otherwise, use the embedding from the action lookup.
         """
+        # If state_img is a NumPy array, preprocess it.
+        if isinstance(state_img, np.ndarray):
+            state_img = preprocess_grid(state_img)
+            state_img = state_img.unsqueeze(0)
         # Obtain state embedding from the Vision Transformer.
         state_emb = self.state_encoder(state_img)  # [B, state_embed_dim]
-        
-        # Obtain action embedding via the embedding lookup.
         action_emb = self.action_embedding(action_idx)  # [B, action_embed_dim]
-        
-        # For conditioning, we can use the current action embedding.
-        cond = torch.cat([state_emb, action_emb], dim=1)  # [B, state_embed_dim + action_embed_dim]
-        
-        # Predict the next state using the diffusion model.
-        predicted_next_state = self.diffusion_model(noisy_next_state, cond)
-        
-        # Use the predicted action embedding to reconstruct the original action.
-        # If predicted_action_emb is provided, it is used (e.g., from the policy); else, we use the one from the lookup.
+        cond = torch.cat([state_emb, action_emb], dim=1)
+        # Pass the training grid directly into the UNet model.
+        predicted_next_state = self.transition_model(state_img, cond)
         if predicted_action_emb is None:
             predicted_action_emb = action_emb
         reconstructed_action_logits = self.action_reconstruction(predicted_action_emb)
-        
         return predicted_next_state, reconstructed_action_logits
 
+# New helper to preprocess the grid:
+def preprocess_grid(state):
+    """
+    Pads the input grid and adds extra channels with the original (n_rows, n_cols).
+    
+    Args:
+        state (np.ndarray): 2D input grid.
+        
+    Returns:
+        torch.Tensor: Preprocessed grid tensor.
+    """
+    # Store original shape before padding
+    n_rows, n_cols = state.shape
+    # Assume pad_grid is defined elsewhere and returns a padded 2D grid
+    padded = pad_grid(state)  # external function
+    observation_shape = (padded.shape[0], padded.shape[1], 3)
+    training_grid = np.zeros(observation_shape, dtype=np.int16)
+    training_grid[:, :, 0] = padded
+    training_grid[:, :, 1] = n_rows
+    training_grid[:, :, 2] = n_cols
+    return torch.tensor(training_grid, dtype=torch.float32)
