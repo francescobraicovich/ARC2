@@ -15,7 +15,7 @@ def max_overlap_loss(original_grid, reconstructed_grid):
     return 1.0 - overlap_score
 
 loss_env = F.max_overlap_loss(noisy_next_state, predicted_next_state)
-loss_act = F.cross_entropy(reconstructed_action_logits, action_idx)  # replaced F.action_loss with cross_entropy
+loss_act = F.cross_entropy(logits, action_idx)  # replaced F.action_loss with cross_entropy
 
 total_loss = loss_env + loss_act
 

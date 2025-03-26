@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models as models
+from torch.nn.functional import relu
 
 class ActionEmbedding(nn.Module):
     def __init__(self, num_actions, embed_dim):
@@ -42,40 +43,60 @@ class TransitionDiffusionModel(nn.Module):
         out_channels: Number of channels in the predicted next state.
         """
         super(TransitionDiffusionModel, self).__init__()
-        # Encoder path
-        self.enc_conv1 = nn.Conv2d(in_channels, 64, kernel_size=3, padding=1)
-        self.enc_conv2 = nn.Conv2d(64, 128, kernel_size=3, padding=1)
-        self.enc_conv3 = nn.Conv2d(128, 256, kernel_size=3, padding=1)
-        
-        # Decoder path (inject conditioning at the bottleneck)
-        self.dec_conv3 = nn.ConvTranspose2d(256 + cond_dim, 128, kernel_size=3, padding=1)
-        self.dec_conv2 = nn.ConvTranspose2d(128, 64, kernel_size=3, padding=1)
-        self.dec_conv1 = nn.ConvTranspose2d(64, out_channels, kernel_size=3, padding=1)
-        
+        # Encoder path: Downsampling layers
+        self.enc1 = nn.Sequential(
+            nn.Conv2d(in_channels, 64, kernel_size=3, padding=1),
+            nn.ReLU()
+        )
+        self.enc2 = nn.Sequential(
+            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),
+            nn.ReLU()
+        )
+        self.enc3 = nn.Sequential(
+            nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),
+            nn.ReLU()
+        )
+        # Bottleneck layer
+        self.bottleneck = nn.Sequential(
+            nn.Conv2d(256, 256, kernel_size=3, padding=1),
+            nn.ReLU()
+        )
+        # Decoder path: Upsampling with transposed convolutions and skip connections
+        self.dec3 = nn.Sequential(
+            nn.ConvTranspose2d(256 + cond_dim, 128, kernel_size=3, stride=2, padding=1, output_padding=1),
+            nn.ReLU()
+        )
+        self.dec2 = nn.Sequential(
+            nn.ConvTranspose2d(128 + 128, 64, kernel_size=3, stride=2, padding=1, output_padding=1),
+            nn.ReLU()
+        )
+        self.dec1 = nn.Sequential(
+            nn.Conv2d(64 + 64, out_channels, kernel_size=3, padding=1)
+        )
+
     def forward(self, noisy_state, cond):
         """
         noisy_state: tensor [B, in_channels, H, W] representing the noisy next state.
-        cond: Conditioning vector [B, cond_dim] (typically the concatenation of state and action embeddings).
+        cond: Conditioning vector [B, cond_dim] (concatenation of state and action embeddings).
         """
         B, _, H, W = noisy_state.shape
-        # Expand the conditioning vector to have the same spatial dimensions.
-        cond_expanded = cond.unsqueeze(-1).unsqueeze(-1).expand(B, cond.shape[-1], H, W)
-        
-        # Encoder path
-        x1 = F.relu(self.enc_conv1(noisy_state))  # [B, 64, H, W]
-        x2 = F.relu(self.enc_conv2(x1))           # [B, 128, H, W]
-        x3 = F.relu(self.enc_conv3(x2))           # [B, 256, H, W]
-        
-        # Concatenate conditioning information at the bottleneck.
-        x3_cond = torch.cat([x3, cond_expanded], dim=1)  # [B, 256 + cond_dim, H, W]
-        
-        # Decoder path
-        d3 = F.relu(self.dec_conv3(x3_cond))  # [B, 128, H, W]
-        d2 = F.relu(self.dec_conv2(d3))       # [B, 64, H, W]
-        d1 = self.dec_conv1(d2)               # [B, out_channels, H, W]
-        
-        return d1
-
+        # Encoder
+        x1 = self.enc1(noisy_state)      # [B, 64, H, W]
+        x2 = self.enc2(x1)               # [B, 128, H/2, W/2]
+        x3 = self.enc3(x2)               # [B, 256, H/4, W/4]
+        # Bottleneck
+        x_b = self.bottleneck(x3)        # [B, 256, H/4, W/4]
+        # Expand conditioning vector to match bottleneck spatial dimensions
+        cond_expanded = cond.unsqueeze(-1).unsqueeze(-1).expand(B, cond.shape[-1], H//4, W//4)
+        # Concatenate condition with bottleneck output
+        x_b_cond = torch.cat([x_b, cond_expanded], dim=1)  # [B, 256+cond_dim, H/4, W/4]
+        # Decoder with skip connections
+        d3 = self.dec3(x_b_cond)         # [B, 128, H/2, W/2]
+        d3_cat = torch.cat([d3, x2], dim=1)  # [B, 128+128, H/2, W/2]
+        d2 = self.dec2(d3_cat)           # [B, 64, H, W]
+        d2_cat = torch.cat([d2, x1], dim=1)  # [B, 64+64, H, W]
+        out = self.dec1(d2_cat)          # [B, out_channels, H, W]
+        return out
 
 class ActionReconstructionEmbedding(nn.Module):
     def __init__(self, num_actions, action_embed_dim):
