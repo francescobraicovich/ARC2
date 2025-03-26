@@ -1,6 +1,8 @@
 import json
 from rearc.generators import * # Import all generator functions from the generators module.
 from rearc.generators import generators
+import random
+import numpy as np
 '''
 def get_generators() -> dict:
     """
@@ -43,3 +45,24 @@ def demo_generator(key, n=6):
     '''plot_task(original_task)
     plot_task(generated_examples)'''
     return generated_examples
+
+def random_challenge():
+    """
+    Generate a random challenge from the ARC dataset.
+    """
+    
+    with open(f'../data/RAW_DATA_DIR/arc-prize-2024/arc-agi_training_challenges.json') as fp:
+        tasks = json.load(fp)
+        
+    # Choose a random task key
+    key = random.choice(list(tasks.keys()))
+    task = tasks[key]
+        
+    # Choose a random example 
+    examples = task['train']
+    example = random.choice(examples)
+        
+    # Extract input grid as numpy array
+    input_grid = np.array(example['input'])
+        
+    return input_grid
