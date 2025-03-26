@@ -8,22 +8,33 @@ from torch.utils.data import DataLoader
 import wandb
 import copy
 
-from utils.util import to_tensor
+from utils.util import to_tensor, set_device
 from errors_optimizer_le import max_overlap_loss, get_grad_norm, update_with_adamw
 
+from enviroment import ARC_Env
+from rearc.main import random_challenge
+from action_space import ARCActionSpace
+
 from model_le import FullTransitionModel
+
+# Determine the device: CUDA -> MPS -> CPU
+DEVICE = set_device()
+print("Using device for model:", DEVICE)
+
+def random_action():
+    arcspace = ARCActionSpace()
+    a_s = arcspace.create_action_space()
+    random_action = np.random.choice(a_s)
+    return random_action
+
 
 
 def pretrain_embedding(
     model,            # Instance of FullTransitionModel
-    dataloader,       # DataLoader yielding (state_img, action_idx, next_state_img)
     num_epochs,
     lr,
     device,
-    max_episode_length,
-    max_episode,
-    max_actions,
-    max_steps,     
+    batch_size,
 ):
     model.to(device)
     model.train()
@@ -36,47 +47,23 @@ def pretrain_embedding(
     # For discrete action reconstruction, use cross-entropy loss.
     criterion_action_recon = nn.CrossEntropyLoss()
     '''
-    
+    #TODO randomize initial weights for action embeddder
+
+    state_img = None
+    action_idx = None
+    next_state_img = None
+
     for epoch in range(num_epochs):
-        total_loss = 0.0
-        total_batches = 0
-        
-        for state_img, action_idx, next_state_img in dataloader:
-            # Move data to device
-            state_img = state_img.to(device)           # [B, 3, H, W]
-            action_idx = action_idx.to(device)           # [B]
-            next_state_img = next_state_img.to(device)   # [B, 3, H, W]
-            input_next_state = next_state_img
+        for batch in batch_size:
+            if state_img == None:
+                state_img = random_challenge()
+            else:
+                state_img = state_img
             
-            # Forward pass through the model:
-            # The model returns:
-            #   predicted_next_state: prediction of next state image.
-            #   reconstructed_action_logits: logits for the discrete action.
-            predicted_next_state, reconstructed_action_logits = model(
-                state_img,
-                action_idx,
-                input_next_state
-            )
-            
-            # Compute next-state loss.
-            loss_next_state = max_overlap_loss(predicted_next_state, next_state_img)
-            # Compute action reconstruction loss.
-            loss_action_recon = criterion_action_recon(reconstructed_action_logits, action_idx)
-            
-            # Total loss is the sum of both losses.
-            loss = loss_next_state + loss_action_recon
-            
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-            
-            total_loss += loss.item()
-            total_batches += 1
-        
-        avg_loss = total_loss / total_batches
-        print(f"Epoch {epoch+1}/{num_epochs}, Average Loss: {avg_loss:.4f}")
-    
-    return model
+            action_idx = 
+
+
+
 
 # Example usage:
 # Assume you have a dataset that yields tuples (state_img, action_idx, next_state_img)
@@ -103,3 +90,40 @@ model = FullTransitionModel(
 
 # Run the pretraining loop:
 pretrained_model = pretrain_embedding(model, dataloader, num_epochs=10, noise_level=0.0, lr=1e-4, device='cuda')
+
+if __name__ == "__main__":
+    from arg_parser_le import init_parser_le
+    parser = init_parser_le()
+    args = parser.parse_args()
+
+    # Create model using the specified hyperparameters.
+    # Convert observation_shape list to tuple.
+    obs_shape = tuple(args.observation_shape)
+    model = FullTransitionModel(
+        args.num_actions,
+        args.action_embed_dim,
+        args.state_embed_dim,
+        args.diff_in_channels,
+        args.diff_out_channels,
+        obs_shape
+    )
+
+    # TODO: define or import your DataLoader here.
+    dataloader = None  # ...existing code to initialize your dataloader...
+
+    # Run pretraining.
+    # (Note: pretrain_embedding currently expects noise_level as an extra parameter.)
+    pretrained_model = pretrain_embedding(
+        model,
+        dataloader,
+        num_epochs=args.num_epochs,
+        lr=args.lr,
+        device=args.device,
+        max_episode_length=args.max_episode_length,
+        max_episode=args.max_episode,
+        max_actions=args.max_actions,
+        max_steps=args.max_steps,
+        noise_level=args.noise_level
+    )
+    # ...existing code (e.g., saving model, additional training steps)...
+
