@@ -17,9 +17,9 @@ class ActionEmbedding(nn.Module):
         super(ActionEmbedding, self).__init__()
         self.embedding = nn.Embedding(num_actions, embed_dim)
         
-    def forward(self, action_idx):
+    def forward(self, embedded_action):
         # action_idx: tensor of shape [batch_size] containing action indices.
-        return self.embedding(action_idx)  # returns shape [batch_size, embed_dim]
+        return self.embedding(embedded_action)  # returns shape [batch_size, embed_dim]
 
 class StateEncoderViT(nn.Module):
     def __init__(self, embed_dim):
@@ -134,13 +134,13 @@ class FullTransitionModel(nn.Module):
         """
         super(FullTransitionModel, self).__init__()
         self.action_embedding = ActionEmbedding(num_actions, action_embed_dim)
-        self.state_encoder = StateEncoderViT(state_embed_dim)
+        self.state_embedder = StateEncoderViT(state_embed_dim)
         cond_dim = state_embed_dim + action_embed_dim
         # Replace diffusion_model with transition_model (UNet)
         self.transition_model = TransitionUNETModel(unet_in_channels, cond_dim, unet_out_channels)
         self.action_reconstruction = ActionReconstructionEmbedding(num_actions, action_embed_dim)
         
-    def forward(self, state_img, action_idx, predicted_action_emb=None):
+    def forward(self, state_img, action, next_state):
         """
         state_img: tensor [B, 3, H, W] or np.ndarray representing the current state as a training grid.
         action_idx: tensor [B] with discrete action indices.
@@ -150,8 +150,8 @@ class FullTransitionModel(nn.Module):
             state_img = preprocess_grid(state_img)
             state_img = state_img.unsqueeze(0)
         # Obtain state embedding from the Vision Transformer.
-        state_emb = self.state_encoder(state_img)  # [B, state_embed_dim]
-        action_emb = self.action_embedding(action_idx)  # [B, action_embed_dim]
+        state_emb = self.state_embedder(state_img)  # [B, state_embed_dim]
+        action_emb = self.action_embedding(action)  # [B, action_embed_dim]
         cond = torch.cat([state_emb, action_emb], dim=1)
         # Pass the training grid directly into the UNet model.
         predicted_next_state = self.transition_model(state_img, cond)
