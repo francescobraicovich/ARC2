@@ -18,7 +18,7 @@ from enviroment import ARC_Env
 from action_space import ARCActionSpace
 from train_le import pretrain_embedding
 
-def main():
+def main_le():
     warnings.filterwarnings('ignore')
 
     # 1. Parse arguments
@@ -31,24 +31,20 @@ def main():
     print(f'Using device: {device}')
 
     # 3. Optionally set a process title
-    ptitle('WOLP_DDPG')
+    ptitle('Pretraining Learnable Embeddings')
 
     # 4. Prepare output folder
     args.save_model_dir = get_output_folder('../output', args.env)
-
+    '''
     # 5. Initialize wandb (only if training)
     if args.mode == 'train' and wandb.run is None:
         wandb.init(project="arc-v1", config=vars(args), mode="online")
-
+    '''
     action_space = ARCActionSpace(args)
 
     # 6. Create training and evaluation environments
     train_env = ARC_Env(
         path_to_challenges='data/RAW_DATA_DIR/arc-prize-2024/arc-agi_training_challenges.json',
-        action_space=action_space
-    )
-    eval_env = ARC_Env(
-        path_to_challenges='data/RAW_DATA_DIR/arc-prize-2024/arc-agi_evaluation_challenges.json',
         action_space=action_space
     )
 
@@ -57,32 +53,29 @@ def main():
         np.random.seed(args.seed)
         torch.manual_seed(args.seed)
         train_env.seed(args.seed)
-        eval_env.seed(args.seed)
 
     # 8. Define state and action dimensions
     nb_states = 1805
     nb_actions = 20
     continuous = False
 
-    # 9. Create the agent
-    agent_args = {
+    # 9. Create the model
+    model_args = {
         'nb_states': nb_states,
         'nb_actions': nb_actions,
         'args': args,
         'k': args.k_neighbors,
         'action_space': action_space
     }
-    agent = WolpertingerAgent(**agent_args)
+    model = ModelPlaceholder(**model_args)
 
     # 10. Optionally load model weights
     if args.load:
-        agent.load_weights(args.load_model_dir)
+        model.load_weights(args.load_model_dir)
 
     # 12. Set up logger
-    if args.mode == 'train':
-        setup_logger('RS_log', f'{args.save_model_dir}/RS_train_log')
-    elif args.mode == 'test':
-        setup_logger('RS_log', f'{args.save_model_dir}/RS_test_log')
+    if args.mode == 'pretrain':
+        setup_logger('RS_log', f'{args.save_model_dir}/RS_le_pretrain_log')
     else:
         raise RuntimeError(f'Undefined mode {args.mode}')
     logger = logging.getLogger('RS_log')
@@ -96,9 +89,9 @@ def main():
         logger.info(f"{k}: {v}")
 
     # 14. Run training or (separate) test
-    if args.mode == 'train':
+    if args.mode == 'pretrain':
         logger.info('Starting Training...')
-        train(
+        pretrain(
             continuous=continuous,
             train_env=train_env,
             eval_env=eval_env,
