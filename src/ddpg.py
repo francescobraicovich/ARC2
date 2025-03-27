@@ -158,6 +158,7 @@ class DDPG(object):
         """
         Store the most recent transition in the replay buffer.
         """
+
         if self.is_training:
             assert isinstance(self.a_t, torch.Tensor)
             assert isinstance(self.s_t, torch.Tensor)
@@ -169,8 +170,8 @@ class DDPG(object):
         """
         Generate a random action within the action space bounds.
         """
-        action = np.random.uniform(-1., 1., self.nb_actions)
-        return action
+        action = np.random.randint(self.nb_actions)
+        return action # return the index of the action
 
     def select_action(self, s_t, shape, decay_epsilon=True):
         """
@@ -187,10 +188,11 @@ class DDPG(object):
             self.epsilon -= self.depsilon
         
         if random.random() < self.epsilon:
-            action, embedded_action = self.random_action()
-            return action, embedded_action
-        embedded_action = to_numpy(self.actor((s_t.unsqueeze(0), shape.unsqueeze(0))), device=self.device).squeeze(0)
-        return None, embedded_action
+            action = self.random_action() # return a random proto-action (See wolp_agent.py)
+            return action
+        
+        action = self.actor((s_t.unsqueeze(0), shape.unsqueeze(0))) # return the embedded proto-action chosen by the actor
+        return action
 
     def reset(self, s_t, shape):
         """
