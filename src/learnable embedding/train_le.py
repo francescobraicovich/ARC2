@@ -22,12 +22,9 @@ DEVICE = set_device()
 print("Using device for model:", DEVICE)
 
 def random_action():
-    arcspace = ARCActionSpace()
-    a_s = arcspace.create_action_space()
+    a_s = ARCActionSpace.create_action_space()
     random_action = np.random.choice(a_s)
     return random_action
-
-
 
 def pretrain_embedding(
     model,            # Instance of FullTransitionModel
