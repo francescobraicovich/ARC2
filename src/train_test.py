@@ -64,20 +64,17 @@ def train(
             x_t = state_encoder(s_t, shape)
             agent.reset(x_t)
 
-        
-
         # Pick action
         if step <= warmup:
             action, embedded_action = agent.random_action()
         else:
             action, embedded_action = agent.select_action(x_t)
 
-        # NOTE: Siamo rimasti qui
-
         # Step environment
         (next_state, next_shape), r_t, done, truncated, info = train_env.step(action)
         next_state = to_tensor(next_state, device=agent.device, requires_grad=True)
         next_shape = to_tensor(next_shape, device=agent.device, requires_grad=True)
+        next_x_t = state_encoder(next_state, next_shape)
 
         total_actions_taken += 1
 
@@ -94,7 +91,7 @@ def train(
             truncated = True
 
         # Observe and update policy
-        agent.observe(r_t, next_state, next_shape, done)
+        agent.observe(r_t, state, shape, x_t, next_state, next_shape, next_x_t, action, done)
         if step > warmup:
             agent.update_policy(step)
 
