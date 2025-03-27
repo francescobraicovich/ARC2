@@ -119,9 +119,7 @@ class DDPG(object):
         self.epsilon = args.epsilon_start
 
         # Placeholder for the current state and action
-        self.s_t = None
-        self.shape = None
-        self.a_t = None
+        self.x_t = None
         self.is_training = True
 
         self.continious_action_space = False  # Whether the action space is continuous
@@ -173,7 +171,7 @@ class DDPG(object):
         action = np.random.randint(self.nb_actions)
         return action # return the index of the action
 
-    def select_action(self, s_t, shape, decay_epsilon=True):
+    def select_action(self, x_t, decay_epsilon=True):
         """
         Select an action based on the current state and exploration policy.
 
@@ -191,15 +189,14 @@ class DDPG(object):
             action = self.random_action() # return a random proto-action (See wolp_agent.py)
             return action
         
-        action = self.actor((s_t.unsqueeze(0), shape.unsqueeze(0))) # return the embedded proto-action chosen by the actor
+        action = self.actor(x_t) # return the embedded proto-action chosen by the actor
         return action
 
-    def reset(self, s_t, shape):
+    def reset(self, x_t):
         """
         Reset the state and noise process for a new episode.
         """
-        self.s_t = s_t
-        self.shape = shape
+        self.x_t = x_t
         self.random_process.reset_states()
 
     def seed(self, seed):
