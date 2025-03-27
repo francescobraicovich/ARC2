@@ -235,10 +235,11 @@ class WolpertingerAgent(DDPG):
         ).item()
 
         # ---- Sample a batch from memory replay buffer ----
-        (state_batch, shape_batch, x_t_batch, action_batch, action_embedded_batch,
-        reward_batch, next_state_batch, next_shape_batch, next_x_t_batch, terminal_batch) = \
+        (state_batch, shape_batch, x_t_batch, action_batch, reward_batch, 
+         next_state_batch, next_shape_batch, next_x_t_batch, terminal_batch) = \
             self.memory.sample_and_split(self.batch_size)
         
+        action_embedded_batch = self.action_space.embedding[action_batch]
         # TODO: Check why unsqueeze is needed
         #action_batch = torch.unsqueeze(action_batch, 1) # Add back the k-neighrest neighbor dimension
 
