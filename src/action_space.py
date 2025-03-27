@@ -107,7 +107,8 @@ class ARCActionSpace(Space):
                 self.cleaned_space = self.clean_actions()
         else:
             self.cleaned_space = self.clean_actions()
-        print('Number cleaned actions:', len(self.cleaned_space))
+        self.num_cleaned_actions = len(self.cleaned_space)
+        print('Number cleaned actions:', self.num_cleaned_actions)
 
         # Create a variable to store the action embeddings
         self.embedding = None
@@ -169,14 +170,13 @@ class ARCActionSpace(Space):
 
         # Query the k-nearest neighbors
         distances, indices = self.nearest_neighbors.kneighbors(query_actions, n_neighbors=k)
-        actions = np.array([self.cleaned_space[indices[i]] for i in range(len(indices))])
         embedded_actions = np.array([self.embedding[indices[i]] for i in range(len(indices))])
 
         # If only a single query was provided, return a flattened result
         if query_actions.shape[0] == 1:
-            actions = actions[0]
             embedded_actions = embedded_actions[0]
-        return distances, indices, actions, embedded_actions
+    
+        return distances, indices, embedded_actions
 
     def __call__(self):
         """
