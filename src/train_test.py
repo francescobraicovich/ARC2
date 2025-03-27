@@ -8,6 +8,7 @@ from utils.util import to_tensor
 
 from dsl.utilities.plot import plot_step
 
+
 def train(
     continuous,
     train_env,
@@ -60,13 +61,18 @@ def train(
             state, shape = train_env.reset()
             s_t = to_tensor(state, device=agent.device, requires_grad=True)
             shape = to_tensor(shape, device=agent.device, requires_grad=True)
-            agent.reset(s_t, shape)
+            x_t = state_encoder(s_t, shape)
+            agent.reset(x_t)
+
+        
 
         # Pick action
         if step <= warmup:
             action, embedded_action = agent.random_action()
         else:
-            action, embedded_action = agent.select_action(s_t, shape)
+            action, embedded_action = agent.select_action(x_t)
+
+        # NOTE: Siamo rimasti qui
 
         # Step environment
         (next_state, next_shape), r_t, done, truncated, info = train_env.step(action)
