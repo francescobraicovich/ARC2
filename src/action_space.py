@@ -17,9 +17,9 @@ from functools import partial
 import os
 
 # Third-party imports
-import gymnasium as gym
 import numpy as np
 from gymnasium.spaces import Space
+from utils.util import to_numpy
 from sklearn.neighbors import NearestNeighbors
 from sklearn.preprocessing import MinMaxScaler
 
@@ -27,7 +27,7 @@ from sklearn.preprocessing import MinMaxScaler
 from dsl.color_select import ColorSelector
 from dsl.select import Selector
 from dsl.transform import Transformer
-from utils.action_space_embedding import create_approximate_similarity_matrix, mds_embed
+from utils.action_space_embedding import filter_by_change
 
 
 class ARCActionSpace(Space):
@@ -82,10 +82,6 @@ class ARCActionSpace(Space):
         self._low = -1
         self._high = 1
 
-        # Maximum and minimum embedding values (used for scaling)
-        self.max_embedding = args.max_embedding
-        self.min_embedding = args.min_embedding
-
         # Weight used when uniformising the key density
         self.OLD_KEYS_WIGHT = 1.5
 
@@ -104,53 +100,32 @@ class ARCActionSpace(Space):
         self.create_action_space()
 
         # Load or create embedded actions
-        if args.load_action_embedding:
+        if args.load_cleaned_actions:
             try:
                 self.cleaned_space = np.load(f'src/embedded_space/{args.filter_threshold} threshold/cleaned_actions.npy')
-                self.embedding = np.load(f'src/embedded_space/{args.filter_threshold} threshold/embedded_actions.npy')
             except:
-                print('Error loading the embedded actions. Creating new ones...')
-                print('Missing path: ', f'src/embedded_space/{args.filter_threshold} threshold/cleaned_actions.npy')
-                self.cleaned_space, self.embedding = self.embed_actions()
+                self.cleaned_space = self.clean_actions()
         else:
-            self.cleaned_space, self.embedding = self.embed_actions()
+            self.cleaned_space = self.clean_actions()
+        print('Number cleaned actions:', len(self.cleaned_space))
 
-        if not (max(self.embedding.flatten()) == self.max_embedding and min(self.embedding.flatten()) == self.min_embedding):
-            self.embedding = (self.embedding - min(self.embedding.flatten())) / (max(self.embedding.flatten()) - min(self.embedding.flatten())) * (self.max_embedding - self.min_embedding) + self.min_embedding
-
-        print('Number of actions filtered:', len(self.cleaned_space))
+        # Create a variable to store the action embeddings
+        self.embedding = None
 
         # Create the k-NN model for nearest neighbor search in the embedded space
         self.nearest_neighbors = None
         self.create_nearest_neighbors()
         print(SEPARATOR)
 
-    def embed_actions(self):
-        """
-        Create an embedding for the actions by computing an approximate similarity matrix,
-        performing MDS embedding, and scaling the results.
-
-        Returns:
-            cleaned_actions (np.ndarray): Array of action representations.
-            embedded_actions (np.ndarray): Embedded actions in the continuous space.
-        """
+    def load_action_embeddings(self, action_embedding):
+        numpy_embedding = to_numpy(action_embedding)
+        self.embedding = numpy_embedding
+    
+    def clean_actions(self):
         args = self.args
-
-        # Create an approximate similarity matrix of actions
-        cleaned_actions, similarity_matrix = create_approximate_similarity_matrix(
-            self, args.num_experiments_filter, args.filter_threshold, args.num_experiments_similarity
+        cleaned_actions = filter_by_change(
+            self, self.env, self.args.num_experiments_filter, self.args.filter_threshold, self.args.num_experiments_similarity
         )
-        
-        # Convert similarity to distance
-        distance_matrix = 1 - similarity_matrix
-
-        # Embed the actions using Multi-Dimensional Scaling (MDS)
-        embedded_actions = mds_embed(distance_matrix)
-
-        # Scale the embedded actions to the range [-10, 10]
-        scaler = MinMaxScaler(feature_range=(self.min_embedding, self.max_embedding))
-        embedded_actions = scaler.fit_transform(embedded_actions)
-
         # Directory path based on your existing code
         directory = f'src/embedded_space/{args.filter_threshold} threshold/'
 
@@ -158,10 +133,8 @@ class ARCActionSpace(Space):
         os.makedirs(directory, exist_ok=True)
 
         # Now save the file
-        np.save(os.path.join(directory, 'embedded_actions.npy'), embedded_actions)
         np.save(os.path.join(directory, 'cleaned_actions.npy'), cleaned_actions)
-        
-        return cleaned_actions, embedded_actions
+        return cleaned_actions
 
     def create_nearest_neighbors(self):
         """
