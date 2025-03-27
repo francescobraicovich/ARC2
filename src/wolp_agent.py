@@ -62,8 +62,6 @@ class WolpertingerAgent(DDPG):
         self.experiment = args.id
         self.action_space = action_space
         self.k_nearest_neighbors = k
-        self.max_embedding = args.max_embedding
-        self.min_embedding = args.min_embedding
         self.MAX_GRAD_NORM = 5.0
         print(f"[WolpertingerAgent] Using {self.k_nearest_neighbors} nearest neighbors.")
 
@@ -86,9 +84,10 @@ class WolpertingerAgent(DDPG):
         find k nearest discrete actions in the embedding space,
         evaluate them in the critic, and choose the best one.
         """
+
         # 1) Query the action space for the k-nearest neighbors
         #    distances, indices unused in final selection, but you can log them if desired.
-        distances, indices, actions, embedded_actions = self.action_space.search_point(
+        distances, actions, embedded_actions = self.action_space.search_point(
             proto_action, k=self.k_nearest_neighbors
         )
 
@@ -155,7 +154,7 @@ class WolpertingerAgent(DDPG):
 
         return selected_action, selected_embedded_action
 
-    def select_action(self, s_t, shape, decay_epsilon=True):
+    def select_action(self, x_t, decay_epsilon=True):
         """
         Overridden from DDPG to incorporate Wolpertinger logic.
         1) The base DDPG actor outputs a proto_action (continuous).
@@ -167,13 +166,13 @@ class WolpertingerAgent(DDPG):
         self.critic2.eval()
 
         # Get proto_action (and its embedding) from the DDPG actor
-        proto_action, proto_embedded_action = super().select_action(
-            s_t, shape, decay_epsilon=decay_epsilon
+        proto_embedded_action = super().select_action(
+            x_t, decay_epsilon=decay_epsilon
         )
 
         # Evaluate the top-k neighbors in the discrete space
         with torch.no_grad():
-            wolp_act, wolp_embedded = self.wolp_action(s_t, shape, proto_embedded_action)
+            wolp_act, wolp_embedded = self.wolp_action(x_t, proto_embedded_action)
 
         # Keep track of the final embedded action used
         self.a_t = wolp_embedded
@@ -191,13 +190,10 @@ class WolpertingerAgent(DDPG):
          1) Sample a random proto_action (continuous) from DDPG.
          2) Query k=1 from the discrete action space and return that single action.
         """
-        proto_action = super().random_action()  # continuous random
-        distances, indices, actions, embedded_actions = self.action_space.search_point(proto_action, 1)
-        # We only have 1 neighbor, so select that
-        action, embedded_action = actions[0], embedded_actions[0]
-        # Convert the embedded action to a tensor on the device
-        self.a_t = to_tensor(embedded_action, device=self.device, requires_grad=True)
-        return action, embedded_action
+        action = super().random_action()
+        embedded_action = self.action_space.embedding[action]
+        self.a_t = action
+        return embedded_action
 
     def select_target_action(self, s_t, shape):
         """
