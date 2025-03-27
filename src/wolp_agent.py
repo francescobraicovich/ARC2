@@ -78,7 +78,7 @@ class WolpertingerAgent(DDPG):
         self.np_aranges = {}
         self.torch_aranges = {}
 
-    def wolp_action(self, s_t, shape, proto_action):
+    def wolp_action(self, x_t, proto_action):
         """
         Given a proto_action (continuous vector from the actor),
         find k nearest discrete actions in the embedding space,
@@ -95,30 +95,23 @@ class WolpertingerAgent(DDPG):
         embedded_actions = to_tensor(embedded_actions, device=self.device, requires_grad=True)
 
         # 2) Determine batch size. (Usually 1 for a single state, or B for a minibatch.)
-        if len(np.shape(s_t)) == 3:
-            # Single state (e.g. shape = (channels, height, width))
-            batch_size = 1
-        else:
-            # e.g. shape = (batch_size, channels, height, width)
-            batch_size = np.shape(s_t)[0]
+        # TODO: Find batch size from x_t (state)
+        batch_size = NotImplementedError
 
         # Create or reuse pre-cached aranges
         if batch_size not in self.np_aranges:
             self.np_aranges[batch_size] = np.arange(batch_size)
             self.torch_aranges[batch_size] = torch.arange(batch_size, device=self.device)
 
-        # 3) Tile the current states so we can evaluate each candidate with the critic
-        #s_t_tiled = torch.tile(s_t, (self.k_nearest_neighbors, 1, 1, 1))
-        #shape_tiled = torch.tile(shape, (self.k_nearest_neighbors, 1, 1))
 
-        s_t_tiled = torch.tile(s_t, (1, 1, 1, 1))
-        shape_tiled = torch.tile(shape, (1, 1, 1))
-        embedded_actions_tiled = torch.tile(embedded_actions, (1, 1, 1))
+        # 3) Tile the current states so we can evaluate each candidate with the critic
+        x_t_tiled = torch.tile(x_t, (1, 1, 1)) # B, K, embedding_dim
+        embedded_actions_tiled = torch.tile(embedded_actions, (1, 1)) # B, K
 
         # 4) Evaluate Q(s, a) for each candidate. The critic expects (state, shape) tuple + action
         with torch.no_grad():
-            q1_values = self.critic1((s_t_tiled, shape_tiled), embedded_actions_tiled)
-            q2_values = self.critic2((s_t_tiled, shape_tiled), embedded_actions_tiled)
+            q1_values = self.critic1(x_t, embedded_actions_tiled)
+            q2_values = self.critic2(x_t, embedded_actions_tiled)
             q_values = torch.min(q1_values, q2_values)
 
         temperature = 0.1
@@ -172,17 +165,17 @@ class WolpertingerAgent(DDPG):
 
         # Evaluate the top-k neighbors in the discrete space
         with torch.no_grad():
-            wolp_act, wolp_embedded = self.wolp_action(x_t, proto_embedded_action)
+            wolp_action, wolp_embedded_action = self.wolp_action(x_t, proto_embedded_action)
 
         # Keep track of the final embedded action used
-        self.a_t = wolp_embedded
+        self.a_t = wolp_action
 
         # Switch back to training mode
         self.actor.train()
         self.critic1.train()
         self.critic2.train()
 
-        return wolp_act, wolp_embedded
+        return wolp_action, wolp_embedded_action
 
     def random_action(self):
         """
@@ -241,37 +234,41 @@ class WolpertingerAgent(DDPG):
             torch.cat([p.view(-1) for p in self.critic2.parameters()])
         ).item()
 
-        # ---- Sample a batch from replay buffer
-        (state_batch, shape_batch, action_batch,
-        reward_batch, next_state_batch, next_shape_batch, terminal_batch) = \
+        # ---- Sample a batch from memory replay buffer ----
+        (state_batch, shape_batch, x_t_batch, action_batch, action_embedded_batch,
+        reward_batch, next_state_batch, next_shape_batch, next_x_t_batch, terminal_batch) = \
             self.memory.sample_and_split(self.batch_size)
         
-        action_batch = torch.unsqueeze(action_batch, 1) # Add back the k-neighrest neighbor dimension
+        # TODO: Check why unsqueeze is needed
+        #action_batch = torch.unsqueeze(action_batch, 1) # Add back the k-neighrest neighbor dimension
 
         # ---------------------------------------------------------
         # 1) Compute target actions (with smoothing) using actor_target
         # ---------------------------------------------------------
         with torch.no_grad():
-            proto_embedded_action = self.actor_target((next_state_batch, next_shape_batch))
+            proto_embedded_action_batch = self.action_space.embedding[action_batch]
             
             # -- TD3: Add clipped noise for smoothing
+            """
             noise = (torch.randn_like(proto_embedded_action) * self.policy_noise
                     ).clamp(-self.noise_clip, self.noise_clip)
             proto_embedded_action = proto_embedded_action + noise
             proto_embedded_action = torch.clamp(proto_embedded_action,
-                                                self.min_embedding, self.max_embedding)
+                                                self.min_embedding, self.max_embedding)"""
             
             # Wolpertinger: find best discrete neighbor
             #   (proto_embedded_action is a Tensor; if your search_point needs numpy,
             #   convert to numpy, do the search, then come back to Tensor.)
-            wolp_act, wolp_embedded = self.wolp_action(
-                next_state_batch, next_shape_batch, to_numpy(proto_embedded_action)
+            wolp_action_batch, wolp_embedded_action_batch = self.wolp_action(
+                next_x_t_batch, proto_embedded_action_batch
             )
-            wolp_embedded = torch.unsqueeze(wolp_embedded, 1) # Add back the k-neighrest neighbor dimension
+
+            # TODO: Check why unsqueeze is needed
+            #wolp_embedded = torch.unsqueeze(wolp_embedded, 1) # Add back the k-neighrest neighbor dimension
 
             # Evaluate both target critics
-            next_q1 = self.critic1_target((next_state_batch, next_shape_batch), wolp_embedded)
-            next_q2 = self.critic2_target((next_state_batch, next_shape_batch), wolp_embedded)
+            next_q1 = self.critic1_target(next_x_t_batch, wolp_embedded_action_batch)
+            next_q2 = self.critic2_target(next_x_t_batch, wolp_embedded_action_batch)
 
             # TD3: Take the minimum of the two critics for the target
             next_q = torch.min(next_q1, next_q2)
@@ -284,7 +281,7 @@ class WolpertingerAgent(DDPG):
         # ---------------------------------------------------------
         # Critic 1
         self.critic1_optim.zero_grad()
-        current_q1 = self.critic1((state_batch, shape_batch), action_batch)
+        current_q1 = self.critic1(x_t_batch, action_embedded_batch)
         loss_q1 = F.smooth_l1_loss(current_q1, target_q)
         loss_q1.backward()
         critic1_grad_norm = get_grad_norm(self.critic1.parameters())
@@ -293,7 +290,7 @@ class WolpertingerAgent(DDPG):
 
         # Critic 2
         self.critic2_optim.zero_grad()
-        current_q2 = self.critic2((state_batch, shape_batch), action_batch)
+        current_q2 = self.critic2(x_t_batch, action_embedded_batch)
         loss_q2 = F.smooth_l1_loss(current_q2, target_q)
         loss_q2.backward()
         critic2_grad_norm = get_grad_norm(self.critic2.parameters())
@@ -306,9 +303,12 @@ class WolpertingerAgent(DDPG):
         if step % self.policy_delay == 0:
             # Actor update
             self.actor_optim.zero_grad()
-            proto_action_batch = self.actor((state_batch, shape_batch))
-            proto_action_batch = torch.unsqueeze(proto_action_batch, 1) # Add back the k-neighrest neighbor dimension
-            q_actor = self.critic1((state_batch, shape_batch), proto_action_batch)
+            proto_embedded_action_batch = self.actor(x_t_batch)
+
+            # NOTE: The actor outputs a proto_action, which is a continuous vector.
+            #proto_embedded_action_batch = torch.unsqueeze(proto_action_batch, 1) # Add back the k-neighrest neighbor dimension
+            
+            q_actor = self.critic1(x_t_batch, proto_embedded_action_batch)
             policy_loss = -q_actor.mean()
             policy_loss.backward()
             actor_grad_norm = get_grad_norm(self.actor.parameters())
