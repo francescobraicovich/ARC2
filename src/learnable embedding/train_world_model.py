@@ -55,20 +55,28 @@ def world_model_train(
             next_state_batch = next_state_batch.to(DEVICE)
             next_shape_batch = next_shape_batch.to(DEVICE)
 
+            # TODO: Keep only the current state of the state_batch and shape_batch
+            current_state_batch = NotImplementedError
+            current_shape_batch = NotImplementedError
+
+            # TODO: Keep only the current state of next_state_batch and next_shape_batch
+            next_current_state_batch = NotImplementedError
+            next_current_shape_batch = NotImplementedError
+
             # Forward pass: encode the current state and shape, and embed the batch of actions.
-            state_encoded = state_encoder(state_batch, shape_batch)
+            state_encoded = state_encoder(current_state_batch, current_shape_batch)
             action_encoded = action_embedder(action_batch)
 
             # Concatenate the state and action embeddings along the feature dimension
             cond = torch.cat([state_encoded, action_encoded], dim=1)
 
             # Predict the next state and shape for the entire batch
-            predicted_next_state, predicted_next_shape = transition_model(state_batch, cond)
+            predicted_next_current_state, predicted_next_current_shape = transition_model(cond)
 
             # Compute loss over the batch:
             # Use a custom max_overlap_loss for the state prediction and MSE for the shape prediction.
-            loss_state = max_overlap_loss(next_state_batch, predicted_next_state)
-            loss_shape = mse_loss(next_shape_batch, predicted_next_shape)
+            loss_state = max_overlap_loss(next_current_state_batch, predicted_next_current_state)
+            loss_shape = mse_loss(next_current_shape_batch, predicted_next_current_shape)
             total_loss = loss_state + loss_shape
 
             # Backpropagation: reset gradients, compute gradients, and update parameters
