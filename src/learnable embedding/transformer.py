@@ -116,7 +116,6 @@ class MlpBlock(nn.Module):
         x = self.fc2(x)
         return x
 
-
 class DecoderTransformerTorch(nn.Module):
     '''
 
@@ -147,7 +146,7 @@ class DecoderTransformerTorch(nn.Module):
         self.shape_col_proj = nn.Linear(config.emb_dim, config.max_cols).to(DEVICE)
         self.grid_proj = nn.Linear(config.emb_dim, config.vocab_size).to(DEVICE)
 
-    def forward(self, embedded_action, embedded_state, input_seq, output_seq, context, dropout_eval: bool):
+    def forward(self, embedded_action, embedded_state, dropout_eval: bool):
        
         '''
         Args:
@@ -165,13 +164,16 @@ class DecoderTransformerTorch(nn.Module):
         '''
         # Concatenate embedded action and embedded state
         x = torch.cat([embedded_action, embedded_state], dim=1)
+        
         # Pass through transformer layers
         for layer in self.layers:
             x = layer(x, dropout_eval=dropout_eval)
+
         # Apply layer normalization
         x = self.layer_norm(x) 
+
         # Project to get logits for shape row, shape col, and grid
-        shape_row_logits = self.shape_row_proj(x[:, input_seq.size(1)+1, :])
-        shape_col_logits = self.shape_col_proj(x[:, input_seq.size(1)+2, :])
-        grid_logits = self.grid_proj(x[:, input_seq.size(1)+3:, :])
+        shape_row_logits = self.shape_row_proj(x[:, embedded_state.size(1)+1, :])
+        shape_col_logits = self.shape_col_proj(x[:, embedded_state.size(1)+2, :])
+        grid_logits = self.grid_proj(x[:, embedded_state.size(1)+3:, :])
         return shape_row_logits, shape_col_logits, grid_logits
