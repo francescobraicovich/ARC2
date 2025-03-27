@@ -53,6 +53,9 @@ def train(
     total_actions_taken = 0
 
     s_t = None
+    shape = None
+    x_t = None
+
     positive_rewards_history = []
     rewards_history = []
 
@@ -90,8 +93,11 @@ def train(
         if max_episode_length and episode_steps >= max_episode_length - 1:
             truncated = True
 
+        #state_batch, shape_batch, x_t_batch, action_batch, reward_batch, 
+         #next_state_batch, next_shape_batch, next_x_t_batch, terminal_batch
+
         # Observe and update policy
-        agent.observe(r_t, state, shape, x_t, next_state, next_shape, next_x_t, action, done)
+        agent.observe(state, shape, x_t, next_state, next_shape, next_x_t, action, r_t, done)
         if step > warmup:
             agent.update_policy(step)
 
@@ -102,6 +108,7 @@ def train(
         # Move to next state
         s_t = next_state
         shape = next_shape
+        x_t = next_x_t
 
         # If the episode ends
         if done or truncated or (total_actions_taken >= max_actions):
@@ -122,12 +129,15 @@ def train(
             })
 
             # Reset for next episode
-            s_t = None
+            s_t, shape = None, None
+            x_t = None
             episode_steps = 0
             episode_reward = 0.0
             episode_positive_rewards = 0
             num_equal_states = 0
             episode += 1
+
+            # NOTE: Siamo rimasti qui
 
             # --- EVALUATION after eval_interval episodes ---
             if eval_interval > 0 and (episode % eval_interval == 0):
