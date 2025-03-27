@@ -42,6 +42,7 @@ def main():
         wandb.init(project="arc-v1", config=vars(args), mode="online")
 
     action_space = ARCActionSpace(args)
+    num_cleaned_actions = action_space.num_cleaned_actions # number of actions after filtering
 
     # 6. Create training and evaluation environments
     train_env = ARC_Env(
@@ -62,13 +63,12 @@ def main():
 
     # 8. Define state and action dimensions
     nb_states = 1805
-    nb_actions = 20
     continuous = False
 
     # 9. Create the agent
     agent_args = {
         'nb_states': nb_states,
-        'nb_actions': nb_actions,
+        'nb_actions': num_cleaned_actions,
         'args': args,
         'k': args.k_neighbors,
         'action_space': action_space
