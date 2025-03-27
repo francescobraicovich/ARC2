@@ -119,7 +119,7 @@ def setup_logger(logger_name, log_file, level=logging.INFO):
     l.addHandler(fileHandler)
     l.addHandler(streamHandler)
 
-def set_device():
+def set_device(file='file.py'):
     try:
         import torch_xla.core.xla_model as xm
         device = xm.xla_device()
@@ -130,6 +130,8 @@ def set_device():
             device = torch.device("mps")
         else:
             device = torch.device("cpu")
+
+    print(f"Using device: {device} for {file}")
     return device
 
 def clip_and_boost_gradients(parameters, min_norm=0.1, max_norm=1.0):
