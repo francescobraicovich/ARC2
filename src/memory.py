@@ -4,6 +4,8 @@ import random
 from collections import deque, namedtuple
 import numpy as np
 import torch
+import os, pickle
+
 from utils.util import set_device
 
 # If you have a custom 'to_tensor' function, you can import it. 
@@ -239,3 +241,22 @@ class SequentialMemory(Memory):
         config = super(SequentialMemory, self).get_config()
         config['limit'] = self.limit
         return config
+
+    def save_memory(self, directory):
+        """Save the memory to a specified directory."""
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+        file_path = os.path.join(directory, "sequential_memory.pkl")
+        with open(file_path, "wb") as f:
+            pickle.dump(self, f)
+        print(f"Memory saved to {file_path}")
+
+    @classmethod
+    def load_memory(cls, directory):
+        """Load the memory from a specified directory."""
+        import os, pickle
+        file_path = os.path.join(directory, "sequential_memory.pkl")
+        with open(file_path, "rb") as f:
+            memory = pickle.load(f)
+        print(f"Memory loaded from {file_path}")
+        return memory
