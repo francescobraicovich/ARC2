@@ -27,7 +27,7 @@ from sklearn.preprocessing import MinMaxScaler
 from dsl.color_select import ColorSelector
 from dsl.select import Selector
 from dsl.transform import Transformer
-from utils.action_space_embedding import filter_by_change
+from utils.action_space_util import filter_by_change
 
 
 class ARCActionSpace(Space):
