@@ -1,4 +1,3 @@
-import os
 import numpy as np
 import torch
 import torch.nn as nn
@@ -7,9 +6,11 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 import wandb
 import copy
+import os
+
 
 from utils.util import to_tensor, set_device
-from errors_optimizer_le import max_overlap_loss, get_grad_norm, update_with_adamw
+from errors_optimizer_le import max_overlap_loss
 
 from enviroment import ARC_Env
 from rearc.main import random_challenge
@@ -21,106 +22,106 @@ from model_le import FullTransitionModel
 DEVICE = set_device()
 print("Using device for model:", DEVICE)
 
-def random_action():
-    a_s = ARCActionSpace.create_action_space()
-    random_action = np.random.choice(a_s)
-    return random_action
-
-def pretrain_embedding(
-    model,            # Instance of FullTransitionModel
-    num_epochs,
-    lr,
-    device,
-    batch_size,
+def world_model_train(
+        state_encoder,
+        action_embedder,
+        transition_model,
+        world_model_args,
+        memory,
+        memory_dir,
+        save_model_dir,
+        logger,
+        save_per_epochs,
+        eval_interval
 ):
-    model.to(device)
-    model.train()
-    
-    optimizer = optim.Adam(model.parameters(), lr=lr)
 
-    '''
-    # For continuous next-state images, we use MSE loss.
-    criterion_next_state = nn.MSELoss()
-    # For discrete action reconstruction, use cross-entropy loss.
-    criterion_action_recon = nn.CrossEntropyLoss()
-    '''
-    #TODO randomize initial weights for action embeddder
+    # Load memory from disk and reassign (if needed)
+    memory = memory.load_memory(memory_dir)
 
-    state_img = None
-    action_idx = None
-    next_state_img = None
+    # Hyperparameters from world_model_args
+    epochs = world_model_args.epochs
+    lr = world_model_args.lr
+    batch_size = world_model_args.batch_size
+    max_iter = world_model_args.max_iter
 
-    for epoch in range(num_epochs):
-        for batch in batch_size:
-            if state_img == None:
-                state_img = random_challenge()
-            else:
-                state_img = state_img
-            
-            action_idx = 
-
-
-
-
-# Example usage:
-# Assume you have a dataset that yields tuples (state_img, action_idx, next_state_img)
-# and a DataLoader constructed from it.
-#
-# from your_dataset_module import YourDataset
-# dataset = YourDataset(...)
-# dataloader = DataLoader(dataset, batch_size=32, shuffle=True)
-#
-# Instantiate your model:
-num_actions = 50000        # example number of actions
-action_embed_dim = 32      # dimension for action embeddings
-state_embed_dim = 64       # dimension for state embeddings (from Vision Transformer)
-diff_in_channels = 3       # input channels for the U-net (e.g., RGB)
-diff_out_channels = 3      # output channels (same as input)
-
-model = FullTransitionModel(
-    num_actions,
-    action_embed_dim,
-    state_embed_dim,
-    diff_in_channels,
-    diff_out_channels
-)
-
-# Run the pretraining loop:
-pretrained_model = pretrain_embedding(model, dataloader, num_epochs=10, noise_level=0.0, lr=1e-4, device='cuda')
-
-if __name__ == "__main__":
-    from arg_parser_le import init_parser_le
-    parser = init_parser_le()
-    args = parser.parse_args()
-
-    # Create model using the specified hyperparameters.
-    # Convert observation_shape list to tuple.
-    obs_shape = tuple(args.observation_shape)
-    model = FullTransitionModel(
-        args.num_actions,
-        args.action_embed_dim,
-        args.state_embed_dim,
-        args.diff_in_channels,
-        args.diff_out_channels,
-        obs_shape
+    # Create an optimizer for all network parameters
+    optimizer = torch.optim.Adam(
+        list(state_encoder.parameters()) +
+        list(action_embedder.parameters()) +
+        list(transition_model.parameters()),
+        lr=lr
     )
 
-    # TODO: define or import your DataLoader here.
-    dataloader = None  # ...existing code to initialize your dataloader...
+    # Loss function for shape prediction
+    mse_loss = torch.nn.MSELoss()
 
-    # Run pretraining.
-    # (Note: pretrain_embedding currently expects noise_level as an extra parameter.)
-    pretrained_model = pretrain_embedding(
-        model,
-        dataloader,
-        num_epochs=args.num_epochs,
-        lr=args.lr,
-        device=args.device,
-        max_episode_length=args.max_episode_length,
-        max_episode=args.max_episode,
-        max_actions=args.max_actions,
-        max_steps=args.max_steps,
-        noise_level=args.noise_level
-    )
-    # ...existing code (e.g., saving model, additional training steps)...
+    for e in range(epochs):
+        for i in range(max_iter):
+            # Sample a batch of transitions from memory (all tensors with a batch dimension)
+            (state_batch, shape_batch, action_batch,
+            reward_batch, next_state_batch, next_shape_batch,
+            terminal_batch) = memory.sample_and_split(batch_size)
+
+            # Ensure the tensors are on the correct device and require gradients when needed
+            state_batch = state_batch.to(DEVICE).requires_grad_()
+            shape_batch = shape_batch.to(DEVICE).requires_grad_()
+            action_batch = action_batch.to(DEVICE)
+            next_state_batch = next_state_batch.to(DEVICE)
+            next_shape_batch = next_shape_batch.to(DEVICE)
+
+            # Forward pass: encode the current state and shape, and embed the batch of actions.
+            state_encoded = state_encoder(state_batch, shape_batch)
+            action_encoded = action_embedder(action_batch)
+
+            # Concatenate the state and action embeddings along the feature dimension
+            cond = torch.cat([state_encoded, action_encoded], dim=1)
+
+            # Predict the next state and shape for the entire batch
+            predicted_next_state, predicted_next_shape = transition_model(state_batch, cond)
+
+            # Compute loss over the batch:
+            # Use a custom max_overlap_loss for the state prediction and MSE for the shape prediction.
+            loss_state = max_overlap_loss(next_state_batch, predicted_next_state)
+            loss_shape = mse_loss(next_shape_batch, predicted_next_shape)
+            total_loss = loss_state + loss_shape
+
+            # Backpropagation: reset gradients, compute gradients, and update parameters
+            optimizer.zero_grad()
+            total_loss.backward()
+            optimizer.step()
+
+            # Optionally log training progress
+            if logger is not None:
+                logger.log({
+                    'epoch': e,
+                    'loss_state': loss_state.item(),
+                    'loss_shape': loss_shape.item(),
+                    'total_loss': total_loss.item()
+                })
+
+            wandb.log({
+                'epoch': e,
+                'iteration': i,
+                'loss_state': loss_state.item(),
+                'loss_shape': loss_shape.item(),
+                'total_loss': total_loss.item()
+            })
+
+            # Optionally perform evaluation at given intervals
+            if e % eval_interval == 0:
+                # Insert evaluation code here (using eval_env) if needed.
+                pass
+
+            # Optionally save model checkpoints
+            if e % save_per_epochs == 0:
+                model_save_path = os.path.join(save_model_dir, f"transition_model_epoch_{e}.pth")
+                torch.save(transition_model.state_dict(), model_save_path)
+                print(f"Model saved to {model_save_path}")
+
+        # Save the final model
+        state_encoder.save_model(save_model_dir)
+        action_embedder.save_model(save_model_dir)
+        transition_model.save_model(save_model_dir)
+
+    return state_encoder, action_embedder, transition_model
 
