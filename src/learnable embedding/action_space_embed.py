@@ -9,6 +9,38 @@ DEVICE = set_device('action_space_embed.py')
 from transformer import EncoderTransformerConfig, TransformerLayer
 from typing import Tuple, Optional
 
+class EncoderTransformerConfig:
+    """
+    Stand-in for the real config. Adjust fields to match your usage.
+    """
+    def _init_(
+        self,
+        vocab_size=11,
+        max_rows=30,
+        max_cols=30,
+        emb_dim=32,
+        latent_dim=32,
+        num_layers=1,
+        scaled_position_embeddings=False,
+        variational=False,
+        latent_projection_bias=False,
+        dtype=torch.float32,
+        transformer_layer=None
+    ):
+        self.vocab_size = vocab_size
+        self.max_rows = max_rows
+        self.max_cols = max_cols
+        self.emb_dim = emb_dim
+        self.latent_dim = latent_dim
+        self.num_layers = num_layers
+        self.scaled_position_embeddings = scaled_position_embeddings
+        self.variational = variational
+        self.latent_projection_bias = latent_projection_bias
+        self.dtype = dtype
+        self.transformer_layer = transformer_layer
+        # For convenience:
+        self.max_len = max_rows * max_cols
+
 class ActionEmbedding(nn.Module):
     def __init__(self, num_actions, embed_dim):
         """

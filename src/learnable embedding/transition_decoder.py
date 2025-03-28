@@ -1,3 +1,7 @@
+# =^ . ^=
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -7,37 +11,35 @@ from utils.util import set_device
 
 DEVICE = set_device('world_model/transformer.py')
 
-class EncoderTransformerConfig:
-    """
-    Stand-in for the real config. Adjust fields to match your usage.
-    """
-    def __init__(
-        self,
-        vocab_size=11,
-        max_rows=30,
-        max_cols=30,
-        emb_dim=32,
-        latent_dim=32,
-        num_layers=1,
-        scaled_position_embeddings=False,
-        variational=False,
-        latent_projection_bias=False,
-        dtype=torch.float32,
-        transformer_layer=None
-    ):
-        self.vocab_size = vocab_size
-        self.max_rows = max_rows
-        self.max_cols = max_cols
-        self.emb_dim = emb_dim
-        self.latent_dim = latent_dim
-        self.num_layers = num_layers
-        self.scaled_position_embeddings = scaled_position_embeddings
-        self.variational = variational
-        self.latent_projection_bias = latent_projection_bias
-        self.dtype = dtype
-        self.transformer_layer = transformer_layer
-        # For convenience:
-        self.max_len = max_rows * max_cols
+#NOTE: to check if correct
+class DecoderTransformerConfig:
+        def __init__(
+            self,
+            emb_dim: int,
+            num_heads: int, # ADDED
+            attention_dropout_rate: float, # ADDED
+            dropout_rate: float, # ADDED
+            mlp_dim_factor: int, # ADDED
+            activation: str, # ADDED
+            use_bias: bool, # ADDED
+            max_rows: int = 30,
+            max_cols: int = 30,
+            vocab_size: int = 10, # NOTE: vocab_size is the number of unique tokens in the vocabulary
+            num_layers: int = 2 # NOTE: number of transformer layers
+        ):
+            self.emb_dim = emb_dim
+            self.max_rows = max_rows
+            self.max_cols = max_cols
+            self.vocab_size = vocab_size
+            self.num_layers = num_layers
+            self.num_heads = num_heads # ADDED
+            self.attention_dropout_rate = attention_dropout_rate # ADDED
+            self.dropout_rate = dropout_rate # ADDED
+            self.mlp_dim_factor = mlp_dim_factor # ADDED
+            self.activation = activation # ADDED
+            self.use_bias = use_bias # ADDED
+
+
 class TransformerLayer(nn.Module):
     def __init__(self, config):
         super().__init__()
@@ -116,6 +118,8 @@ class MlpBlock(nn.Module):
         x = self.fc2(x)
         return x
 
+
+
 class DecoderTransformerTorch(nn.Module):
     '''
 
@@ -126,17 +130,6 @@ class DecoderTransformerTorch(nn.Module):
         super().__init__()
         self.config = config
     
-        # Embeddings
-        self.context_embed = nn.Linear(config.latent_dim, config.emb_dim).to(DEVICE)
-    
-        # Position embeddings
-        self.pos_row_embed = nn.Embedding(config.max_rows, config.emb_dim).to(DEVICE)
-        self.pos_col_embed = nn.Embedding(config.max_cols, config.emb_dim).to(DEVICE)
-        self.grid_shapes_row_embed = nn.Embedding(config.max_rows, config.emb_dim).to(DEVICE)
-        self.grid_shapes_col_embed = nn.Embedding(config.max_cols, config.emb_dim).to(DEVICE)
-        self.colors_embed = nn.Embedding(config.vocab_size, config.emb_dim).to(DEVICE)
-        self.input_output_embed = nn.Embedding(2, config.emb_dim).to(DEVICE)
-
         # Create transformer layers
         self.layers = nn.ModuleList([TransformerLayer(config.transformer_layer).to(DEVICE) for _ in range(config.num_layers)])
         self.layer_norm = nn.LayerNorm(config.emb_dim).to(DEVICE)
@@ -147,22 +140,23 @@ class DecoderTransformerTorch(nn.Module):
         self.grid_proj = nn.Linear(config.emb_dim, config.vocab_size).to(DEVICE)
 
     def forward(self, embedded_action, embedded_state, dropout_eval: bool):
-       
+        
         '''
         Args:
-             input_seq: shape (B, T_in), with token IDs in [0, vocab_size).
-             output_seq: shape (B, T_out), with token IDs in [0, vocab_size).
-             NO context: shape (B, latent_dim), the latent representation from the encoder.
-             dropout_eval: if True, disables dropout.
-         
-         Returns:
-             shape_row_logits: shape (B, max_rows), the logits for grid shape row.
-             shape_col_logits: shape (B, max_cols), the logits for grid shape col.
-             grid_logits: shape (B, T_out-3, vocab_size), the logits for grid tokens.
-        
-        
+            embedded_action: shape (B, T_action, emb_dim), embedded action tokens
+            embedded_state: shape (B, T_state, emb_dim), embedded state tokens
+            dropout_eval: bool, if True, disables dropout for evaluation mode
+            
+        Returns:
+            shape_row_logits: shape (B, max_rows), the logits for grid shape row
+            shape_col_logits: shape (B, max_cols), the logits for grid shape col
+            grid_logits: shape (B, T_out-3, vocab_size), the logits for grid tokens
         '''
         # Concatenate embedded action and embedded state
+        print(f"embedded_action shape: {embedded_action.shape}")
+        print(f"embedded_state shape: {embedded_state.shape}")
+        
+        assert embedded_action.dim() == 3 and embedded_state.dim() == 3, "Both inputs must be 3D tensors (batch, seq_len, emb_dim)"
         x = torch.cat([embedded_action, embedded_state], dim=1)
         
         # Pass through transformer layers
@@ -172,8 +166,18 @@ class DecoderTransformerTorch(nn.Module):
         # Apply layer normalization
         x = self.layer_norm(x) 
 
-        # Project to get logits for shape row, shape col, and grid
-        shape_row_logits = self.shape_row_proj(x[:, embedded_state.size(1)+1, :])
-        shape_col_logits = self.shape_col_proj(x[:, embedded_state.size(1)+2, :])
-        grid_logits = self.grid_proj(x[:, embedded_state.size(1)+3:, :])
+        # Calculate offset more clearly
+        action_length = embedded_action.size(1)
+        state_length = embedded_state.size(1)
+        total_length = action_length + state_length
+        
+        # Use clearer indexing
+        shape_row_idx = action_length + 1  # Assuming this is the correct location
+        shape_col_idx = action_length + 2  # Assuming this is the correct location
+        grid_start_idx = action_length + 3  # Assuming this is the start of grid tokens
+        
+        shape_row_logits = self.shape_row_proj(x[:, shape_row_idx, :])
+        shape_col_logits = self.shape_col_proj(x[:, shape_col_idx, :])
+        grid_logits = self.grid_proj(x[:, grid_start_idx:, :])
+
         return shape_row_logits, shape_col_logits, grid_logits
