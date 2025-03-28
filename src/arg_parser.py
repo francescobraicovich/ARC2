@@ -20,7 +20,7 @@ def init_parser(alg):
         parser.add_argument('--max-episode', type=int, default=500000, help='Maximum number of episodes')
         parser.add_argument('--max-actions', default=1e9, type=int, help='# max actions')
         parser.add_argument('--test-episode', type=int, default=20, help='Maximum testing episodes')
-        parser.add_argument('--warmup', default=0, type=int, help='Time without training but only filling the replay memory')
+        parser.add_argument('--warmup', default=250, type=int, help='Time without training but only filling the replay memory')
         parser.add_argument('--bsize', default=48, type=int, help='Minibatch size')
         parser.add_argument('--rmsize', default=100000, type=int, help='Replay memory size')
 
@@ -42,8 +42,8 @@ def init_parser(alg):
         parser.add_argument('--latent_dim', default=96, type=int, help='Latent dimension for encoder')
 
         # World Model Embedding
-        parser.add_argument('--state_emb_dim', default=128, type=int, help='State embedding dimension')
-        parser.add_argument('--action_emb_dim', default=128, type=int, help='Action embedding dimension')
+        parser.add_argument('--state_emb_dim', default=256, type=int, help='State embedding dimension')
+        parser.add_argument('--action_emb_dim', default=256, type=int, help='Action embedding dimension')
 
         # Exploration & Noise
         parser.add_argument('--epsilon', default=300000, type=int, help='Linear decay of exploration policy')
