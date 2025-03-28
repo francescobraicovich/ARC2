@@ -103,7 +103,8 @@ class WolpertingerAgent(DDPG):
 
         # 2) Determine batch size. (Usually 1 for a single state, or B for a minibatch.)
         # TODO: Find batch size from x_t (state)
-        batch_size = embedded_actions.shape[0]
+        batch_size = x_t.shape[0] if len(x_t.shape) > 1 else 1
+
         print('Batch size: ', batch_size)
 
         # Create or reuse pre-cached aranges
@@ -111,15 +112,16 @@ class WolpertingerAgent(DDPG):
             self.np_aranges[batch_size] = np.arange(batch_size)
             self.torch_aranges[batch_size] = torch.arange(batch_size, device=self.device)
 
-
         # 3) Tile the current states so we can evaluate each candidate with the critic
-        x_t_tiled = torch.tile(x_t, (1, 1, 1)) # B, K, embedding_dim
-        embedded_actions_tiled = torch.tile(embedded_actions, (1, 1)) # B, K
+        x_t_tiled = torch.tile(x_t, (1, self.k_nearest_neighbors, 1)) # B, K, embedding_dim
+        print('X_t tiled shape: ', x_t_tiled.shape)
+        embedded_actions_tiled = torch.tile(embedded_actions, (batch_size, 1, 1)) # B, K
+        print('Embedded actions tiled shape: ', embedded_actions_tiled.shape)
 
         # 4) Evaluate Q(s, a) for each candidate. The critic expects (state, shape) tuple + action
         with torch.no_grad():
-            q1_values = self.critic1(x_t, embedded_actions_tiled)
-            q2_values = self.critic2(x_t, embedded_actions_tiled)
+            q1_values = self.critic1(x_t_tiled, embedded_actions_tiled)
+            q2_values = self.critic2(x_t_tiled, embedded_actions_tiled)
             q_values = torch.min(q1_values, q2_values)
 
         temperature = 0.1
