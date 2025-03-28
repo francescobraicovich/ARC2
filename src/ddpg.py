@@ -206,7 +206,6 @@ class DDPG(object):
             proto_embedded_action = embedded_action + gaussian_noise
             return proto_embedded_action
         
-        print('Returning actor action')
         proto_embedded_action = self.actor(x_t) # return the embedded proto-action chosen by the actor
         return proto_embedded_action
 
