@@ -228,30 +228,20 @@ class EncoderTransformer(nn.Module):
         
         Returns:
             key_padding_mask: shape (B, T), where T = 1 + 4 + 2 * max_rows * max_cols.
-                            True indicates positions that are padding and should be masked.
+                            True indicates positions that are padding.
         """
         B = grid_shapes.shape[0]
         T = 1 + 4 + 2 * (self.config.max_rows * self.config.max_cols)
 
-        # Compute used tokens: 1 CLS + 4 grid shapes + 2*(R*C)
+        # Compute used tokens: 1 (CLS) + 4 grid shape tokens + 2*(R * C)
         rows_used = torch.max(grid_shapes[:, 0, :], dim=-1)[0]  # shape (B,)
         cols_used = torch.max(grid_shapes[:, 1, :], dim=-1)[0]  # shape (B,)
         used_tokens = 1 + 4 + 2 * (rows_used * cols_used)  # shape (B,)
 
-        # Initialize mask with all False (no padding)
-        key_padding_mask = torch.zeros((B, T), dtype=torch.bool, device=DEVICE)
-
-        # Set True for padding positions
-        for b in range(B):
-            n = used_tokens[b].long().item()
-            
-            if n < 0 or n > T:
-                print(f"Invalid token count at batch {b}: n={n}, T={T}")
-                continue  # Skip this batch to avoid errors
-
-            else: # n < T
-                key_padding_mask[b, n:] = True  # Mask out padding tokens
-
+        # Create a tensor with positions from 0 to T-1, shape (B, T)
+        positions = torch.arange(T, device=grid_shapes.device).unsqueeze(0).expand(B, T)
+        # The mask is True for positions that are greater than or equal to used_tokens for each batch element.
+        key_padding_mask = positions >= used_tokens.unsqueeze(1)
         return key_padding_mask
-    
-# Gattino della buona sperenza =^.^=
+        
+    # Gattino della buona sperenza =^.^=
