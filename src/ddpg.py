@@ -43,38 +43,43 @@ class DDPG(object):
         self.noise_clip = args.noise_clip
         self.policy_delay = args.policy_delay
 
+        
+
         # Network configuration for the Actor and Critic networks
         net_cfg = {
-            'hidden1': args.hidden1,
-            'hidden2': args.hidden2,
-            'init_w': args.init_w,
-            'type': args.actor_critic_type,
-            'latent_dim': args.latent_dim           
+            'state_emb_dim': args.state_emb_dim,
+            'action_emb_dim': args.action_emb_dim,
         }
 
         actor_cfg = {
-            **net_cfg,  # Unpack all elements from net_cfg
-            'min_val': args.min_embedding,
-            'max_val': args.max_embedding
+            **net_cfg,
+            'h1_dim': args.h1_dim_actor,
+            'h2_dim': args.h2_dim_actor,
+                }
+
+        critic_cfg = {
+            **net_cfg,
+            'h1_dim': args.h1_dim_critic,
+            'h2_dim': args.h2_dim_critic,
                 }
 
         # Initialize Actor and Critic networks (both primary and target)
-        self.actor = Actor(self.nb_states, self.nb_actions, **actor_cfg).to(self.device)
-        self.actor_target = Actor(self.nb_states, self.nb_actions, **actor_cfg).to(self.device)
+        self.actor = Actor(**actor_cfg).to(self.device)
+        self.actor_target = Actor(**actor_cfg).to(self.device)
         self.actor_optim = Adam(self.actor.parameters(), lr=args.p_lr)
 
-        self.critic1 = Critic(self.nb_states, self.nb_actions, **net_cfg).to(self.device)
-        self.critic1_target = Critic(self.nb_states, self.nb_actions, **net_cfg).to(self.device)
+        self.critic1 = Critic(**critic_cfg).to(self.device)
+        self.critic1_target = Critic(**critic_cfg).to(self.device)
         self.critic1_optim = Adam(self.critic1.parameters(), lr=args.c_lr)
 
-        self.critic2 = Critic(self.nb_states, self.nb_actions, **net_cfg).to(self.device)
-        self.critic2_target = Critic(self.nb_states, self.nb_actions, **net_cfg).to(self.device)
+        self.critic2 = Critic(**critic_cfg).to(self.device)
+        self.critic2_target = Critic(**critic_cfg).to(self.device)
         self.critic2_optim = Adam(self.critic2.parameters(), lr=args.c_lr)
 
         # Synchronize target networks with the primary networks
-        hard_update(self.actor_target, self.actor)
-        hard_update(self.critic1_target, self.critic1)
-        hard_update(self.critic2_target, self.critic2)
+        hard_update(target=self.actor_target, source=self.actor)
+        hard_update(target=self.critic1_target, source=self.critic1)
+        hard_update(target=self.critic2_target, source=self.critic2)
         
         print('-'*50)
         print('At initialization:')
