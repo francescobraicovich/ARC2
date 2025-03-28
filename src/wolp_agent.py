@@ -151,7 +151,7 @@ class WolpertingerAgent(DDPG):
         
         if batch_size == 1:
             stochastic_index = stochastic_index.item()
-            selected_action = actions[0, stochastic_index]
+            selected_action = int(actions[0, stochastic_index])
             selected_embedded_action = embedded_actions[stochastic_index]
             print('Selected action: ', selected_action)
             print('Selected embedded action: ', selected_embedded_action)
@@ -173,6 +173,7 @@ class WolpertingerAgent(DDPG):
             selected_action = reshaped_actions[stochastic_index_np, np_arange, :]
             selected_embedded_action = reshaped_embedded_actions[max_q_indices, self.torch_aranges[batch_size], :]
         """
+
         return selected_action, selected_embedded_action
 
     def select_action(self, x_t, decay_epsilon=True):
@@ -251,7 +252,7 @@ class WolpertingerAgent(DDPG):
         action_batch, reward_batch, terminal_batch
         ) = self.memory.sample_and_split(self.batch_size)
         
-        action_embedded_batch = self.action_space.embedding[action_batch]
+        action_embedded_batch = self.action_space.embedding_gpu[action_batch]
         # TODO: Check why unsqueeze is needed
         #action_batch = torch.unsqueeze(action_batch, 1) # Add back the k-neighrest neighbor dimension
 
