@@ -41,8 +41,16 @@ def main():
     if args.mode == 'train' and wandb.run is None:
         wandb.init(project="arc-v1", config=vars(args), mode="online")
 
+
+    args.load_cleaned_actions = True
     action_space = ARCActionSpace(args)
     num_cleaned_actions = action_space.num_cleaned_actions # number of actions after filtering
+
+    # NOTE: Load a random embedding
+    args.embedding_dim = 32
+    action_embedding = torch.randn(num_cleaned_actions, args.embedding_dim).to(device)
+    action_space.load_action_embeddings(action_embedding)
+    action_space.create_nearest_neighbors()
 
     # 6. Create training and evaluation environments
     train_env = ARC_Env(
@@ -91,7 +99,7 @@ def main():
     # 13. Log hyperparameters
     d_args = vars(args)
     d_args['nb_states'] = nb_states
-    d_args['nb_actions'] = nb_actions
+    #d_args['nb_actions'] = nb_actions
     d_args['continuous'] = continuous
     for k, v in d_args.items():
         logger.info(f"{k}: {v}")
