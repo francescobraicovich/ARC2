@@ -128,6 +128,12 @@ class WolpertingerAgent(DDPG):
             max_q_indices = torch.argmax(q_values, 1)
             stochastic_index = torch.multinomial(q_probabilities, 1)
 
+        print('\nWolp action:')
+        print('Stochastic isdex: ', stochastic_index)
+        print('Actions: ', actions)
+        selected_action = actions[stochastic_index]
+
+        """
         if batch_size == 1:
             # Single state: Just pick the best index
             selected_action = actions[stochastic_index, :]
@@ -144,8 +150,9 @@ class WolpertingerAgent(DDPG):
             stochastic_index_np = max_q_indices.cpu().numpy()
             selected_action = reshaped_actions[stochastic_index_np, np_arange, :]
             selected_embedded_action = reshaped_embedded_actions[max_q_indices, self.torch_aranges[batch_size], :]
+        """
 
-        return selected_action, selected_embedded_action
+        return selected_action#, selected_embedded_action
 
     def select_action(self, x_t, decay_epsilon=True):
         """
@@ -165,7 +172,7 @@ class WolpertingerAgent(DDPG):
 
         # Evaluate the top-k neighbors in the discrete space
         with torch.no_grad():
-            wolp_action, wolp_embedded_action = self.wolp_action(x_t, proto_embedded_action)
+            wolp_action = self.wolp_action(x_t, proto_embedded_action)
 
         # Keep track of the final embedded action used
         self.a_t = wolp_action
@@ -174,8 +181,7 @@ class WolpertingerAgent(DDPG):
         self.actor.train()
         self.critic1.train()
         self.critic2.train()
-
-        return wolp_action, wolp_embedded_action
+        return wolp_action
 
     def random_action(self):
         """
@@ -184,32 +190,12 @@ class WolpertingerAgent(DDPG):
          2) Query k=1 from the discrete action space and return that single action.
         """
         action = super().random_action()
-        embedded_action = self.action_space.embedding[action]
+        #print('Random action from ddpg: ', action)
+        #embedded_action = self.action_space.embedding[action]
+        #print('Random action embedding: ', embedded_action)
         self.a_t = action
-        return embedded_action
-
-    def select_target_action(self, s_t, shape):
-        """
-        For target Q-value computation:
-         1) Get proto_action from the target actor network.
-         2) Clamp to [min_embedding, max_embedding].
-         3) Use wolp_action to choose best discrete neighbor.
-        """
-        with torch.no_grad():
-            proto_embedded_action = self.actor_target((s_t, shape))
-            clamped_action = torch.clamp(
-                proto_embedded_action,
-                min=self.min_embedding,
-                max=self.max_embedding
-            )
-            # Convert to numpy if the action_space.search_point expects numpy
-            clamped_action_np = to_numpy(clamped_action, device=self.device)
-
-            # Evaluate in discrete space
-            wolp_act, wolp_embedded = self.wolp_action(s_t, shape, clamped_action_np)
-
-        return wolp_act, wolp_embedded
-
+        #print('Returning action: ', action)
+        return action
 
     def update_policy(self, step):
 
