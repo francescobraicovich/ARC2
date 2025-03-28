@@ -11,7 +11,7 @@ from utils.util import set_device
 
 DEVICE = set_device('world_model/transformer.py')
 
-#NOTE: to check if correct
+#NOTE: to adjust
 class DecoderTransformerConfig:
         def __init__(
             self,
@@ -26,7 +26,7 @@ class DecoderTransformerConfig:
             max_cols: int = 30,
             vocab_size: int = 10, # NOTE: vocab_size is the number of unique tokens in the vocabulary
             num_layers: int = 2 # NOTE: number of transformer layers
-        ):
+                    ):
             self.emb_dim = emb_dim
             self.max_rows = max_rows
             self.max_cols = max_cols
@@ -38,7 +38,7 @@ class DecoderTransformerConfig:
             self.mlp_dim_factor = mlp_dim_factor # ADDED
             self.activation = activation # ADDED
             self.use_bias = use_bias # ADDED
-
+            
 
 class TransformerLayer(nn.Module):
     def __init__(self, config):
@@ -96,6 +96,9 @@ class TransformerLayer(nn.Module):
         embeddings = embeddings + mlp_out
         return embeddings
 
+
+
+
 class MlpBlock(nn.Module):
     def __init__(self, config):
         super().__init__()
@@ -119,65 +122,73 @@ class MlpBlock(nn.Module):
         return x
 
 
-
 class DecoderTransformerTorch(nn.Module):
     '''
-
     PyTorch re-implementation of the Flax-based DecoderTransformer.
-    
+    Now accepts two separate embedded inputs that are projected to a common space.
     '''
-    def __init__(self, config: DecoderTransformerConfig):
+    def __init__(self, config: DecoderTransformerConfig, emb_action_dim: int, emb_state_dim: int):
         super().__init__()
         self.config = config
+        
+        # Here we assume a simple split: each projection outputs half of config.emb_dim;
+        self.emb_action_proj = nn.Linear(emb_action_dim, config.emb_dim // 2).to(DEVICE)
+        self.emb_state_proj = nn.Linear(emb_state_dim, config.emb_dim // 2).to(DEVICE)
     
-        # Create transformer layers
-        self.layers = nn.ModuleList([TransformerLayer(config.transformer_layer).to(DEVICE) for _ in range(config.num_layers)])
+        # Create transformer layers using the unified config.
+        self.layers = nn.ModuleList([TransformerLayer(config).to(DEVICE) for _ in range(config.num_layers)])
         self.layer_norm = nn.LayerNorm(config.emb_dim).to(DEVICE)
-    
-        # Projections to logits
+        
+        # Projections to logits.
         self.shape_row_proj = nn.Linear(config.emb_dim, config.max_rows).to(DEVICE)
         self.shape_col_proj = nn.Linear(config.emb_dim, config.max_cols).to(DEVICE)
-        self.grid_proj = nn.Linear(config.emb_dim, config.vocab_size).to(DEVICE)
+        # grid_proj now outputs max_rows * max_cols * vocab_size logits.
+        self.grid_proj = nn.Linear(config.emb_dim, config.max_rows * config.max_cols * config.vocab_size).to(DEVICE)
 
     def forward(self, embedded_action, embedded_state, dropout_eval: bool):
-        
         '''
         Args:
-            embedded_action: shape (B, T_action, emb_dim), embedded action tokens
-            embedded_state: shape (B, T_state, emb_dim), embedded state tokens
+            embedded_action: shape (B, emb_action_dim)
+            embedded_state: shape (B, emb_state_dim)
             dropout_eval: bool, if True, disables dropout for evaluation mode
             
         Returns:
-            shape_row_logits: shape (B, max_rows), the logits for grid shape row
-            shape_col_logits: shape (B, max_cols), the logits for grid shape col
-            grid_logits: shape (B, T_out-3, vocab_size), the logits for grid tokens
+            shape_row_logits: shape (B, R), the logits for grid shape row
+            shape_col_logits: shape (B, C), the logits for grid shape col
+            grid_logits: shape (B, R*C, vocab_size), the logits for grid tokens
         '''
-        # Concatenate embedded action and embedded state
-        print(f"embedded_action shape: {embedded_action.shape}")
-        print(f"embedded_state shape: {embedded_state.shape}")
-        
-        assert embedded_action.dim() == 3 and embedded_state.dim() == 3, "Both inputs must be 3D tensors (batch, seq_len, emb_dim)"
-        x = torch.cat([embedded_action, embedded_state], dim=1)
-        
-        # Pass through transformer layers
-        for layer in self.layers:
+        assert len(embedded_action.shape) == 2 and len(embedded_state.shape) == 2
+
+        # Project each input to half of config.emb_dim.
+        x_action = self.emb_action_proj(embedded_action)
+        x_state = self.emb_state_proj(embedded_state)
+        # Concatenate along the embedding (feature) dimension
+        x = torch.cat([x_action, x_state], dim=1)
+        print("DEBUG: after projection and concatenation, x shape:", x.shape)
+
+        # Pass through transformer layers.
+        for i, layer in enumerate(self.layers):
             x = layer(x, dropout_eval=dropout_eval)
-
-        # Apply layer normalization
-        x = self.layer_norm(x) 
-
-        # Calculate offset more clearly
-        action_length = embedded_action.size(1)
-        state_length = embedded_state.size(1)
-        total_length = action_length + state_length
+            print(f"DEBUG: after transformer layer {i}, x shape:", x.shape)
         
-        # Use clearer indexing
-        shape_row_idx = action_length + 1  # Assuming this is the correct location
-        shape_col_idx = action_length + 2  # Assuming this is the correct location
-        grid_start_idx = action_length + 3  # Assuming this is the start of grid tokens
+        # Apply layer normalization.
+        x = self.layer_norm(x)
+        print("DEBUG: after layer normalization, x shape:", x.shape)
         
-        shape_row_logits = self.shape_row_proj(x[:, shape_row_idx, :])
-        shape_col_logits = self.shape_col_proj(x[:, shape_col_idx, :])
-        grid_logits = self.grid_proj(x[:, grid_start_idx:, :])
-
+        # Project to logits.
+        shape_row_logits = self.shape_row_proj(x)
+        shape_col_logits = self.shape_col_proj(x)
+        grid_logits = self.grid_proj(x)  # (B, max_rows * max_cols * vocab_size)
+        print("DEBUG: after grid projection, grid_logits shape:", grid_logits.shape)
+        
+        B = grid_logits.size(0)
+        grid_logits = grid_logits.view(B, self.config.max_rows * self.config.max_cols, self.config.vocab_size)
+        print("DEBUG: after reshaping grid_logits, grid_logits shape:", grid_logits.shape)
+        
+        print("DEBUG: shape_row_logits shape:", shape_row_logits.shape)
+        print("DEBUG: shape_col_logits shape:", shape_col_logits.shape)
+        
         return shape_row_logits, shape_col_logits, grid_logits
+
+
+
