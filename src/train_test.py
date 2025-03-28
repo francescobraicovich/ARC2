@@ -8,7 +8,7 @@ from utils.util import to_tensor
 
 from dsl.utilities.plot import plot_step
 
-state_encoder = lambda state, shape: torch.ravel(state).float()[:256]
+state_encoder = lambda state, shape: torch.ravel(state).float()[:512]
 
 def train(
     continuous,
@@ -74,6 +74,7 @@ def train(
             assert type(action) == int, "Action should be an integer but got: {}".format(type(action))
         else:
             action = agent.select_action(x_t)
+            action = action
             assert type(action) == int, "Action should be an integer but got: {}".format(type(action))
         
 
