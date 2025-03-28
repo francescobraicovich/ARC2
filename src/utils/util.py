@@ -31,11 +31,21 @@ def to_numpy(var, device=None):
     # Detach from the computational graph and convert to NumPy
     return var.detach().numpy()
 
-def to_tensor(ndarray, requires_grad=False, device=None):
+def to_tensor(ndarray, requires_grad=False, device=None, dtype=torch.float32):
     """
-    Convert a NumPy array to a PyTorch tensor with the specified gradient and device settings.
+    Convert a NumPy array to a PyTorch tensor with the specified dtype,
+    gradient, and device settings.
+    
+    Parameters:
+    - ndarray: The input NumPy array.
+    - requires_grad (bool): Whether the resulting tensor requires gradients.
+    - device (torch.device or str, optional): The device to move the tensor to.
+    - dtype (torch.dtype): The desired data type of the tensor.
+    
+    Returns:
+    - torch.Tensor: The resulting PyTorch tensor.
     """
-    tensor = torch.from_numpy(ndarray).float()
+    tensor = torch.from_numpy(ndarray).to(dtype)
     if device:
         tensor = tensor.to(device)
     tensor.requires_grad = requires_grad
