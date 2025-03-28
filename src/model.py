@@ -101,7 +101,9 @@ class Critic(nn.Module):
         # Reshape back to [batch, k, 1]
         print(f"Output shape before view: {out.shape}")
         out = out.view(batch, k, -1)
+        print(f"Output shape after view: {out.shape}")
         out = out.squeeze(-1)
+        print(f"Output shape after view: {out.shape}")
         return out
 
 
