@@ -1,3 +1,7 @@
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname('/Users/filippogombac/Documents/GitHub/ARC2/src/learnable embedding'), '..')))
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
