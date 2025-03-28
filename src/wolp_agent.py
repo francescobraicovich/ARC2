@@ -74,6 +74,8 @@ class WolpertingerAgent(DDPG):
         self.critic1_target.to(self.device)
         self.critic2_target.to(self.device)
 
+        self.double_critic = False
+
         # For caching range arrays if using batches
         self.np_aranges = {}
         self.torch_aranges = {}
@@ -85,49 +87,75 @@ class WolpertingerAgent(DDPG):
         evaluate them in the critic, and choose the best one.
         """
 
+        print('\n\nWolpertinger action selection:')
+
         # 1) Query the action space for the k-nearest neighbors
         #    distances, indices unused in final selection, but you can log them if desired.
+        print('Proto action shape: ', np.shape(proto_action))
+        print('type of proto action: ', type(proto_action))
+        print('X_t shape: ', x_t.shape)
+        print('type of x_t: ', type(x_t))
         distances, actions, embedded_actions = self.action_space.search_point(
             proto_action, k=self.k_nearest_neighbors
         )
-
+    
         # Convert these candidate embedded actions to a tensor on the current device
         embedded_actions = to_tensor(embedded_actions, device=self.device, requires_grad=True)
+        print('\nEmbedded actions shape: ', embedded_actions.shape)
 
         # 2) Determine batch size. (Usually 1 for a single state, or B for a minibatch.)
         # TODO: Find batch size from x_t (state)
-        batch_size = NotImplementedError
+        batch_size = x_t.shape[0] if len(x_t.shape) > 1 else 1
+
+        print('Batch size: ', batch_size)
 
         # Create or reuse pre-cached aranges
         if batch_size not in self.np_aranges:
             self.np_aranges[batch_size] = np.arange(batch_size)
             self.torch_aranges[batch_size] = torch.arange(batch_size, device=self.device)
 
-
         # 3) Tile the current states so we can evaluate each candidate with the critic
-        x_t_tiled = torch.tile(x_t, (1, 1, 1)) # B, K, embedding_dim
-        embedded_actions_tiled = torch.tile(embedded_actions, (1, 1)) # B, K
+        x_t_tiled = torch.tile(x_t, (1, self.k_nearest_neighbors, 1)) # B, K, embedding_dim
+        print('X_t tiled shape: ', x_t_tiled.shape)
+        embedded_actions_tiled = torch.tile(embedded_actions, (batch_size, 1, 1)) # B, K
+        print('Embedded actions tiled shape: ', embedded_actions_tiled.shape)
 
         # 4) Evaluate Q(s, a) for each candidate. The critic expects (state, shape) tuple + action
         with torch.no_grad():
-            q1_values = self.critic1(x_t, embedded_actions_tiled)
-            q2_values = self.critic2(x_t, embedded_actions_tiled)
-            q_values = torch.min(q1_values, q2_values)
+            q1_values = self.critic1(x_t_tiled, embedded_actions_tiled)
+            if self.double_critic:
+                # If using double critic, evaluate both critics and take the minimum
+                q2_values = self.critic2(x_t_tiled, embedded_actions_tiled)
+                q_values = torch.min(q1_values, q2_values)
+            else:
+                # Single critic: just use the first one
+                q_values = q1_values
 
-        temperature = 0.1
-        q_values = q_values / temperature
-        q_probabilities = torch.softmax(q_values, dim=0)
+        q_values = q_values
+        q_probabilities = torch.softmax(q_values, dim=1)
 
-        # 5) Find index of the candidate with maximum Q
+        # 5) Find index of the candidate with maximum Q or stochastic selection
         #    If batch_size=1, it's a simple argmax over dimension=0;
         #    Otherwise, we do argmax over dimension=1 if the shape is (k, B, ...)
         if batch_size == 1:
-            max_q_indices = torch.argmax(q_values, 0)
+            #max_q_indices = torch.argmax(q_values, 0)
             stochastic_index = torch.multinomial(q_probabilities, 1)
         else:
-            max_q_indices = torch.argmax(q_values, 1)
+            #max_q_indices = torch.argmax(q_values, 1)
             stochastic_index = torch.multinomial(q_probabilities, 1)
 
+        print('Stochastic isdex: ', stochastic_index)
+        print('Stochastic index shape: ', stochastic_index.shape)
+        print('Actions shape: ', actions.shape)
+        print('Embedded actions shape: ', embedded_actions.shape)
+        
+        if batch_size == 1:
+            stochastic_index = stochastic_index.item()
+            selected_action = actions[0, stochastic_index]
+            selected_embedded_action = embedded_actions[stochastic_index]
+            print('Selected action: ', selected_action)
+            print('Selected embedded action: ', selected_embedded_action)
+        """
         if batch_size == 1:
             # Single state: Just pick the best index
             selected_action = actions[stochastic_index, :]
@@ -144,7 +172,7 @@ class WolpertingerAgent(DDPG):
             stochastic_index_np = max_q_indices.cpu().numpy()
             selected_action = reshaped_actions[stochastic_index_np, np_arange, :]
             selected_embedded_action = reshaped_embedded_actions[max_q_indices, self.torch_aranges[batch_size], :]
-
+        """
         return selected_action, selected_embedded_action
 
     def select_action(self, x_t, decay_epsilon=True):
@@ -153,6 +181,7 @@ class WolpertingerAgent(DDPG):
         1) The base DDPG actor outputs a proto_action (continuous).
         2) We call wolp_action(...) to get the best discrete neighbor.
         """
+        print('\n\nSelecting action:')
         # Put networks in eval mode to avoid any training side effects
         self.actor.eval()
         self.critic1.eval()
@@ -162,6 +191,7 @@ class WolpertingerAgent(DDPG):
         proto_embedded_action = super().select_action(
             x_t, decay_epsilon=decay_epsilon
         )
+        print('Proto action drom DDPG: ', proto_embedded_action)
 
         # Evaluate the top-k neighbors in the discrete space
         with torch.no_grad():
@@ -174,8 +204,7 @@ class WolpertingerAgent(DDPG):
         self.actor.train()
         self.critic1.train()
         self.critic2.train()
-
-        return wolp_action, wolp_embedded_action
+        return wolp_action
 
     def random_action(self):
         """
@@ -184,32 +213,13 @@ class WolpertingerAgent(DDPG):
          2) Query k=1 from the discrete action space and return that single action.
         """
         action = super().random_action()
-        embedded_action = self.action_space.embedding[action]
+        #print('Random action from ddpg: ', action)
+        #embedded_action = self.action_space.embedding[action]
+        #print('Random action embedding: ', embedded_action)
         self.a_t = action
-        return embedded_action
-
-    def select_target_action(self, s_t, shape):
-        """
-        For target Q-value computation:
-         1) Get proto_action from the target actor network.
-         2) Clamp to [min_embedding, max_embedding].
-         3) Use wolp_action to choose best discrete neighbor.
-        """
-        with torch.no_grad():
-            proto_embedded_action = self.actor_target((s_t, shape))
-            clamped_action = torch.clamp(
-                proto_embedded_action,
-                min=self.min_embedding,
-                max=self.max_embedding
-            )
-            # Convert to numpy if the action_space.search_point expects numpy
-            clamped_action_np = to_numpy(clamped_action, device=self.device)
-
-            # Evaluate in discrete space
-            wolp_act, wolp_embedded = self.wolp_action(s_t, shape, clamped_action_np)
-
-        return wolp_act, wolp_embedded
-
+        #print('Returning action: ', action)
+        assert type(action) == int, "Random action should be an integer index"
+        return action
 
     def update_policy(self, step):
 
@@ -235,9 +245,11 @@ class WolpertingerAgent(DDPG):
         ).item()
 
         # ---- Sample a batch from memory replay buffer ----
-        (state_batch, shape_batch, x_t_batch, action_batch, reward_batch, 
-         next_state_batch, next_shape_batch, next_x_t_batch, terminal_batch) = \
-            self.memory.sample_and_split(self.batch_size)
+        (
+        state_batch, shape_batch, x_t_batch, 
+        next_state_batch, next_shape_batch, next_x_t_batch, 
+        action_batch, reward_batch, terminal_batch
+        ) = self.memory.sample_and_split(self.batch_size)
         
         action_embedded_batch = self.action_space.embedding[action_batch]
         # TODO: Check why unsqueeze is needed

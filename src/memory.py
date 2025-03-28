@@ -21,9 +21,9 @@ print("Using device for memory:", DEVICE)
 # ---------------------------------------------------------------
 # Experience namedtuple
 # ---------------------------------------------------------------
-Experience = namedtuple("Experience", ["state0", "action", "reward",
-                                      "state1", "terminal1",
-                                      "shape0", "shape1"])
+Experience = namedtuple("Experience", ["state0", "state_embedded_0", "action", 
+                                       "reward", "state1", "state_embedded_1",
+                                        "terminal1", "shape0", "shape1"])
 
 # ---------------------------------------------------------------
 # Helper for sampling batch indexes
@@ -116,8 +116,10 @@ class SequentialMemory(Memory):
         super(SequentialMemory, self).__init__(ignore_episode_boundaries=ignore_episode_boundaries)
         
         self.limit = limit
+        
         # RingBuffers for each part of the transition
         self.observations = RingBuffer(limit)
+        self.embedded_observations = RingBuffer(limit)
         self.shapes       = RingBuffer(limit)
         self.actions      = RingBuffer(limit)
         self.rewards      = RingBuffer(limit)
@@ -127,7 +129,7 @@ class SequentialMemory(Memory):
     def nb_entries(self):
         return len(self.observations)
 
-    def append(self, observation, shape, action, reward, terminal, training=True):
+    def append(self, observation, embedded_observation, shape, action, reward, terminal, training=True):
         """
         Add a new transition to memory:
           observation -> (take action) -> reward, terminal
@@ -135,6 +137,7 @@ class SequentialMemory(Memory):
         """
         if training:
             self.observations.append(observation)
+            self.embedded_observations.append(embedded_observation)
             self.shapes.append(shape)
             self.actions.append(action)
             self.rewards.append(reward)
@@ -167,25 +170,27 @@ class SequentialMemory(Memory):
         for idx in batch_idxs:
             # If ignoring episode boundaries, skip transitions where the
             # previous step was terminal (that would cross the boundary).
-            terminal0 = self.terminals[idx - 2] if (idx >= 2) else False
+            terminal0 = self.terminals[idx - 1] if (idx >= 1) else False
 
-            while (terminal0 and not self.ignore_episode_boundaries):
+            while terminal0:
                 # Resample a new index
                 idx = sample_batch_indexes(1, self.nb_entries, 1)[0]
-                terminal0 = self.terminals[idx - 2] if (idx >= 2) else False
+                terminal0 = self.terminals[idx - 1] if (idx >= 1) else False
 
             # Now gather transition info
             state0   = self.observations[idx - 1]
             shape0   = self.shapes[idx - 1]
+            x_t0 = self.embedded_observations[idx - 1]
             action   = self.actions[idx - 1]
             reward   = self.rewards[idx - 1]
             terminal1 = self.terminals[idx - 1]
 
             state1   = self.observations[idx]
             shape1   = self.shapes[idx]
+            x_t1 = self.embedded_observations[idx]
 
-            exp = Experience(state0=state0, action=action, reward=reward,
-                             state1=state1, terminal1=terminal1,
+            exp = Experience(state0=state0,  state_embedded_0=x_t0, action=action, reward=reward,
+                             state1=state1, state_embedded_1=x_t1, terminal1=terminal1,
                              shape0=shape0, shape1=shape1)
             experiences.append(exp)
 
@@ -199,31 +204,35 @@ class SequentialMemory(Memory):
 
         state0_batch   = []
         shape0_batch   = []
-        action_batch   = []
-        reward_batch   = []
+        state_embedded_0_batch = []
+        
         state1_batch   = []
         shape1_batch   = []
+        state_embedded_1_batch = []
+        
+        action_batch   = []
+        reward_batch   = []
         terminal1_batch = []
 
         for exp in experiences:
             state0_batch.append(exp.state0)
             shape0_batch.append(exp.shape0)
-            action_batch.append(exp.action)
-            reward_batch.append(exp.reward)
+            state_embedded_0_batch.append(exp.state_embedded_0)
             state1_batch.append(exp.state1)
             shape1_batch.append(exp.shape1)
-            # Convert terminal to 0/1 or bool as you prefer
+            state_embedded_1_batch.append(exp.state_embedded_1)
+            action_batch.append(exp.action)
+            reward_batch.append(exp.reward)
             terminal1_batch.append(exp.terminal1)
-
-        # Convert to tensors. Adjust dtypes as needed.
-        # If your states are already torch.Tensors, you can do torch.stack(...).
-        # If they're arrays or lists, do torch.tensor(...).
         
         # Example, we assume each state0/state1 is a Tensor of shape (C,H,W) or (D,) etc.
         state0_batch = torch.stack(state0_batch).to(DEVICE)
-        shape0_batch = torch.stack(shape0_batch).to(DEVICE)  # if shape0 is also a Tensor
+        shape0_batch = torch.stack(shape0_batch).to(DEVICE)
+        state_embedded_0_batch = torch.stack(state_embedded_0_batch).to(DEVICE)
+        
         state1_batch = torch.stack(state1_batch).to(DEVICE)
         shape1_batch = torch.stack(shape1_batch).to(DEVICE)
+        state_embedded_1_batch = torch.stack(state_embedded_1_batch).to(DEVICE)
         action_batch = torch.stack(action_batch).to(DEVICE)
 
         # For reward, action, terminal, we typically convert from Python scalars
@@ -231,11 +240,9 @@ class SequentialMemory(Memory):
         # Terminal can be bool or float. Here we make it bool:
         terminal1_batch = torch.tensor(terminal1_batch, dtype=torch.bool, device=DEVICE)
 
-
-        return (state0_batch, shape0_batch,
-                action_batch, reward_batch,
-                state1_batch, shape1_batch,
-                terminal1_batch)
+        return (state0_batch, shape0_batch, state_embedded_0_batch,
+                state1_batch, shape1_batch, state_embedded_1_batch,
+                action_batch, reward_batch, terminal1_batch)
 
     def get_config(self):
         config = super(SequentialMemory, self).get_config()

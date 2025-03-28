@@ -8,6 +8,7 @@ from utils.util import to_tensor
 
 from dsl.utilities.plot import plot_step
 
+state_encoder = lambda state, shape: torch.ravel(state).float()[:128]
 
 def train(
     continuous,
@@ -65,13 +66,18 @@ def train(
             s_t = to_tensor(state, device=agent.device, requires_grad=True)
             shape = to_tensor(shape, device=agent.device, requires_grad=True)
             x_t = state_encoder(s_t, shape)
+            print('x_t shape: ', x_t.shape)
+            print(x_t)
             agent.reset(x_t)
 
         # Pick action
         if step <= warmup:
-            action, embedded_action = agent.random_action()
+            action = agent.random_action()
+            assert type(action) == int, "Action should be an integer but got: {}".format(type(action))
         else:
             action, embedded_action = agent.select_action(x_t)
+            assert type(action) == int, "Action should be an integer but got: {}".format(type(action))
+        
 
         # Step environment
         (next_state, next_shape), r_t, done, truncated, info = train_env.step(action)
@@ -93,11 +99,8 @@ def train(
         if max_episode_length and episode_steps >= max_episode_length - 1:
             truncated = True
 
-        #state_batch, shape_batch, x_t_batch, action_batch, reward_batch, 
-         #next_state_batch, next_shape_batch, next_x_t_batch, terminal_batch
-
         # Observe and update policy
-        agent.observe(state, shape, x_t, next_state, next_shape, next_x_t, action, r_t, done)
+        agent.observe(state, shape, x_t, action, r_t, done)
         if step > warmup:
             agent.update_policy(step)
 

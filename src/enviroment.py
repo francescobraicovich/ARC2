@@ -219,7 +219,8 @@ class ARC_Env(gym.Env):
         # Update the info dictionary
         info = self.info
         info['actions'].append(action)
-        action_string = self.action_space.action_to_string(action)
+        action_vector = self.action_space.space[action]
+        action_string = self.action_space.action_to_string(action_vector)
         info['action_strings'].append(action_string)
         info['num_actions'] += 1
 
@@ -234,7 +235,7 @@ class ARC_Env(gym.Env):
         target_rows, target_cols = target_state_not_padded.shape
 
         # Apply the action to the previous state
-        current_state_tensor = self.act(previous_state_not_padded, action)
+        current_state_tensor = self.act(previous_state_not_padded, action_vector)
 
         # Initialize the arrays to store the results
         rewards = np.zeros(current_state_tensor.shape[0])

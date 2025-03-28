@@ -102,7 +102,9 @@ class ARCActionSpace(Space):
         # Load or create embedded actions
         if args.load_cleaned_actions:
             try:
+                print('Loading cleaned actions from file')
                 self.cleaned_space = np.load(f'src/embedded_space/{args.filter_threshold} threshold/cleaned_actions.npy')
+
             except:
                 self.cleaned_space = self.clean_actions()
         else:
@@ -115,8 +117,16 @@ class ARCActionSpace(Space):
 
         # Create the k-NN model for nearest neighbor search in the embedded space
         self.nearest_neighbors = None
-        self.create_nearest_neighbors()
         print(SEPARATOR)
+
+    @property
+    def embedding_std(self):
+        """
+        Return the standard deviation of the action embeddings.
+        """
+        if self.embedding is None:
+            raise ValueError("Action embeddings have not been loaded.")
+        return np.std(self.embedding, axis=0)
 
     def load_action_embeddings(self, action_embedding):
         numpy_embedding = to_numpy(action_embedding)
@@ -125,8 +135,7 @@ class ARCActionSpace(Space):
     def clean_actions(self):
         args = self.args
         cleaned_actions = filter_by_change(
-            self, self.env, self.args.num_experiments_filter, self.args.filter_threshold, self.args.num_experiments_similarity
-        )
+            self, self.args.num_experiments_filter, self.args.filter_threshold)
         # Directory path based on your existing code
         directory = f'src/embedded_space/{args.filter_threshold} threshold/'
 

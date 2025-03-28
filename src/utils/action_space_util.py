@@ -26,9 +26,8 @@ from rearc.main import *
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Local module imports.
-from enviroment import maximum_overlap_regions, ARC_Env
-from dsl.utilities.padding import pad_grid, unpad_grid
-
+from enviroment import ARC_Env
+from dsl.utilities.padding import unpad_grid
 
 def random_arc_problem(env):
     """
@@ -46,7 +45,7 @@ def random_arc_problem(env):
     unpadded_grid = unpad_grid(training_grid)
     return unpadded_grid
 
-def filter_by_change(action_space, env, num_experiments, threshold):
+def filter_by_change(action_space, num_experiments, threshold):
     """
     Filter actions that induce change in the environment.
 
@@ -64,10 +63,12 @@ def filter_by_change(action_space, env, num_experiments, threshold):
     Returns:
         np.ndarray: An array of actions that meet the change criteria.
     """
-    challenge_path = 'data/RAW_DATA_DIR/arc-prize-2024/arc-agi_training_challenges.json'
-    challenge_dictionary = json.load(open(challenge_path))
+    # Load challenge data for the ARC environment.
+    challenge_dictionary = json.load(
+        open('data/RAW_DATA_DIR/arc-prize-2024/arc-agi_training_challenges.json')
+    )
     env = ARC_Env(
-        path_to_challenges=challenge_dictionary,
+        path_to_challenges='data/RAW_DATA_DIR/arc-prize-2024/arc-agi_training_challenges.json',
         action_space=action_space
     )
 

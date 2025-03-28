@@ -10,7 +10,7 @@ def init_parser(alg):
         parser.add_argument('--env', default='ARC', metavar='ENV', help='Environment to train on')
         parser.add_argument('--mode', default='train', type=str, help='Mode: train/test')
         parser.add_argument('--id', default='0', type=str, help='Experiment ID')
-        parser.add_argument('--load', default=True, metavar='L', help='Load a trained model')
+        parser.add_argument('--load', default=False, metavar='L', help='Load a trained model')
         parser.add_argument('--load-model-dir', default='ARC-run13', metavar='LMD', help='Folder to load trained models from')
         parser.add_argument('--eval-interval', default=300, type=int, help='Evaluate model every X episodes')
         parser.add_argument('--eval-episodes', default=25, type=int, help='Number of episodes to evaluate')
@@ -20,8 +20,8 @@ def init_parser(alg):
         parser.add_argument('--max-episode', type=int, default=500000, help='Maximum number of episodes')
         parser.add_argument('--max-actions', default=1e9, type=int, help='# max actions')
         parser.add_argument('--test-episode', type=int, default=20, help='Maximum testing episodes')
-        parser.add_argument('--warmup', default=250, type=int, help='Time without training but only filling the replay memory')
-        parser.add_argument('--bsize', default=4, type=int, help='Minibatch size')
+        parser.add_argument('--warmup', default=0, type=int, help='Time without training but only filling the replay memory')
+        parser.add_argument('--bsize', default=48, type=int, help='Minibatch size')
         parser.add_argument('--rmsize', default=100000, type=int, help='Replay memory size')
 
         # Policy Update Settings
@@ -33,13 +33,17 @@ def init_parser(alg):
         parser.add_argument('--p-lr', default=3e-4, type=float, help='Policy network learning rate (for DDPG)')
         parser.add_argument('--tau-update', default=0.0005, type=float, help='Moving average for target network')
         parser.add_argument('--weight-decay', default=1e-4, type=float, help='L2 Regularization loss weight decay')
-        
                             
-        # Neural Network Architecture
-        parser.add_argument('--hidden1', default=1024, type=int, help='Hidden units in the first fully connected layer')
-        parser.add_argument('--hidden2', default=1024, type=int, help='Hidden units in the second fully connected layer')
-        parser.add_argument('--actor_critic_type', default='cnn', type=str, help='Type of model (lpn, cnn, mlp)')
-        parser.add_argument('--latent_dim', default=48, type=int, help='Latent dimension for encoder')
+        # Actor-Critic Architecture
+        parser.add_argument('--h1_dim_actor', default=512, type=int, help='Hidden units in the first fully connected layer')
+        parser.add_argument('--h2_dim_actor', default=512, type=int, help='Hidden units in the second fully connected layer')
+        parser.add_argument('--h1_dim_critic', default=512, type=int, help='Hidden units in the first fully connected layer')
+        parser.add_argument('--h2_dim_critic', default=512, type=int, help='Hidden units in the second fully connected layer')
+        parser.add_argument('--latent_dim', default=96, type=int, help='Latent dimension for encoder')
+
+        # World Model Embedding
+        parser.add_argument('--state_emb_dim', default=128, type=int, help='State embedding dimension')
+        parser.add_argument('--action_emb_dim', default=128, type=int, help='Action embedding dimension')
 
         # Exploration & Noise
         parser.add_argument('--epsilon', default=300000, type=int, help='Linear decay of exploration policy')
@@ -52,13 +56,10 @@ def init_parser(alg):
         parser.add_argument('--gpu-ids', type=int, default=[1], nargs='+', help='GPUs to use [-1 for CPU only]')
         parser.add_argument('--gpu-nums', type=int, default=8, help='Number of GPUs to use (default: 1)')
 
-        # Action Embedding & Filtering
+        # Filtering Action Space
         parser.add_argument('--load_action_embedding', default=True, type=bool, help='Load action embedding or not')
         parser.add_argument('--num_experiments_filter', default=120, type=int, help='Number of problems used for filtering actions')
         parser.add_argument('--filter_threshold', default=0.3, type=float, help='Threshold percentage for filtering actions')
-        parser.add_argument('--num_experiments_similarity', default=120, type=int, help='Number of problems used for similarity matrix calculation')
-        parser.add_argument('--max_embedding', default=1., type=float, help='Maximum value for embedding matrix')
-        parser.add_argument('--min_embedding', default=-1., type=float, help='Minimum value for embedding matrix')
 
         # Miscellaneous
         parser.add_argument('--init_w', default=0.003, type=float, help='Initial weight')
