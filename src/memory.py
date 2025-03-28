@@ -205,29 +205,31 @@ class SequentialMemory(Memory):
         state0_batch   = []
         shape0_batch   = []
         state_embedded_0_batch = []
-        action_batch   = []
-        reward_batch   = []
+        
         state1_batch   = []
         shape1_batch   = []
         state_embedded_1_batch = []
+        
+        action_batch   = []
+        reward_batch   = []
         terminal1_batch = []
 
         for exp in experiences:
             state0_batch.append(exp.state0)
             shape0_batch.append(exp.shape0)
             state_embedded_0_batch.append(exp.state_embedded_0)
-            action_batch.append(exp.action)
-            reward_batch.append(exp.reward)
             state1_batch.append(exp.state1)
             shape1_batch.append(exp.shape1)
             state_embedded_1_batch.append(exp.state_embedded_1)
-            # Convert terminal to 0/1 or bool as you prefer
+            action_batch.append(exp.action)
+            reward_batch.append(exp.reward)
             terminal1_batch.append(exp.terminal1)
         
         # Example, we assume each state0/state1 is a Tensor of shape (C,H,W) or (D,) etc.
         state0_batch = torch.stack(state0_batch).to(DEVICE)
         shape0_batch = torch.stack(shape0_batch).to(DEVICE)
         state_embedded_0_batch = torch.stack(state_embedded_0_batch).to(DEVICE)
+        
         state1_batch = torch.stack(state1_batch).to(DEVICE)
         shape1_batch = torch.stack(shape1_batch).to(DEVICE)
         state_embedded_1_batch = torch.stack(state_embedded_1_batch).to(DEVICE)
@@ -238,10 +240,9 @@ class SequentialMemory(Memory):
         # Terminal can be bool or float. Here we make it bool:
         terminal1_batch = torch.tensor(terminal1_batch, dtype=torch.bool, device=DEVICE)
 
-        return (state0_batch, shape0_batch,
-                action_batch, reward_batch,
-                state1_batch, shape1_batch,
-                terminal1_batch)
+        return (state0_batch, shape0_batch, state_embedded_0_batch,
+                state1_batch, shape1_batch, state_embedded_1_batch,
+                action_batch, reward_batch, terminal1_batch)
 
     def get_config(self):
         config = super(SequentialMemory, self).get_config()
