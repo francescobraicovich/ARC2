@@ -17,11 +17,9 @@ class EncoderTransformerConfig:
         max_rows=30,
         max_cols=30,
         emb_dim=32,
-        latent_dim=32,
         num_layers=1,
         scaled_position_embeddings=False,
         variational=False,
-        latent_projection_bias=False,
         dtype=torch.float32,
         transformer_layer=None
     ):
@@ -29,11 +27,9 @@ class EncoderTransformerConfig:
         self.max_rows = max_rows
         self.max_cols = max_cols
         self.emb_dim = emb_dim
-        self.latent_dim = latent_dim
         self.num_layers = num_layers
         self.scaled_position_embeddings = scaled_position_embeddings
         self.variational = variational
-        self.latent_projection_bias = latent_projection_bias
         self.dtype = dtype
         self.transformer_layer = transformer_layer
         # For convenience:

@@ -10,6 +10,7 @@ from transformer import EncoderTransformerConfig, TransformerLayer
 from typing import Tuple, Optional
 
 #NOTE: EncoderTransformerConfig to set
+#NOTWE: EncoderTransformerConfig set by Filo
 
 class ActionEmbedding(nn.Module):
     def __init__(self, num_actions, embed_dim):
@@ -86,7 +87,7 @@ class EncoderTransformer(nn.Module):
     def forward(
         self,
         state: torch.Tensor,
-        grid_shapes: torch.Tensor,
+        grid_shape: torch.Tensor,
         dropout_eval: bool = False,
     ) -> torch.Tensor:
         """
@@ -99,8 +100,8 @@ class EncoderTransformer(nn.Module):
             Encoded sequence of shape (B, emb_dim) 
         """
 
-        # 1) Embed the input grid
-        x = self.embed_grid(state, dropout_eval=dropout_eval)
+        # 1) Embed the input grid - pass grid_shape parameter
+        x = self.embed_grid(state, grid_shape=grid_shape, dropout_eval=dropout_eval)
 
         # 2) Create key_padding_mask
         key_padding_mask = self.make_pad_mask(grid_shape)  # shape (B, T)
@@ -109,12 +110,17 @@ class EncoderTransformer(nn.Module):
         for layer in self.layers:
             x = layer(x, dropout_eval=dropout_eval, pad_mask=key_padding_mask)
 
-        return x
+        # 4) Extract and normalize the CLS token (first position)
+        cls_output = self.cls_layer_norm(x[:, 0])
+    
+        # Return the CLS token as the state embedding
+        return cls_output
+
 
     def embed_grid(
         self,
         state: torch.Tensor,
-        shape: torch.Tensor,
+        grid_shape: torch.Tensor,  # Changed from 'shape' to 'grid_shape' for consistency
         dropout_eval: bool = False
     ) -> torch.Tensor:
         """
@@ -127,16 +133,23 @@ class EncoderTransformer(nn.Module):
         Returns:
           x of shape (batch, 1 + 2 + R * C, emb_dim)
         """
+        #------------------------
+        # Get necessary inputs
+        #------------------------
+
         batch_size = state.shape[0]
         R = state.shape[1]
         C = state.shape[2]
 
-        # Embedding for color tokens: shape (B, R*C) -> (B, R*C, emb_dim)
+        #--------------------------------------
+        # Color tokens embedding
+        # Shape (B, R*C) -> (B, R*C, emb_dim)
+        #--------------------------------------
         colors_embed = self.colors_embed(state.long())
 
-        #NOTE: i am here
-        '''
-        # Position embeddings
+        #--------------------------------------
+        # Position Embedding
+        #--------------------------------------
         if self.config.scaled_position_embeddings:
             # pos_row_embed is nn.Embedding(1, emb_dim). We'll "lookup" zeros, shape -> [R, emb_dim].
             # Then multiply by torch.arange(1, R+1).
@@ -167,43 +180,53 @@ class EncoderTransformer(nn.Module):
             col_embed = col_embed.unsqueeze(0).unsqueeze(2)  # [1, C, 1, emb_dim]
             pos_embed = row_embed + col_embed  # [R, C, 1, emb_dim]
 
-        # Channels embedding
+        #--------------------------------------
+        # Channel Embedding
+        #--------------------------------------
         # shape [2, emb_dim], then broadcast to [R, C, 2, emb_dim].
         channel_ids = torch.arange(2, device=DEVICE, dtype=torch.long)
         channel_emb = self.channels_embed(channel_ids)  # [2, emb_dim]
         # reshape to [1, 1, 2, emb_dim] for broadcast
         channel_emb = channel_emb.unsqueeze(0).unsqueeze(0)
+        
 
+        #--------------------------------------
+        # First pre-CLS embedding
         # Combine: [B, R, C, 2, emb_dim] + [R, C, 1, emb_dim] + [R, C, 2, emb_dim]
         # We can reshape pos_embed to [R, C, 1, emb_dim], it will broadcast across batch & channel.
         # channel_emb is [1, 1, 2, emb_dim], it will broadcast across R, C, batch.
+        #--------------------------------------      
         x = colors_embed + pos_embed + channel_emb  # [B, R, C, 2, emb_dim]
-
         # Flatten [R, C, 2] -> single sequence dim
         x = x.view(batch_size, R * C * 2, self.config.emb_dim)  # (B, 2*R*C, emb_dim)
 
         # --------------------------------------------------------------------
-        # Embed the grid shape tokens
+        # Grid shape tokens embedding
         # grid_shapes has shape (B, 2, 2): e.g. [[R_in,R_out],[C_in,C_out]].
         # We'll embed each row/col count. Then add channel_emb again for clarity.
         # --------------------------------------------------------------------
         # grid_shapes[..., 0, :] => shape (B, 2) for row [R_in, R_out].
         # grid_shapes[..., 1, :] => shape (B, 2) for col [C_in, C_out].
         # They are in [1..max_rows] or [1..max_cols], but the embedding is 0-based -> subtract 1.
-        grid_shapes = grid_shapes.long()
+        grid_shapes = grid_shape.long()
         row_part = self.grid_shapes_row_embed(grid_shapes[:, 0, :] - 1)  # [B, 2, emb_dim]
         col_part = self.grid_shapes_col_embed(grid_shapes[:, 1, :] - 1)  # [B, 2, emb_dim]
 
-        # Add channel embedding to them as well:
+        #--------------------------------------
+        # Seond pre-CLS embedding
+        # Shape embedding + channel embedding for consistent channel vocabulary:
         # channel_emb for shape tokens => shape [2, emb_dim].
-        # We want to add this per 'input' or 'output' channel, so broadcast:
+        #--------------------------------------    
         row_part = row_part + channel_emb.squeeze(0)  # channel_emb.squeeze(0) => shape [1, 2, emb_dim]
         col_part = col_part + channel_emb.squeeze(0)  # same
 
         # Concat along "sequence" dimension => [B, 4, emb_dim]
         grid_shapes_embed = torch.cat([row_part, col_part], dim=1)  # [B, 4, emb_dim]
 
-        # Now we prepend these 4 tokens to x => final shape [B, 4 + 2*R*C, emb_dim]
+        #--------------------------------------
+        # Final pre-CLS embedding
+        # final shape [B, 4 + 2*R*C, emb_dim]
+        #--------------------------------------    
         x = torch.cat([grid_shapes_embed, x], dim=1)
 
         # --------------------------------------------------------------------
@@ -222,7 +245,7 @@ class EncoderTransformer(nn.Module):
         # Apply dropout
         x = self.embed_dropout(x) if not dropout_eval else x
         return x
-        '''
+        
 
     def make_pad_mask(self, grid_shapes: torch.Tensor) -> torch.Tensor:
         """
