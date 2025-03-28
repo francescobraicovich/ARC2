@@ -156,6 +156,8 @@ class DDPG(object):
         """
         Store the most recent transition in the replay buffer.
         """
+        assert type(action) == int, "Action should be an integer index, got {}".format(type(action))
+        assert type(r_t) == np.float64, "Reward should be a float, got {}".format(type(r_t))
         if self.is_training:
             self.memory.append(
                 observation=state,
@@ -189,10 +191,15 @@ class DDPG(object):
         
         if random.random() < self.epsilon:
             action = self.random_action() # return a random proto-action (See wolp_agent.py)
-            return action
+            embedded_action = self.action_space.embedding[action]
+            embedding_std = self.action_space.embedding_std
+            gaussian_noise = np.random.normal(0, embedding_std, size=embedded_action.shape)
+            proto_embedded_action = embedded_action + gaussian_noise
+            return proto_embedded_action
         
-        action = self.actor(x_t) # return the embedded proto-action chosen by the actor
-        return action
+        print('Returning actor action')
+        proto_embedded_action = self.actor(x_t) # return the embedded proto-action chosen by the actor
+        return proto_embedded_action
 
     def reset(self, x_t):
         """
