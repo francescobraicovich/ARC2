@@ -170,21 +170,70 @@ def convolve_numba(image, kernel, cval):
             result[i, j] = acc
     return result
 
-
-
 #Functions to be used in the Selector class
 
+# @nb.njit(parallel=True)
+# def select_color_impl(grid, color):
+#     # Ensure color is an integer
+#     color = int(color)
+#     n_rows = grid.shape[0]
+#     n_cols = grid.shape[1]
+#     # Use explicit comparison instead of "if not ..." to help numba
+#     if check_color_numba(color) == False:
+#         return np.zeros((1, n_rows, n_cols), dtype=grid.dtype)
+#     mask = grid == color
+#     mask3d = mask.reshape((1, n_rows, n_cols))
+#     if np.sum(mask3d) == 0:
+#         return np.zeros((1, n_rows, n_cols), dtype=grid.dtype)
+#     return mask3d
+
+# @nb.njit
+# def select_color_impl(grid, color):
+#     # Ensure color is an integer
+#     color = int(color)
+#     n_rows = grid.shape[0]
+#     n_cols = grid.shape[1]
+#     # Use a simple Boolean check
+#     if not check_color_numba(color):
+#         return np.zeros((1, n_rows, n_cols), dtype=grid.dtype)
+#     mask = grid == color
+#     mask3d = mask.reshape((1, n_rows, n_cols))
+#     if np.count_nonzero(mask3d) == 0:
+#         return np.zeros((1, n_rows, n_cols), dtype=grid.dtype)
+#     return mask3d
+
+
 @nb.njit(parallel=True)
-def select_color_impl(grid: np.ndarray, color: int) -> np.ndarray:
+def select_color_impl(grid, color):
+    # Convert color to integer
+    color = int(color)
     n_rows = grid.shape[0]
     n_cols = grid.shape[1]
+    
+    # If color is invalid, return a zero mask of booleans
     if not check_color_numba(color):
-        return np.zeros((1, n_rows, n_cols), dtype=grid.dtype)
-    mask = grid == color
-    mask3d = mask.reshape((1, n_rows, n_cols))
-    if np.sum(mask3d) == 0:
-        return np.zeros((1, n_rows, n_cols), dtype=grid.dtype)
-    return mask3d
+        return np.zeros((1, n_rows, n_cols), dtype=np.bool_)
+    
+    # Create a boolean mask array manually using parallel loops.
+    mask = np.empty((n_rows, n_cols), dtype=np.bool_)
+    for i in nb.prange(n_rows):
+        for j in range(n_cols):
+            mask[i, j] = (grid[i, j] == color)
+    
+    # Count the number of True entries in the mask
+    cnt = 0
+    for i in range(n_rows):
+        for j in range(n_cols):
+            if mask[i, j]:
+                cnt += 1
+    
+    # If no cell matches, return a zero mask.
+    if cnt == 0:
+        return np.zeros((1, n_rows, n_cols), dtype=np.bool_)
+    
+    # Reshape the mask to add the extra dimension and return it.
+    return mask.reshape((1, n_rows, n_cols))
+
 
 @nb.njit(parallel=True)
 def select_rectangles_impl(grid, color, height, width, min_geom):
