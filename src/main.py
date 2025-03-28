@@ -47,8 +47,7 @@ def main():
     num_cleaned_actions = action_space.num_cleaned_actions # number of actions after filtering
 
     # NOTE: Load a random embedding
-    args.embedding_dim = 32
-    action_embedding = torch.randn(num_cleaned_actions, args.embedding_dim).to(device)
+    action_embedding = torch.randn(num_cleaned_actions, args.action_emb_dim).to(device)
     action_space.load_action_embeddings(action_embedding)
     action_space.create_nearest_neighbors()
 
