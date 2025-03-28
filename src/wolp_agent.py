@@ -74,6 +74,8 @@ class WolpertingerAgent(DDPG):
         self.critic1_target.to(self.device)
         self.critic2_target.to(self.device)
 
+        self.double_critic = False
+
         # For caching range arrays if using batches
         self.np_aranges = {}
         self.torch_aranges = {}
@@ -121,28 +123,38 @@ class WolpertingerAgent(DDPG):
         # 4) Evaluate Q(s, a) for each candidate. The critic expects (state, shape) tuple + action
         with torch.no_grad():
             q1_values = self.critic1(x_t_tiled, embedded_actions_tiled)
-            q2_values = self.critic2(x_t_tiled, embedded_actions_tiled)
-            q_values = torch.min(q1_values, q2_values)
+            if self.double_critic:
+                # If using double critic, evaluate both critics and take the minimum
+                q2_values = self.critic2(x_t_tiled, embedded_actions_tiled)
+                q_values = torch.min(q1_values, q2_values)
+            else:
+                # Single critic: just use the first one
+                q_values = q1_values
 
-        temperature = 0.1
-        q_values = q_values / temperature
-        q_probabilities = torch.softmax(q_values, dim=0)
+        q_values = q_values
+        q_probabilities = torch.softmax(q_values, dim=1)
 
-        # 5) Find index of the candidate with maximum Q
+        # 5) Find index of the candidate with maximum Q or stochastic selection
         #    If batch_size=1, it's a simple argmax over dimension=0;
         #    Otherwise, we do argmax over dimension=1 if the shape is (k, B, ...)
         if batch_size == 1:
-            max_q_indices = torch.argmax(q_values, 0)
+            #max_q_indices = torch.argmax(q_values, 0)
             stochastic_index = torch.multinomial(q_probabilities, 1)
         else:
-            max_q_indices = torch.argmax(q_values, 1)
+            #max_q_indices = torch.argmax(q_values, 1)
             stochastic_index = torch.multinomial(q_probabilities, 1)
 
-        print('\nWolp action:')
         print('Stochastic isdex: ', stochastic_index)
-        print('Actions: ', actions)
-        selected_action = actions[stochastic_index]
-
+        print('Stochastic index shape: ', stochastic_index.shape)
+        print('Actions shape: ', actions.shape)
+        print('Embedded actions shape: ', embedded_actions.shape)
+        
+        if batch_size == 1:
+            stochastic_index = stochastic_index.item()
+            selected_action = actions[0, stochastic_index]
+            selected_embedded_action = embedded_actions[stochastic_index]
+            print('Selected action: ', selected_action)
+            print('Selected embedded action: ', selected_embedded_action)
         """
         if batch_size == 1:
             # Single state: Just pick the best index
@@ -161,7 +173,7 @@ class WolpertingerAgent(DDPG):
             selected_action = reshaped_actions[stochastic_index_np, np_arange, :]
             selected_embedded_action = reshaped_embedded_actions[max_q_indices, self.torch_aranges[batch_size], :]
         """
-        return selected_action#, selected_embedded_action
+        return selected_action, selected_embedded_action
 
     def select_action(self, x_t, decay_epsilon=True):
         """
@@ -183,7 +195,7 @@ class WolpertingerAgent(DDPG):
 
         # Evaluate the top-k neighbors in the discrete space
         with torch.no_grad():
-            wolp_action = self.wolp_action(x_t, proto_embedded_action)
+            wolp_action, wolp_embedded_action = self.wolp_action(x_t, proto_embedded_action)
 
         # Keep track of the final embedded action used
         self.a_t = wolp_action
