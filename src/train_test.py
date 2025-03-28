@@ -75,7 +75,7 @@ def train(
             action = agent.random_action()
             assert type(action) == int, "Action should be an integer but got: {}".format(type(action))
         else:
-            action, embedded_action = agent.select_action(x_t)
+            action = agent.select_action(x_t)
             assert type(action) == int, "Action should be an integer but got: {}".format(type(action))
         
 
@@ -84,6 +84,8 @@ def train(
         next_state = to_tensor(next_state, device=agent.device, requires_grad=True)
         next_shape = to_tensor(next_shape, device=agent.device, requires_grad=True)
         next_x_t = state_encoder(next_state, next_shape)
+
+        print('Type of s_t: ', type(s_t))
 
         total_actions_taken += 1
 
@@ -100,7 +102,8 @@ def train(
             truncated = True
 
         # Observe and update policy
-        agent.observe(state, shape, x_t, action, r_t, done)
+        action = torch.tensor(action, device=agent.device, dtype=torch.int64)
+        agent.observe(s_t, shape, x_t, action, r_t, done)
         if step > warmup:
             agent.update_policy(step)
 
