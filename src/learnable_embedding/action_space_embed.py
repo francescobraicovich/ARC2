@@ -1,7 +1,3 @@
-import sys
-import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname('/Users/filippogombac/Documents/GitHub/ARC2/src/learnable embedding'), '..')))
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -12,6 +8,8 @@ DEVICE = set_device('action_space_embed.py')
 
 from transformer import EncoderTransformerConfig, TransformerLayer
 from typing import Tuple, Optional
+
+#NOTE: EncoderTransformerConfig to set
 
 class ActionEmbedding(nn.Module):
     def __init__(self, num_actions, embed_dim):
@@ -45,7 +43,7 @@ class EncoderTransformer(nn.Module):
     """
     PyTorch re-implementation of the Flax-based EncoderTransformer.
     """
-
+    #NOTE per ora non l'ho toccato l'init
     def __init__(self, config: EncoderTransformerConfig):
         super().__init__()
         self.config = config
@@ -87,24 +85,25 @@ class EncoderTransformer(nn.Module):
 
     def forward(
         self,
-        pairs: torch.Tensor,
+        state: torch.Tensor,
         grid_shapes: torch.Tensor,
         dropout_eval: bool = False,
     ) -> torch.Tensor:
         """
         Args:
-            pairs: shape (*B, R, C, 2), with token IDs in [0, vocab_size).
-            grid_shapes: shape (*B, 2, 2). The last two dims = [[R_in, R_out], [C_in, C_out]].
+            state: shape (*B, R'*C'). input is the padded state with token IDs in [-1, vocab_size). 
+            grid_shapes: shape (*B, R, C)
             dropout_eval: if True, disables dropout.
 
         Returns:
-            Encoded sequence of shape (B, T, emb_dim) where T = 1 + 4 + 2 * R * C.
+            Encoded sequence of shape (B, emb_dim) 
         """
-        # 1) Embed the input grids
-        x = self.embed_grids(pairs, grid_shapes, dropout_eval=dropout_eval)
+
+        # 1) Embed the input grid
+        x = self.embed_grid(state, dropout_eval=dropout_eval)
 
         # 2) Create key_padding_mask
-        key_padding_mask = self.make_pad_mask(grid_shapes)  # shape (B, T)
+        key_padding_mask = self.make_pad_mask(grid_shape)  # shape (B, T)
 
         # 3) Apply stacked Transformer layers
         for layer in self.layers:
@@ -112,10 +111,10 @@ class EncoderTransformer(nn.Module):
 
         return x
 
-    def embed_grids(
+    def embed_grid(
         self,
-        pairs: torch.Tensor,
-        grid_shapes: torch.Tensor,
+        state: torch.Tensor,
+        shape: torch.Tensor,
         dropout_eval: bool = False
     ) -> torch.Tensor:
         """
@@ -123,18 +122,20 @@ class EncoderTransformer(nn.Module):
           - Colors
           - Positions (row/col)
           - Channels
-          - Grid shapes
+          - Grid shape
           - CLS
         Returns:
-          x of shape (batch, 1 + 4 + 2 * R * C, emb_dim)
+          x of shape (batch, 1 + 2 + R * C, emb_dim)
         """
-        batch_size = pairs.shape[0]
-        R = pairs.shape[1]
-        C = pairs.shape[2]
+        batch_size = state.shape[0]
+        R = state.shape[1]
+        C = state.shape[2]
 
-        # Embedding for color tokens: shape (B, R, C, 2) -> (B, R, C, 2, emb_dim)
-        colors_embed = self.colors_embed(pairs.long())
+        # Embedding for color tokens: shape (B, R*C) -> (B, R*C, emb_dim)
+        colors_embed = self.colors_embed(state.long())
 
+        #NOTE: i am here
+        '''
         # Position embeddings
         if self.config.scaled_position_embeddings:
             # pos_row_embed is nn.Embedding(1, emb_dim). We'll "lookup" zeros, shape -> [R, emb_dim].
@@ -221,7 +222,7 @@ class EncoderTransformer(nn.Module):
         # Apply dropout
         x = self.embed_dropout(x) if not dropout_eval else x
         return x
-    
+        '''
 
     def make_pad_mask(self, grid_shapes: torch.Tensor) -> torch.Tensor:
         """
