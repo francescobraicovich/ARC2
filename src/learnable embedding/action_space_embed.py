@@ -86,7 +86,7 @@ class EncoderTransformer(nn.Module):
         pairs: torch.Tensor,
         grid_shapes: torch.Tensor,
         dropout_eval: bool = False,
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+    ) -> torch.Tensor:
         """
         Args:
             pairs: shape (*B, R, C, 2), with token IDs in [0, vocab_size).
@@ -94,7 +94,7 @@ class EncoderTransformer(nn.Module):
             dropout_eval: if True, disables dropout.
 
         Returns:
-            (latent_mu, latent_logvar) or (latent_mu, None) if not variational.
+            Encoded sequence of shape (B, T, emb_dim) where T = 1 + 4 + 2 * R * C.
         """
         # 1) Embed the input grids
         x = self.embed_grids(pairs, grid_shapes, dropout_eval=dropout_eval)
@@ -215,12 +215,7 @@ class EncoderTransformer(nn.Module):
         # with the original approach in JAX.
 
         # Apply dropout
-        if dropout_eval:
-            embed_dropout_p = 0.0
-        else:
-            embed_dropout_p = self.config.transformer_layer.dropout_rate
-
-        x = F.dropout(x, p=embed_dropout_p, training=not dropout_eval)
+        x = self.embed_dropout(x) if not dropout_eval else x
         return x
     
 
