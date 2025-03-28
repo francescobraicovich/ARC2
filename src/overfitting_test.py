@@ -453,5 +453,182 @@ def test_base_strategy(
     
     return successful_sequence, successful_sequence_rewards
 
+def test_pruning_strategy(
+    test_env,
+    agent,
+    challenge_key,
+    max_episode_length,
+    logger,
+    n_depth=3,
+    negative_reward_threshold=-1
+):
+    """
+    Tests overfitting by building and pruning a tree of possible transformation sequences.
+    For each example:
+    1. Find top 3 moves from current state
+    2. Build tree of depth n, keeping track of transformation sequences
+    3. Evaluate states using critic/rewards and prune to keep top 3 paths
+    4. Repeat until solved or all examples exhausted
+    5. Apply best sequence to test case
+    
+    Args:
+        test_env: Training environment instance
+        agent: WolpertingerAgent
+        challenge_key: The specific challenge key to test
+        max_episode_length: Maximum steps per episode
+        logger: Logger instance
+        n_depth: Depth of the tree to build (3^n states will be generated)
+        negative_reward_threshold: Stop a path if cumulative reward goes below this
+    """
+    challenge = test_env.challenge_dictionary[challenge_key]
+    num_training_examples = len(challenge['train'])
+    
+    logger.info(f"Starting pruning test on challenge {challenge_key} with {num_training_examples} training examples")
+    
+    # Initialize variables for tracking paths
+    current_paths = []  # List of (state, sequence, cumulative_reward) tuples
+    best_sequence = None
+    best_reward = float('-inf')
+    
+    # Test on each training example
+    for example_idx in range(num_training_examples):
+        logger.info(f"\nTesting on training example {example_idx + 1}/{num_training_examples}")
+        
+        # Reset environment to this training example
+        state, shape = reset_overfit(test_env, challenge_key, use_test=False, example_index=example_idx)
+        state = to_tensor(state, device=agent.device, requires_grad=False)
+        shape = to_tensor(shape, device=agent.device, requires_grad=False)
+        agent.reset(state, shape)
+        
+        # If we have paths from previous examples, apply them first
+        if current_paths:
+            logger.info(f"Applying {len(current_paths)} paths from previous examples")
+            new_paths = []
+            for path_state, path_sequence, path_reward in current_paths:
+                # Reset to path state
+                test_env.state = path_state
+                # Apply sequence
+                for action in path_sequence:
+                    (next_state, next_shape), reward, done, truncated, info = test_env.step(action)
+                    if done:
+                        logger.info("Successfully solved with previous sequence!")
+                        best_sequence = path_sequence
+                        best_reward = path_reward
+                        break
+                if done:
+                    break
+                new_paths.append((next_state, path_sequence, path_reward))
+            if done:
+                break
+            current_paths = new_paths
+        
+        # Start new path search
+        if not current_paths:
+            current_paths = [(state, [], 0.0)]
+        
+        # Build tree up to depth n
+        for depth in range(n_depth):
+            logger.info(f"Building tree at depth {depth + 1}/{n_depth}")
+            new_paths = []
+            
+            for path_state, path_sequence, path_reward in current_paths:
+                # Skip paths with negative cumulative reward
+                if path_reward < negative_reward_threshold:
+                    continue
+                
+                # Get top 3 moves (placeholder - TO BE IMPLEMENTED)
+                top_actions = get_top_actions(agent, path_state, shape, k=3)
+                
+                # Apply each action and track new paths
+                for action in top_actions:
+                    test_env.state = path_state
+                    (next_state, next_shape), reward, done, truncated, info = test_env.step(action)
+                    
+                    if done:
+                        logger.info("Successfully solved!")
+                        best_sequence = path_sequence + [action]
+                        best_reward = path_reward + reward
+                        break
+                    
+                    # Evaluate new state with critic
+                    next_state_tensor = to_tensor(next_state, device=agent.device, requires_grad=False)
+                    with torch.no_grad():
+                        q1 = agent.critic1((next_state_tensor, shape), to_tensor(action, device=agent.device, requires_grad=False))
+                        q2 = agent.critic2((next_state_tensor, shape), to_tensor(action, device=agent.device, requires_grad=False))
+                        q_value = torch.min(q1, q2).item()
+                    
+                    new_paths.append((
+                        next_state,
+                        path_sequence + [action],
+                        path_reward + reward
+                    ))
+                
+                if done:
+                    break
+            
+            if done:
+                break
+
+            # TODO: Pruning with cumulative reward or with the critic?
+            # TODO: Implement mid path stops if the sequence is going bad?
+            # Prune to keep top 3 paths based on critic values
+            if new_paths:
+                # Sort paths by cumulative reward
+                new_paths.sort(key=lambda x: x[2], reverse=True)
+                current_paths = new_paths[:3]
+            else:
+                current_paths = []
+        
+        # Log results for this example
+        logger.info(f"Example {example_idx + 1} results:")
+        logger.info(f"Number of paths: {len(current_paths)}")
+        if current_paths:
+            logger.info(f"Best path reward: {current_paths[0][2]:.2f}")
+        
+        # Log to wandb
+        wandb.log({
+            "pruning_test/example": example_idx,
+            "pruning_test/num_paths": len(current_paths),
+            "pruning_test/best_reward": current_paths[0][2] if current_paths else float('-inf'),
+            "pruning_test/solved": done,
+            "pruning_test/challenge_key": challenge_key
+        })
+    
+    # After processing all training examples, try the best sequence on the test example
+    logger.info("\nApplying best sequence to test example...")
+    state, shape = reset_overfit(test_env, challenge_key, use_test=True)
+    state = to_tensor(state, device=agent.device, requires_grad=False)
+    shape = to_tensor(shape, device=agent.device, requires_grad=False)
+    agent.reset(state, shape)
+    
+    test_reward = 0
+    for action in best_sequence:
+        (next_state, next_shape), reward, done, truncated, info = test_env.step(action)
+        test_reward += reward
+        if done:
+            logger.info("Successfully solved test example!")
+            break
+    
+    logger.info(f"Test example results:")
+    logger.info(f"Final reward: {test_reward:.2f}")
+    logger.info(f"Solved: {done}")
+    
+    # Log test results to wandb
+    wandb.log({
+        "pruning_test/test_reward": test_reward,
+        "pruning_test/test_solved": done,
+        "pruning_test/challenge_key": challenge_key
+    })
+    
+    # Log final results
+    logger.info(f"\nFinal results for challenge {challenge_key}:")
+    logger.info(f"Best sequence: {best_sequence}")
+    logger.info(f"Sequence length: {len(best_sequence)}")
+    logger.info(f"Test example solved: {done}")
+    
+    return best_sequence, test_reward
+
+
+
 
 
