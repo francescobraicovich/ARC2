@@ -176,15 +176,14 @@ def convolve_numba(image, kernel, cval):
 
 @nb.njit(parallel=True)
 def select_color_impl(grid: np.ndarray, color: int) -> np.ndarray:
-    # If color is not valid, return a 3D zero array.
+    n_rows = grid.shape[0]
+    n_cols = grid.shape[1]
     if not check_color_numba(color):
-        return np.expand_dims(np.zeros_like(grid), axis=0)
+        return np.zeros((1, n_rows, n_cols), dtype=grid.dtype)
     mask = grid == color
-    n_rows, n_cols = grid.shape
-    mask3d = mask.reshape((-1, n_rows, n_cols))
+    mask3d = mask.reshape((1, n_rows, n_cols))
     if np.sum(mask3d) == 0:
-        # In numba mode we cannot "raise" a Warning easily; return zero mask.
-        return np.expand_dims(np.zeros_like(grid), axis=0)
+        return np.zeros((1, n_rows, n_cols), dtype=grid.dtype)
     return mask3d
 
 @nb.njit(parallel=True)
