@@ -288,8 +288,8 @@ def reset_overfit(env, challenge_key, use_test=False, example_index=None, challe
     
     return env.state, challenge_key
 
-def test_overfit(
-    train_env,
+def test_base_strategy(
+    test_env,
     agent,
     challenge_key,
     max_episode_length,
@@ -299,27 +299,22 @@ def test_overfit(
     """
     Tests overfitting by finding a sequence of transformations that works across all training examples.
     For each training example:
-    1. Applies transformations until we get a streak of negative rewards
-    2. Keeps the sequence that improved the state
+    1. Applies transformations until we get a streak of non-improving cumulative rewards
+    2. Keeps the sequence that led to the highest cumulative reward
     3. Resets and applies the successful sequence to the next example
     4. Continues until we find a sequence that works on all examples
+    5. Finally applies the successful sequence to the test example
     
     Args:
-        train_env: Training environment instance
+        test_env: Training environment instance
         agent: WolpertingerAgent
         challenge_key: The specific challenge key to test
         max_episode_length: Maximum steps per episode
         logger: Logger instance
-        negative_streak_threshold: Number of consecutive negative rewards before stopping
+        negative_streak_threshold: Number of consecutive non-improving transformations before stopping
     """
-    # Load challenge data
-    with open('data/RAW_DATA_DIR/arc-prize-2024/arc-agi_training_challenges.json', 'r') as f:
-        challenges = json.load(f)
-    
-    if challenge_key not in challenges:
-        raise ValueError(f"Challenge key {challenge_key} not found in challenges file")
-    
-    challenge = challenges[challenge_key]
+   
+    challenge = test_env.challenge_dictionary[challenge_key]
     num_training_examples = len(challenge['train'])
     
     logger.info(f"Starting overfit test on challenge {challenge_key} with {num_training_examples} training examples")
@@ -329,14 +324,15 @@ def test_overfit(
     successful_sequence_rewards = []
     current_sequence = []
     current_sequence_rewards = []
-    negative_streak = 0
+    non_improving_streak = 0
+    best_cumulative_reward = float('-inf')
     
     # Test on each training example
     for example_idx in range(num_training_examples):
         logger.info(f"\nTesting on training example {example_idx + 1}/{num_training_examples}")
         
         # Reset environment to this training example
-        state, shape = reset_overfit(train_env, challenge_key, use_test=False, example_index=example_idx)
+        state, shape = reset_overfit(test_env, challenge_key, use_test=False, example_index=example_idx)
         state = to_tensor(state, device=agent.device, requires_grad=False)
         shape = to_tensor(shape, device=agent.device, requires_grad=False)
         agent.reset(state, shape)
@@ -345,45 +341,53 @@ def test_overfit(
         if successful_sequence:
             logger.info(f"Applying successful sequence from previous examples: {successful_sequence}")
             for action in successful_sequence:
-                (next_state, next_shape), reward, done, truncated, info = train_env.step(action)
+                (next_state, next_shape), reward, done, truncated, info = test_env.step(action)
                 if done:
                     logger.info("Successfully solved with previous sequence!")
                     break
             if done:
                 continue
+            # Update state after applying successful sequence
+            state = next_state
+            shape = next_shape
         
         # Start new sequence search
         current_sequence = []
         current_sequence_rewards = []
-        negative_streak = 0
+        non_improving_streak = 0
+        best_cumulative_reward = float('-inf')
         steps = 0
+        cumulative_reward = 0
         
         while steps < max_episode_length:
             # Select action
             action, _ = agent.select_action(state, shape, decay_epsilon=False)
             
             # Apply action
-            (next_state, next_shape), reward, done, truncated, info = train_env.step(action)
+            (next_state, next_shape), reward, done, truncated, info = test_env.step(action)
             next_state = to_tensor(next_state, device=agent.device, requires_grad=False)
             next_shape = to_tensor(next_shape, device=agent.device, requires_grad=False)
             
             # Update sequence tracking
             current_sequence.append(action)
             current_sequence_rewards.append(reward)
+            cumulative_reward += reward
             
-            # Check for negative streak
-            if reward < 0:
-                negative_streak += 1
-                if negative_streak >= negative_streak_threshold:
-                    # If we have a successful sequence, keep it
-                    if current_sequence_rewards and max(current_sequence_rewards) > 0:
-                        successful_sequence = current_sequence[:current_sequence_rewards.index(max(current_sequence_rewards)) + 1]
-                        successful_sequence_rewards = current_sequence_rewards[:len(successful_sequence)]
-                        logger.info(f"Found successful sequence: {successful_sequence}")
-                        logger.info(f"With rewards: {successful_sequence_rewards}")
-                    break
+            # Check if this transformation improved the cumulative reward
+            if cumulative_reward > best_cumulative_reward:
+                best_cumulative_reward = cumulative_reward
+                non_improving_streak = 0
+                # Update successful sequence if this is the best so far
+                successful_sequence = current_sequence.copy()
+                successful_sequence_rewards = current_sequence_rewards.copy()
             else:
-                negative_streak = 0
+                non_improving_streak += 1
+                if non_improving_streak >= negative_streak_threshold:
+                    logger.info(f"Stopping due to {negative_streak_threshold} non-improving transformations")
+                    # Reset environment to next example and apply successful sequence
+                    if example_idx < num_training_examples - 1:
+                        logger.info("Moving to next example and applying successful sequence...")
+                        break
             
             # Check if solved
             if done:
@@ -400,24 +404,52 @@ def test_overfit(
         # Log results for this example
         logger.info(f"Example {example_idx + 1} results:")
         logger.info(f"Steps taken: {steps}")
-        logger.info(f"Final reward: {sum(current_sequence_rewards):.2f}")
+        logger.info(f"Best cumulative reward: {best_cumulative_reward:.2f}")
         logger.info(f"Sequence length: {len(current_sequence)}")
+        logger.info(f"Successful sequence: {successful_sequence}")
         
         # Log to wandb
         wandb.log({
             "overfit_test/example": example_idx,
             "overfit_test/steps": steps,
-            "overfit_test/final_reward": sum(current_sequence_rewards),
+            "overfit_test/best_cumulative_reward": best_cumulative_reward,
             "overfit_test/sequence_length": len(current_sequence),
             "overfit_test/solved": done,
             "overfit_test/challenge_key": challenge_key
         })
+    
+    # After processing all training examples, try the successful sequence on the test example
+    logger.info("\nApplying final successful sequence to test example...")
+    state, shape = reset_overfit(test_env, challenge_key, use_test=True)
+    state = to_tensor(state, device=agent.device, requires_grad=False)
+    shape = to_tensor(shape, device=agent.device, requires_grad=False)
+    agent.reset(state, shape)
+    
+    test_reward = 0
+    for action in successful_sequence:
+        (next_state, next_shape), reward, done, truncated, info = test_env.step(action)
+        test_reward += reward
+        if done:
+            logger.info("Successfully solved test example!")
+            break
+    
+    logger.info(f"Test example results:")
+    logger.info(f"Final reward: {test_reward:.2f}")
+    logger.info(f"Solved: {done}")
+    
+    # Log test results to wandb
+    wandb.log({
+        "overfit_test/test_reward": test_reward,
+        "overfit_test/test_solved": done,
+        "overfit_test/challenge_key": challenge_key
+    })
     
     # Log final results
     logger.info(f"\nFinal results for challenge {challenge_key}:")
     logger.info(f"Successful sequence: {successful_sequence}")
     logger.info(f"Sequence rewards: {successful_sequence_rewards}")
     logger.info(f"Sequence length: {len(successful_sequence)}")
+    logger.info(f"Test example solved: {done}")
     
     return successful_sequence, successful_sequence_rewards
 

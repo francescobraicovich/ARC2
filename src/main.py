@@ -53,6 +53,11 @@ def main():
         action_space=action_space
     )
 
+    test_env = ARC_Env(
+        path_to_challenges='data/RAW_DATA_DIR/arc-prize-2024/arc-agi_evaluation_challenges.json',
+        action_space=action_space
+    )
+
     # 7. Set seeds
     if args.seed > 0:
         np.random.seed(args.seed)
