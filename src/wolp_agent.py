@@ -99,11 +99,12 @@ class WolpertingerAgent(DDPG):
     
         # Convert these candidate embedded actions to a tensor on the current device
         embedded_actions = to_tensor(embedded_actions, device=self.device, requires_grad=True)
-        print('Embedded actions shape: ', embedded_actions.shape)
+        print('\nEmbedded actions shape: ', embedded_actions.shape)
 
         # 2) Determine batch size. (Usually 1 for a single state, or B for a minibatch.)
         # TODO: Find batch size from x_t (state)
         batch_size = embedded_actions.shape[0]
+        print('Batch size: ', batch_size)
 
         # Create or reuse pre-cached aranges
         if batch_size not in self.np_aranges:
