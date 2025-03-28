@@ -60,7 +60,7 @@ class EncoderTransformer(nn.Module):
 
         # Embeddings for colors, channels, grid shapes, and CLS token
         self.colors_embed = nn.Embedding(self.config.vocab_size, self.config.emb_dim).to(DEVICE)
-        self.channels_embed = nn.Embedding(2, self.config.emb_dim).to(DEVICE)
+        self.channels_embed = nn.Embedding(2, self.config.emb_dim).to(DEVICE) # 2 channels: 0 current, 1 target
 
         self.grid_shapes_row_embed = nn.Embedding(self.config.max_rows, self.config.emb_dim).to(DEVICE)
         self.grid_shapes_col_embed = nn.Embedding(self.config.max_cols, self.config.emb_dim).to(DEVICE)
@@ -80,22 +80,6 @@ class EncoderTransformer(nn.Module):
             self.config.emb_dim,
             elementwise_affine=False  # mimic use_scale=False, use_bias=False
         ).to(DEVICE)
-
-        # Projections for latent mean/logvar
-        self.latent_mu = nn.Linear(
-            self.config.emb_dim,
-            self.config.latent_dim,
-            bias=self.config.latent_projection_bias
-        ).to(DEVICE)
-
-        if self.config.variational:
-            self.latent_logvar = nn.Linear(
-                self.config.emb_dim,
-                self.config.latent_dim,
-                bias=self.config.latent_projection_bias
-            ).to(DEVICE)
-        else:
-            self.latent_logvar = None
 
     def forward(
         self,
@@ -122,19 +106,7 @@ class EncoderTransformer(nn.Module):
         for layer in self.layers:
             x = layer(x, dropout_eval=dropout_eval, pad_mask=key_padding_mask)
 
-        # 4) Extract CLS token (batch_first => x[:, 0, :])
-        cls_embed = x[:, 0, :]
-
-        # 5) LayerNorm on CLS
-        cls_embed = self.cls_layer_norm(cls_embed)
-
-        # 6) Project to latent space
-        latent_mu = self.latent_mu(cls_embed).to(torch.float32)
-        if self.config.variational:
-            latent_logvar = self.latent_logvar(cls_embed).to(torch.float32)
-        else:
-            latent_logvar = None
-        return latent_mu#, latent_logvar
+        return x
 
     def embed_grids(
         self,
@@ -277,33 +249,14 @@ class EncoderTransformer(nn.Module):
         # Set True for padding positions
         for b in range(B):
             n = used_tokens[b].long().item()
-            if n < T:
-                key_padding_mask[b, n:] = True  # Mask out padding tokens
-
-        return key_padding_mask
-    
-    def make_pad_mask(self, grid_shapes: torch.Tensor) -> torch.Tensor:
-
-        B = grid_shapes.shape[0]
-        T = 1 + 4 + 2 * (self.config.max_rows * self.config.max_cols)
-
-        # Compute used tokens: 1 CLS + 4 grid shapes + 2*(R*C)
-        rows_used = torch.max(grid_shapes[:, 0, :], dim=-1)[0]
-        cols_used = torch.max(grid_shapes[:, 1, :], dim=-1)[0]
-
-        used_tokens = 1 + 4 + 2 * (rows_used * cols_used)
-
-        # Initialize mask with all False (no padding)
-        key_padding_mask = torch.zeros((B, T), dtype=torch.bool, device=DEVICE)
-
-        for b in range(B):
-            n = used_tokens[b].long().item()
-
+            
             if n < 0 or n > T:
                 print(f"Invalid token count at batch {b}: n={n}, T={T}")
                 continue  # Skip this batch to avoid errors
 
-            if n < T:
+            else: # n < T
                 key_padding_mask[b, n:] = True  # Mask out padding tokens
 
         return key_padding_mask
+    
+# Gattino della buona sperenza =^.^=
