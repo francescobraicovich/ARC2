@@ -8,7 +8,7 @@ from utils.util import to_tensor
 
 from dsl.utilities.plot import plot_step
 
-state_encoder = lambda state, shape: torch.ravel(state).float()[:64]
+state_encoder = lambda state, shape: torch.ravel(state).float()[:128]
 
 def train(
     continuous,
