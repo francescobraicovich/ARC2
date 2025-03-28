@@ -12,6 +12,7 @@ Dependencies:
 - Custom modules from dsl and utils packages
 """
 
+
 # Standard library imports
 from functools import partial
 import os
@@ -19,7 +20,7 @@ import os
 # Third-party imports
 import numpy as np
 from gymnasium.spaces import Space
-from utils.util import to_numpy
+from utils.util import to_numpy, set_device
 from sklearn.neighbors import NearestNeighbors
 from sklearn.preprocessing import MinMaxScaler
 
@@ -29,6 +30,7 @@ from dsl.select import Selector
 from dsl.transform import Transformer
 from utils.action_space_util import filter_by_change
 
+DEVICE = set_device('action_space.py')
 
 class ARCActionSpace(Space):
     """
@@ -114,6 +116,7 @@ class ARCActionSpace(Space):
 
         # Create a variable to store the action embeddings
         self.embedding = None
+        self.embedding_gpu = None
 
         # Create the k-NN model for nearest neighbor search in the embedded space
         self.nearest_neighbors = None
@@ -129,6 +132,11 @@ class ARCActionSpace(Space):
         return np.std(self.embedding, axis=0)
 
     def load_action_embeddings(self, action_embedding):
+        # Store the action embeddings as torch tensor on the GPU
+        self.embedding_gpu = action_embedding
+        self.embedding_gpu.to(DEVICE)
+
+        # Convert the action embeddings to numpy array for CPU operations
         numpy_embedding = to_numpy(action_embedding)
         self.embedding = numpy_embedding
     
