@@ -36,8 +36,6 @@ class Actor(nn.Module):
         """
         Forward pass of the Actor network.
         """
-        print('Using the actor network')
-        print(f"Input shape: {x_t.shape}")
         x = self.gelu(self.fc1(x_t))
         x = self.gelu(self.fc2(x))
         out = self.fc3(x)
@@ -99,11 +97,8 @@ class Critic(nn.Module):
         out = self.fc2(ff_out)                  # [batch*k, 1]
         
         # Reshape back to [batch, k, 1]
-        print(f"Output shape before view: {out.shape}")
         out = out.view(batch, k, -1)
-        print(f"Output shape after view: {out.shape}")
         out = out.squeeze(-1)
-        print(f"Output shape after view: {out.shape}")
         return out
 
 
