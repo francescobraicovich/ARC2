@@ -10,7 +10,7 @@ from transformer import EncoderTransformerConfig, TransformerLayer
 from typing import Tuple, Optional
 
 #NOTE: EncoderTransformerConfig to set
-#NOTWE: EncoderTransformerConfig set by Filo
+#NOTE: EncoderTransformerConfig set by Filo
 
 class ActionEmbedding(nn.Module):
     def __init__(self, num_actions, embed_dim):

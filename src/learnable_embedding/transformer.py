@@ -9,7 +9,7 @@ DEVICE = set_device('world_model/transformer.py')
 
 class EncoderTransformerConfig:
     """
-    Stand-in for the real config. Adjust fields to match your usage.
+    Configuration for EncoderTransformer.
     """
     def __init__(
         self,
@@ -19,9 +19,15 @@ class EncoderTransformerConfig:
         emb_dim=32,
         num_layers=1,
         scaled_position_embeddings=False,
-        variational=False,
         dtype=torch.float32,
-        transformer_layer=None
+        dropout_rate=0.1,
+        # TransformerLayer parameters
+        num_heads=4,
+        attention_dropout_rate=0.1,
+        use_bias=True,
+        # MlpBlock parameters
+        activation="relu",
+        mlp_dim_factor=4.0
     ):
         self.vocab_size = vocab_size
         self.max_rows = max_rows
@@ -29,11 +35,22 @@ class EncoderTransformerConfig:
         self.emb_dim = emb_dim
         self.num_layers = num_layers
         self.scaled_position_embeddings = scaled_position_embeddings
-        self.variational = variational
         self.dtype = dtype
-        self.transformer_layer = transformer_layer
+        self.dropout_rate = dropout_rate
         # For convenience:
         self.max_len = max_rows * max_cols
+        
+        # Create nested transformer_layer config with all required parameters
+        self.transformer_layer = type('TransformerLayerConfig', (), {
+            'emb_dim': emb_dim,
+            'num_heads': num_heads,
+            'attention_dropout_rate': attention_dropout_rate,
+            'use_bias': use_bias,
+            'dropout_rate': dropout_rate,
+            'activation': activation,
+            'mlp_dim_factor': mlp_dim_factor
+        })
+
 class TransformerLayer(nn.Module):
     def __init__(self, config):
         super().__init__()
