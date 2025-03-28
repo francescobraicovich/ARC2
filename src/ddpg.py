@@ -161,8 +161,12 @@ class DDPG(object):
         """
         Store the most recent transition in the replay buffer.
         """
-        assert type(action) == int, "Action should be an integer index, got {}".format(type(action))
+        assert type(state) == torch.Tensor, "State should be a torch tensor, got {}".format(type(state))
+        assert type(shape) == torch.Tensor, "Shape should be a torch tensor, got {}".format(type(shape))
+        assert type(x_t) == torch.Tensor, "x_t should be a torch tensor, got {}".format(type(x_t))
+        assert type(action) == torch.Tensor, "Action should be a torch tensor, got {}".format(type(action))
         assert type(r_t) == np.float64, "Reward should be a float, got {}".format(type(r_t))
+
         if self.is_training:
             self.memory.append(
                 observation=state,
