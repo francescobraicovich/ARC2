@@ -152,17 +152,19 @@ class DDPG(object):
         self.critic2.to(self.device)
         self.critic2_target.to(self.device)
 
-    def observe(self, r_t, s_t1, shape1, done):
+    def observe(self, state, shape, x_t, action, r_t, done):
         """
         Store the most recent transition in the replay buffer.
         """
-
         if self.is_training:
-            assert isinstance(self.a_t, torch.Tensor)
-            assert isinstance(self.s_t, torch.Tensor)
-            self.memory.append(self.s_t, self.shape, self.a_t, r_t, done)
-            self.s_t = s_t1
-            self.shape = shape1
+            self.memory.append(
+                observation=state,
+                embedded_observation=x_t,
+                shape=shape,
+                action=action,
+                reward=r_t,
+                terminal=done
+            )
 
     def random_action(self):
         """
