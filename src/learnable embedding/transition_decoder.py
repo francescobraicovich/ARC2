@@ -1,3 +1,7 @@
+# =^ . ^=
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -11,8 +15,7 @@ DEVICE = set_device('world_model/transformer.py')
 class DecoderTransformerConfig:
         def __init__(
             self,
-            emb_dim: None,
-            transformer_layer: dict, #NOTE or NONE
+            emb_dim: int,
             num_heads: int, # ADDED
             attention_dropout_rate: float, # ADDED
             dropout_rate: float, # ADDED
@@ -29,7 +32,6 @@ class DecoderTransformerConfig:
             self.max_cols = max_cols
             self.vocab_size = vocab_size
             self.num_layers = num_layers
-            self.transformer_layer = transformer_layer
             self.num_heads = num_heads # ADDED
             self.attention_dropout_rate = attention_dropout_rate # ADDED
             self.dropout_rate = dropout_rate # ADDED
@@ -141,25 +143,21 @@ class DecoderTransformerTorch(nn.Module):
         
         '''
         Args:
-                input_seq: shape (B, T_in), with token IDs in [0, vocab_size).
-                output_seq: shape (B, T_out), with token IDs in [0, vocab_size).
-                NO context: shape (B, latent_dim), the latent representation from the encoder.
-                dropout_eval: if True, disables dropout.
+            embedded_action: shape (B, T_action, emb_dim), embedded action tokens
+            embedded_state: shape (B, T_state, emb_dim), embedded state tokens
+            dropout_eval: bool, if True, disables dropout for evaluation mode
             
-            Returns:
-                shape_row_logits: shape (B, max_rows), the logits for grid shape row.
-                shape_col_logits: shape (B, max_cols), the logits for grid shape col.
-                grid_logits: shape (B, T_out-3, vocab_size), the logits for grid tokens.
-        
-        
+        Returns:
+            shape_row_logits: shape (B, max_rows), the logits for grid shape row
+            shape_col_logits: shape (B, max_cols), the logits for grid shape col
+            grid_logits: shape (B, T_out-3, vocab_size), the logits for grid tokens
         '''
         # Concatenate embedded action and embedded state
         print(f"embedded_action shape: {embedded_action.shape}")
         print(f"embedded_state shape: {embedded_state.shape}")
-        try:
-            x = torch.cat([embedded_action, embedded_state], dim=1)
-        except RuntimeError as e:
-            raise RuntimeError(f"Error concatenating embedded_action and embedded_state: {e}")
+        
+        assert embedded_action.dim() == 3 and embedded_state.dim() == 3, "Both inputs must be 3D tensors (batch, seq_len, emb_dim)"
+        x = torch.cat([embedded_action, embedded_state], dim=1)
         
         # Pass through transformer layers
         for layer in self.layers:
@@ -168,8 +166,18 @@ class DecoderTransformerTorch(nn.Module):
         # Apply layer normalization
         x = self.layer_norm(x) 
 
-        # Project to get logits for shape row, shape col, and grid
-        shape_row_logits = self.shape_row_proj(x[:, embedded_state.size(1)+1, :])
-        shape_col_logits = self.shape_col_proj(x[:, embedded_state.size(1)+2, :])
-        grid_logits = self.grid_proj(x[:, embedded_state.size(1)+3:, :])
+        # Calculate offset more clearly
+        action_length = embedded_action.size(1)
+        state_length = embedded_state.size(1)
+        total_length = action_length + state_length
+        
+        # Use clearer indexing
+        shape_row_idx = action_length + 1  # Assuming this is the correct location
+        shape_col_idx = action_length + 2  # Assuming this is the correct location
+        grid_start_idx = action_length + 3  # Assuming this is the start of grid tokens
+        
+        shape_row_logits = self.shape_row_proj(x[:, shape_row_idx, :])
+        shape_col_logits = self.shape_col_proj(x[:, shape_col_idx, :])
+        grid_logits = self.grid_proj(x[:, grid_start_idx:, :])
+
         return shape_row_logits, shape_col_logits, grid_logits
