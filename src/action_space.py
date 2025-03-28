@@ -119,6 +119,15 @@ class ARCActionSpace(Space):
         self.nearest_neighbors = None
         print(SEPARATOR)
 
+    @property
+    def embedding_std(self):
+        """
+        Return the standard deviation of the action embeddings.
+        """
+        if self.embedding is None:
+            raise ValueError("Action embeddings have not been loaded.")
+        return np.std(self.embedding, axis=0)
+
     def load_action_embeddings(self, action_embedding):
         numpy_embedding = to_numpy(action_embedding)
         self.embedding = numpy_embedding
