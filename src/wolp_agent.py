@@ -85,18 +85,25 @@ class WolpertingerAgent(DDPG):
         evaluate them in the critic, and choose the best one.
         """
 
+        print('\n\nWolpertinger action selection:')
+
         # 1) Query the action space for the k-nearest neighbors
         #    distances, indices unused in final selection, but you can log them if desired.
+        print('Proto action shape: ', np.shape(proto_action))
+        print('type of proto action: ', type(proto_action))
+        print('X_t shape: ', x_t.shape)
+        print('type of x_t: ', type(x_t))
         distances, actions, embedded_actions = self.action_space.search_point(
             proto_action, k=self.k_nearest_neighbors
         )
-
+    
         # Convert these candidate embedded actions to a tensor on the current device
         embedded_actions = to_tensor(embedded_actions, device=self.device, requires_grad=True)
+        print('Embedded actions shape: ', embedded_actions.shape)
 
         # 2) Determine batch size. (Usually 1 for a single state, or B for a minibatch.)
         # TODO: Find batch size from x_t (state)
-        batch_size = NotImplementedError
+        batch_size = embedded_actions.shape[0]
 
         # Create or reuse pre-cached aranges
         if batch_size not in self.np_aranges:
@@ -151,7 +158,6 @@ class WolpertingerAgent(DDPG):
             selected_action = reshaped_actions[stochastic_index_np, np_arange, :]
             selected_embedded_action = reshaped_embedded_actions[max_q_indices, self.torch_aranges[batch_size], :]
         """
-
         return selected_action#, selected_embedded_action
 
     def select_action(self, x_t, decay_epsilon=True):
@@ -160,6 +166,7 @@ class WolpertingerAgent(DDPG):
         1) The base DDPG actor outputs a proto_action (continuous).
         2) We call wolp_action(...) to get the best discrete neighbor.
         """
+        print('\n\nSelecting action:')
         # Put networks in eval mode to avoid any training side effects
         self.actor.eval()
         self.critic1.eval()
@@ -169,6 +176,7 @@ class WolpertingerAgent(DDPG):
         proto_embedded_action = super().select_action(
             x_t, decay_epsilon=decay_epsilon
         )
+        print('Proto action drom DDPG: ', proto_embedded_action)
 
         # Evaluate the top-k neighbors in the discrete space
         with torch.no_grad():
@@ -195,6 +203,7 @@ class WolpertingerAgent(DDPG):
         #print('Random action embedding: ', embedded_action)
         self.a_t = action
         #print('Returning action: ', action)
+        assert type(action) == int, "Random action should be an integer index"
         return action
 
     def update_policy(self, step):
@@ -221,9 +230,11 @@ class WolpertingerAgent(DDPG):
         ).item()
 
         # ---- Sample a batch from memory replay buffer ----
-        (state_batch, shape_batch, x_t_batch, action_batch, reward_batch, 
-         next_state_batch, next_shape_batch, next_x_t_batch, terminal_batch) = \
-            self.memory.sample_and_split(self.batch_size)
+        (
+        state_batch, shape_batch, x_t_batch, 
+        next_state_batch, next_shape_batch, next_x_t_batch, 
+        action_batch, reward_batch, terminal_batch
+        ) = self.memory.sample_and_split(self.batch_size)
         
         action_embedded_batch = self.action_space.embedding[action_batch]
         # TODO: Check why unsqueeze is needed
