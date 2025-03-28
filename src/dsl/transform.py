@@ -1097,6 +1097,8 @@
 from numba.experimental import jitclass
 import numba as nb
 import numpy as np
+import time
+#TO IMPORT SOMETHING MORE
 
 # =============================================================================
 # Utility functions (numba-compatible versions)
@@ -1460,6 +1462,62 @@ def main():
     print("rotate_90 result shape:", result_rotate90.shape)
     print("crop result shape:", result_crop.shape)
 
+
+
+
+def run_time_tests():
+    # Create a large random grid (1000x1000) with integer colors in 0..9.
+    grid = np.random.randint(0, 10, size=(1000, 1000)).astype(np.int64)
+    cs = ColorSelector(10)  # Assume the constructor takes the number of colors
+
+    # Warm-up: trigger JIT compilation for all functions.
+    _ = cs.mostcolor_parallel(grid)
+    _ = cs.mostcolor(grid)
+    _ = cs.leastcolor_parallel(grid)
+    _ = cs.leastcolor(grid)
+    _ = cs.rankcolor_parallel(grid, 2)
+    _ = cs.rankcolor(grid, 2)
+    _ = cs.rank_largest_shape_color_nodiag_parallel(grid, 0)
+    _ = cs.rank_largest_shape_color_nodiag(grid, 0)
+    _ = cs.color_number(grid, 5)
+
+    iterations = 100
+
+    # Test: mostcolor_parallel
+    start = time.time()
+    for _ in range(iterations):
+        _ = cs.mostcolor_parallel(grid)
+    end = time.time()
+    print("Numba Parallel mostcolor average time: {:.6f} s".format((end - start) / iterations))
+
+    # Test: leastcolor_parallel
+    start = time.time()
+    for _ in range(iterations):
+        _ = cs.leastcolor_parallel(grid)
+    end = time.time()
+    print("Numba Parallel leastcolor average time: {:.6f} s".format((end - start) / iterations))
+
+    # Test: rankcolor_parallel
+    start = time.time()
+    for _ in range(iterations):
+        _ = cs.rankcolor_parallel(grid, 2)
+    end = time.time()
+    print("Numba Parallel rankcolor average time: {:.6f} s".format((end - start) / iterations))
+
+    # Test: rank_largest_shape_color_nodiag_parallel
+    start = time.time()
+    for _ in range(iterations):
+        _ = cs.rank_largest_shape_color_nodiag_parallel(grid, 0)
+    end = time.time()
+    print("Numba Parallel rank_largest_shape_color_nodiag average time: {:.6f} s".format((end - start) / iterations))
+
+    # Test: color_number
+    start = time.time()
+    for _ in range(iterations):
+        _ = cs.color_number(grid, 5)
+    end = time.time()
+    print("Numba color_number average time: {:.6f} s".format((end - start) / iterations))
+
 if __name__ == '__main__':
-    main()
+    run_time_tests()
 
