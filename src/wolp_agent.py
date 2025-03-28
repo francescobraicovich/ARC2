@@ -6,6 +6,8 @@ import torch.nn.functional as F
 import wandb
 import numpy as np
 
+DEVICE = set_device('wolp_agent.py')
+
 def get_grad_norm(parameters):
     """
     Compute the global 2-norm of gradients for a list of parameters.
@@ -62,6 +64,7 @@ class WolpertingerAgent(DDPG):
         self.experiment = args.id
         self.action_space = action_space
         self.k_nearest_neighbors = k
+        self.loss = F.mse_loss
         self.MAX_GRAD_NORM = 5.0
         print(f"[WolpertingerAgent] Using {self.k_nearest_neighbors} nearest neighbors.")
 
@@ -87,27 +90,19 @@ class WolpertingerAgent(DDPG):
         evaluate them in the critic, and choose the best one.
         """
 
-        print('\n\nWolpertinger action selection:')
-
         # 1) Query the action space for the k-nearest neighbors
         #    distances, indices unused in final selection, but you can log them if desired.
-        print('Proto action shape: ', np.shape(proto_action))
-        print('type of proto action: ', type(proto_action))
-        print('X_t shape: ', x_t.shape)
-        print('type of x_t: ', type(x_t))
+ 
         distances, actions, embedded_actions = self.action_space.search_point(
             proto_action, k=self.k_nearest_neighbors
         )
     
         # Convert these candidate embedded actions to a tensor on the current device
         embedded_actions = to_tensor(embedded_actions, device=self.device, requires_grad=True)
-        print('\nEmbedded actions shape: ', embedded_actions.shape)
 
         # 2) Determine batch size. (Usually 1 for a single state, or B for a minibatch.)
         # TODO: Find batch size from x_t (state)
         batch_size = x_t.shape[0] if len(x_t.shape) > 1 else 1
-
-        print('Batch size: ', batch_size)
 
         # Create or reuse pre-cached aranges
         if batch_size not in self.np_aranges:
@@ -115,10 +110,13 @@ class WolpertingerAgent(DDPG):
             self.torch_aranges[batch_size] = torch.arange(batch_size, device=self.device)
 
         # 3) Tile the current states so we can evaluate each candidate with the critic
-        x_t_tiled = torch.tile(x_t, (1, self.k_nearest_neighbors, 1)) # B, K, embedding_dim
-        print('X_t tiled shape: ', x_t_tiled.shape)
-        embedded_actions_tiled = torch.tile(embedded_actions, (batch_size, 1, 1)) # B, K
-        print('Embedded actions tiled shape: ', embedded_actions_tiled.shape)
+        if batch_size == 1:
+            x_t_tiled = torch.tile(x_t, (1, self.k_nearest_neighbors, 1)) # B, K, embedding_dim
+            embedded_actions_tiled = torch.tile(embedded_actions, (batch_size, 1, 1)) # B, K
+        else:
+            x_t_tiled = x_t.unsqueeze(1) 
+            x_t_tiled = x_t_tiled.tile((1, self.k_nearest_neighbors, 1)) # B, K, embedding_dim
+            embedded_actions_tiled = embedded_actions
 
         # 4) Evaluate Q(s, a) for each candidate. The critic expects (state, shape) tuple + action
         with torch.no_grad():
@@ -137,24 +135,20 @@ class WolpertingerAgent(DDPG):
         # 5) Find index of the candidate with maximum Q or stochastic selection
         #    If batch_size=1, it's a simple argmax over dimension=0;
         #    Otherwise, we do argmax over dimension=1 if the shape is (k, B, ...)
-        if batch_size == 1:
-            #max_q_indices = torch.argmax(q_values, 0)
-            stochastic_index = torch.multinomial(q_probabilities, 1)
-        else:
-            #max_q_indices = torch.argmax(q_values, 1)
-            stochastic_index = torch.multinomial(q_probabilities, 1)
-
-        print('Stochastic isdex: ', stochastic_index)
-        print('Stochastic index shape: ', stochastic_index.shape)
-        print('Actions shape: ', actions.shape)
-        print('Embedded actions shape: ', embedded_actions.shape)
+        stochastic_index = torch.multinomial(q_probabilities, 1)
+        stochastic_index = stochastic_index.squeeze(1) # B
         
         if batch_size == 1:
             stochastic_index = stochastic_index.item()
             selected_action = int(actions[0, stochastic_index])
             selected_embedded_action = embedded_actions[stochastic_index]
-            print('Selected action: ', selected_action)
-            print('Selected embedded action: ', selected_embedded_action)
+
+        if batch_size > 1:
+            actions = to_tensor(actions, device=self.device, dtype=torch.int64)
+            range = torch.arange(batch_size)
+            selected_action = actions[range, stochastic_index]
+            selected_embedded_action = self.action_space.embedding_gpu[selected_action]
+
         """
         if batch_size == 1:
             # Single state: Just pick the best index
@@ -173,7 +167,6 @@ class WolpertingerAgent(DDPG):
             selected_action = reshaped_actions[stochastic_index_np, np_arange, :]
             selected_embedded_action = reshaped_embedded_actions[max_q_indices, self.torch_aranges[batch_size], :]
         """
-
         return selected_action, selected_embedded_action
 
     def select_action(self, x_t, decay_epsilon=True):
@@ -182,7 +175,6 @@ class WolpertingerAgent(DDPG):
         1) The base DDPG actor outputs a proto_action (continuous).
         2) We call wolp_action(...) to get the best discrete neighbor.
         """
-        print('\n\nSelecting action:')
         # Put networks in eval mode to avoid any training side effects
         self.actor.eval()
         self.critic1.eval()
@@ -192,7 +184,6 @@ class WolpertingerAgent(DDPG):
         proto_embedded_action = super().select_action(
             x_t, decay_epsilon=decay_epsilon
         )
-        print('Proto action drom DDPG: ', proto_embedded_action)
 
         # Evaluate the top-k neighbors in the discrete space
         with torch.no_grad():
@@ -214,11 +205,7 @@ class WolpertingerAgent(DDPG):
          2) Query k=1 from the discrete action space and return that single action.
         """
         action = super().random_action()
-        #print('Random action from ddpg: ', action)
-        #embedded_action = self.action_space.embedding[action]
-        #print('Random action embedding: ', embedded_action)
         self.a_t = action
-        #print('Returning action: ', action)
         assert type(action) == int, "Random action should be an integer index"
         return action
 
@@ -253,8 +240,6 @@ class WolpertingerAgent(DDPG):
         ) = self.memory.sample_and_split(self.batch_size)
         
         action_embedded_batch = self.action_space.embedding_gpu[action_batch]
-        # TODO: Check why unsqueeze is needed
-        #action_batch = torch.unsqueeze(action_batch, 1) # Add back the k-neighrest neighbor dimension
 
         # ---------------------------------------------------------
         # 1) Compute target actions (with smoothing) using actor_target
@@ -277,15 +262,21 @@ class WolpertingerAgent(DDPG):
                 next_x_t_batch, next_proto_embedded_action_batch
             )
 
-            # TODO: Check why unsqueeze is needed
-            #wolp_embedded = torch.unsqueeze(wolp_embedded, 1) # Add back the k-neighrest neighbor dimension
+            next_x_t_batch = next_x_t_batch.unsqueeze(1) # B, 1, embedding_dim for the k-nearest neighbors dimension
+            wolp_embedded_action_batch = wolp_embedded_action_batch.unsqueeze(1) # B, 1, embedding_dim for the k-nearest neighbors dimension
 
             # Evaluate both target critics
-            next_q1 = self.critic1_target(next_x_t_batch, wolp_embedded_action_batch)
-            next_q2 = self.critic2_target(next_x_t_batch, wolp_embedded_action_batch)
 
-            # TD3: Take the minimum of the two critics for the target
-            next_q = torch.min(next_q1, next_q2)
+            next_q1 = self.critic1_target(next_x_t_batch, wolp_embedded_action_batch)
+            if self.double_critic:
+                # If using double critic, evaluate both critics and take the minimum
+                next_q2 = self.critic2_target(next_x_t_batch, wolp_embedded_action_batch)
+                # Use the minimum of both critics
+                next_q = torch.min(next_q1, next_q2)
+            else:
+                # Single critic: just use the first one
+                next_q = next_q1
+            next_q = next_q.squeeze(1) # B
 
             # Build the target Q-value
             target_q = reward_batch + self.gamma * (1 - terminal_batch.float()) * next_q
@@ -294,22 +285,27 @@ class WolpertingerAgent(DDPG):
         # 2) Update both critics
         # ---------------------------------------------------------
         # Critic 1
+        x_t_batch = x_t_batch.unsqueeze(1) # B, 1, embedding_dim for the k-nearest neighbors dimension
+        action_embedded_batch = action_embedded_batch.unsqueeze(1) # B, 1, embedding_dim for the k-nearest neighbors dimension
         self.critic1_optim.zero_grad()
         current_q1 = self.critic1(x_t_batch, action_embedded_batch)
-        loss_q1 = F.smooth_l1_loss(current_q1, target_q)
+        current_q1 = current_q1.squeeze(1) # B
+        loss_q1 = self.loss(current_q1, target_q)
         loss_q1.backward()
         critic1_grad_norm = get_grad_norm(self.critic1.parameters())
         torch.nn.utils.clip_grad_norm_(self.critic1.parameters(), self.MAX_GRAD_NORM)
         self.critic1_optim.step()
 
         # Critic 2
-        self.critic2_optim.zero_grad()
-        current_q2 = self.critic2(x_t_batch, action_embedded_batch)
-        loss_q2 = F.smooth_l1_loss(current_q2, target_q)
-        loss_q2.backward()
-        critic2_grad_norm = get_grad_norm(self.critic2.parameters())
-        torch.nn.utils.clip_grad_norm_(self.critic2.parameters(), self.MAX_GRAD_NORM)
-        self.critic2_optim.step()
+        if self.double_critic:
+            self.critic2_optim.zero_grad()
+            current_q2 = self.critic2(x_t_batch, action_embedded_batch)
+            current_q2 = current_q2.squeeze(1) # B
+            loss_q2 = self.loss(current_q2, target_q)
+            loss_q2.backward()
+            critic2_grad_norm = get_grad_norm(self.critic2.parameters())
+            torch.nn.utils.clip_grad_norm_(self.critic2.parameters(), self.MAX_GRAD_NORM)
+            self.critic2_optim.step()
 
         # ---------------------------------------------------------
         # 3) Delayed policy update (actor + target nets)
@@ -318,10 +314,6 @@ class WolpertingerAgent(DDPG):
             # Actor update
             self.actor_optim.zero_grad()
             proto_embedded_action_batch = self.actor(x_t_batch)
-
-            # NOTE: The actor outputs a proto_action, which is a continuous vector.
-            #proto_embedded_action_batch = torch.unsqueeze(proto_action_batch, 1) # Add back the k-neighrest neighbor dimension
-            
             q_actor = self.critic1(x_t_batch, proto_embedded_action_batch)
             policy_loss = -q_actor.mean()
             policy_loss.backward()
@@ -331,24 +323,27 @@ class WolpertingerAgent(DDPG):
 
             # Soft update of targets
             soft_update(self.actor_target, self.actor, self.tau_update)
-            soft_update(self.critic1_target, self.critic1, self.tau_update)
-            soft_update(self.critic2_target, self.critic2, self.tau_update)
         else:
             policy_loss = torch.tensor(0.)  # no actor update this step
             actor_grad_norm = 0.
+
+        soft_update(self.critic1_target, self.critic1, self.tau_update)
+        soft_update(self.critic2_target, self.critic2, self.tau_update)
 
         # ---------------------------------------------------------
         # 4) Logging with wandb (optional)
         # ---------------------------------------------------------
         wandb.log({
             "train/loss/critic1_loss": loss_q1.item(),
-            "train/loss/critic2_loss": loss_q2.item(),
+            "train/loss/critic2_loss": loss_q2.item() if self.double_critic else 0,
             "train/loss/actor_loss": policy_loss.item(),
             "train/grad/grad_norm_actor": actor_grad_norm,
             "train/grad/grad_norm_critic1": critic1_grad_norm,
-            "train/grad/grad_norm_critic2": critic2_grad_norm,
+            "train/grad/grad_norm_critic2": critic2_grad_norm if self.double_critic else 0,
             "train/diff/actor_diff": actor_diff,
             "train/diff/critic1_diff": critic1_diff,
-            "train/diff/critic2_diff": critic2_diff,
+            "train/diff/critic2_diff": critic2_diff if self.double_critic else 0,
             "train/diff/critics_diff": critics_diff
         })
+
+        
