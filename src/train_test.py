@@ -66,8 +66,6 @@ def train(
             s_t = to_tensor(state, device=agent.device, requires_grad=True)
             shape = to_tensor(shape, device=agent.device, requires_grad=True)
             x_t = state_encoder(s_t, shape)
-            print('x_t shape: ', x_t.shape)
-            print(x_t)
             agent.reset(x_t)
 
         # Pick action
@@ -84,8 +82,6 @@ def train(
         next_state = to_tensor(next_state, device=agent.device, requires_grad=True)
         next_shape = to_tensor(next_shape, device=agent.device, requires_grad=True)
         next_x_t = state_encoder(next_state, next_shape)
-
-        print('Type of s_t: ', type(s_t))
 
         total_actions_taken += 1
 
