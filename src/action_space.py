@@ -179,9 +179,9 @@ class ARCActionSpace(Space):
         """
         if self.nearest_neighbors is None:
             raise ValueError("NearestNeighbors model is not initialized. Call create_nearest_neighbors() first.")
-
-        # Ensure the query actions are a 2D numpy array of type float32
-        query_actions = np.array(query_actions, dtype=np.float32)
+        
+        if type(query_actions) is not np.ndarray:
+            query_actions = to_numpy(query_actions)
         if query_actions.ndim == 1:
             query_actions = query_actions.reshape(1, -1)
 
@@ -192,6 +192,7 @@ class ARCActionSpace(Space):
         # If only a single query was provided, return a flattened result
         if query_actions.shape[0] == 1:
             embedded_actions = embedded_actions[0]
+            
     
         return distances, indices, embedded_actions
 
