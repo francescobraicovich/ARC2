@@ -9,7 +9,7 @@ class ContextTransformer2D(nn.Module):
         action_emb_dim,
         emb_dim=256,
         num_layers=6,
-        n_heads=8,
+        num_heads=8,
         dropout=0.1,
         seq_len=902,      # Total output tokens: 2 (grid-shape) + 900 grid cells
         grid_size=30,     # Grid is 30x30 (900 tokens)
@@ -42,8 +42,8 @@ class ContextTransformer2D(nn.Module):
 
         # Transformer Decoder layers.
         decoder_layer = nn.TransformerDecoderLayer(
-            emb_dim=emb_dim,
-            nhead=n_heads,
+            d_model=emb_dim,
+            nhead=num_heads,
             dim_feedforward=emb_dim * 4,
             dropout=dropout,
             activation="gelu",
@@ -168,7 +168,7 @@ if __name__ == "__main__":
     e_t = torch.randn(batch_size, action_emb_dim)
 
     # Instantiate the model.
-    model = ContextTransformer2D(state_encoded_dim, action_emb_dim, emb_dim=256, num_layers=4, n_heads=8)
+    model = ContextTransformer2D(state_encoded_dim, action_emb_dim, emb_dim=256, num_layers=4, num_heads=8)
     
     print("\n=== Forward Pass (without dynamic mask) ===")
     logits_first, logits_rest = model(x_t, e_t)
