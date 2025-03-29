@@ -57,10 +57,10 @@ def main():
     logger = logging.getLogger('RS_log')
 
 
-    args.load_cleaned_actions = True
+    args.load_filtered_actions = True
     action_space = ARCActionSpace(args)
     num_filtered_actions = action_space.num_filtered_actions # number of actions after filtering
-
+    
     # Create the world model
     encoder_config = EncoderTransformerConfig(
         emb_dim=args.state_emb_dim,
@@ -98,8 +98,10 @@ def main():
         logger = logger,
     )
 
+    action_embedding = torch.randint(size=(num_filtered_actions, args.action_emb_dim), low=0, high=1).float()
     action_space.load_action_embeddings(action_embedding)
     action_space.create_nearest_neighbors()
+    ""
 
     # 6. Create training and evaluation environments
     train_env = ARC_Env(
@@ -161,6 +163,7 @@ def main():
             max_episode_length=args.max_episode_length,
             logger=logger,
             save_per_epochs=args.save_per_epochs,
+            save_memory_per_epochs=args.save_memory_per_epochs,
             eval_interval=args.eval_interval,     # e.g. evaluate every 10 episodes
             eval_episodes=args.eval_episodes     # e.g. 5 episodes each evaluation
         )
