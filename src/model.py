@@ -8,12 +8,12 @@ from utils.util import set_device
 DEVICE = set_device('model.py')
 
 class Actor(nn.Module):
-    def __init__(self, state_emb_dim, action_emb_dim, h1_dim=256, h2_dim=128):
+    def __init__(self, state_encoded_dim, action_emb_dim, h1_dim=256, h2_dim=128):
         super(Actor, self).__init__()
 
-        self.state_emb_dim = state_emb_dim
+        self.state_encoded_dim = state_encoded_dim
 
-        self.concat_fc = nn.Linear(state_emb_dim * 2, h1_dim).to(DEVICE)
+        self.concat_fc = nn.Linear(state_encoded_dim * 2, h1_dim).to(DEVICE)
         self.fc1 = nn.Linear(h1_dim, h2_dim).to(DEVICE)
         self.fc2 = nn.Linear(h2_dim, action_emb_dim).to(DEVICE)
 
@@ -41,12 +41,12 @@ class Actor(nn.Module):
 
 # Critic Network
 class Critic(nn.Module):
-    def __init__(self, state_emb_dim, action_emb_dim, h1_dim=256, h2_dim=128):
+    def __init__(self, state_encoded_dim, action_emb_dim, h1_dim=256, h2_dim=128):
         super(Critic, self).__init__()
 
-        self.state_emb_dim = state_emb_dim
+        self.state_encoded_dim = state_encoded_dim
         
-        self.state_concat_fc = nn.Linear(state_emb_dim * 2, h1_dim).to(DEVICE)
+        self.state_concat_fc = nn.Linear(state_encoded_dim * 2, h1_dim).to(DEVICE)
         self.action_proj = nn.Linear(action_emb_dim, h1_dim).to(DEVICE)
         self.action_concat_fc = nn.Linear(h1_dim * 2, h2_dim).to(DEVICE)
         
@@ -66,7 +66,7 @@ class Critic(nn.Module):
     def forward(self, x, a):
         """
         Args:
-            x: [batch, k_neighrest, state_emb_dim]
+            x: [batch, k_neighrest, state_encoded_dim]
             a: [batch, k_neighrest, action_emb_dim]
             
         The forward pass flattens the batch and neighborhood dimensions into a meta-batch
