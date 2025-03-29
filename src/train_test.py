@@ -4,7 +4,7 @@ import torch
 import wandb
 import copy
 
-from .utils.util import to_tensor
+from utils.util import to_tensor
 
 from dsl.utilities.plot import plot_step
 
@@ -19,6 +19,7 @@ def train(
     max_actions,
     warmup,
     save_model_dir,
+    save_memory_per_epochs,
     max_episode_length,
     logger,
     save_per_epochs,
@@ -76,7 +77,6 @@ def train(
             action = agent.select_action(x_t)
             action = action
             assert type(action) == int, "Action should be an integer but got: {}".format(type(action))
-        
 
         # Step environment
         (next_state, next_shape), r_t, done, truncated, info = train_env.step(action)
@@ -157,6 +157,9 @@ def train(
         if step > warmup and episode > 0 and (episode % save_per_epochs == 0):
             agent.save_model(save_model_dir)
             logger.info(f"### Model saved to {save_model_dir} at episode {episode} ###")
+
+        if step % save_memory_per_epochs == 0:
+            agent.save_memory_for_world_model()
 
 
 def evaluate(
