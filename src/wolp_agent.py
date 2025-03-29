@@ -275,12 +275,13 @@ class WolpertingerAgent(DDPG):
         ) = self.memory.sample_and_split(self.batch_size)
         
         action_embedded_batch = self.action_space.embedding_gpu[action_batch]
-
+        action_embedded_batch = action_embedded_batch.squeeze(1)
         # ---------------------------------------------------------
         # 1) Compute target actions (with smoothing) using actor_target
         # ---------------------------------------------------------
         with torch.no_grad():
             next_proto_embedded_action_batch = self.actor_target(next_x_t_batch)
+            next_proto_embedded_action_batch = next_proto_embedded_action_batch.squeeze(1)
             
             # -- TD3: Add clipped noise for smoothing
             """
