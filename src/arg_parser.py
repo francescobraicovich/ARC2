@@ -20,7 +20,7 @@ def init_parser(alg):
         parser.add_argument('--max-episode', type=int, default=500000, help='Maximum number of episodes')
         parser.add_argument('--max-actions', default=1e9, type=int, help='# max actions')
         parser.add_argument('--test-episode', type=int, default=20, help='Maximum testing episodes')
-        parser.add_argument('--warmup', default=25, type=int, help='Time without training but only filling the replay memory')
+        parser.add_argument('--warmup', default=100000, type=int, help='Time without training but only filling the replay memory')
         parser.add_argument('--bsize', default=48, type=int, help='Minibatch size')
         parser.add_argument('--rmsize', default=100000, type=int, help='Replay memory size')
 
@@ -76,6 +76,7 @@ def init_parser(alg):
         parser.add_argument('--init_w', default=0.003, type=float, help='Initial weight')
         parser.add_argument('--seed', default=-1, type=int, help='Random seed')
         parser.add_argument('--save_per_epochs', default=200, type=int, help='Save model every X epochs')
+        parser.add_argument('--save_memory_per_epochs', default=20, type=int, help='Save memory every X epochs')
         parser.add_argument('--k_neighbors', default=75, type=int, help='Number of neighbors to consider')
         return parser
 
