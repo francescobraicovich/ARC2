@@ -86,7 +86,7 @@ def main():
         'epochs': args.world_model_pre_train_epochs,
         'lr': args.world_model_pre_train_lr,
         'batch_size': args.world_model_pre_train_batch_size,
-        'max_iter': 1000,
+        'max_iter': 20000,
     }
 
     if args.world_model_pre_train:
@@ -97,14 +97,13 @@ def main():
             world_model_args = world_model_args,
             save_model_dir = args.save_model_dir,
             logger = logger,
-            save_per_epochs=1,
+            save_per_epochs=10,
             eval_interval=None
         )
 
-    action_embedding = torch.randint(size=(num_filtered_actions, args.action_emb_dim), low=0, high=1).float()
+    action_embedding = action_embedding.export_weights()
     action_space.load_action_embeddings(action_embedding)
     action_space.create_nearest_neighbors()
-    ""
 
     # 6. Create training and evaluation environments
     train_env = ARC_Env(
@@ -140,12 +139,8 @@ def main():
     if args.load:
         agent.load_weights(args.load_model_dir)
 
-
-
     # 13. Log hyperparameters
     d_args = vars(args)
-    #d_args['nb_states'] = nb_states
-    #d_args['nb_actions'] = nb_actions
 
     d_args['continuous'] = continuous
     for k, v in d_args.items():
@@ -158,6 +153,7 @@ def main():
             continuous=continuous,
             train_env=train_env,
             eval_env=eval_env,
+            state_encoder=state_encoder,
             agent=agent,
             max_episode=args.max_episode,
             max_actions=args.max_actions,
