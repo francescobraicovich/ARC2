@@ -2252,52 +2252,52 @@ class Transformer:
         selection_3d_grid[capped_selection] = capped_upscaled_grid[capped_selection].ravel()
         return selection_3d_grid
 
-    # def vectorized_vupscale(self, grid, selection, scale_factor):
-    #     """
-    #     Upscale the selection in the grid vertically by a specified scale factor,
-    #     then overwrite existing values (vectorized approach).
-    #     """
-    #     grid_3d = create_grid3d(grid, selection)
-    #     depth, original_rows, original_cols = selection.shape
+    def vectorized_vupscale(self, grid, selection, scale_factor):
+        """
+        Upscale the selection in the grid vertically by a specified scale factor,
+        then overwrite existing values (vectorized approach).
+        """
+        grid_3d = create_grid3d(grid, selection)
+        depth, original_rows, original_cols = selection.shape
 
-    #     upscaled_selection = np.repeat(selection, scale_factor, axis=1)
-    #     upscaled_grid = np.repeat(grid_3d * selection, scale_factor, axis=1)
-    #     upscaled_rows = upscaled_selection.shape[1]
+        upscaled_selection = np.repeat(selection, scale_factor, axis=1)
+        upscaled_grid = np.repeat(grid_3d * selection, scale_factor, axis=1)
+        upscaled_rows = upscaled_selection.shape[1]
 
-    #     com_original = vectorized_center_of_mass(selection)
-    #     com_upscaled = vectorized_center_of_mass(upscaled_selection)
+        com_original = vectorized_center_of_mass(selection)
+        com_upscaled = vectorized_center_of_mass(upscaled_selection)
 
-    #     shift = (com_original - com_upscaled)
-    #     shifted_row_indices = (
-    #         np.arange(upscaled_rows).reshape(1, upscaled_rows, 1) + shift
-    #     )
-    #     shifted_row_indices = np.broadcast_to(shifted_row_indices, upscaled_selection.shape)
+        shift = (com_original - com_upscaled)
+        shifted_row_indices = (
+            np.arange(upscaled_rows).reshape(1, upscaled_rows, 1) + shift
+        )
+        shifted_row_indices = np.broadcast_to(shifted_row_indices, upscaled_selection.shape)
 
-    #     valid_mask = (
-    #         (shifted_row_indices >= 0) &
-    #         (shifted_row_indices < original_rows) &
-    #         upscaled_selection
-    #     )
+        valid_mask = (
+            (shifted_row_indices >= 0) &
+            (shifted_row_indices < original_rows) &
+            upscaled_selection
+        )
 
-    #     indices = np.argwhere(valid_mask)
-    #     d = indices[:, 0]
-    #     r_up = indices[:, 1]
-    #     c = indices[:, 2]
-    #     shifted_rows = shifted_row_indices[valid_mask].flatten()
-    #     values = upscaled_grid[valid_mask].flatten()
+        indices = np.argwhere(valid_mask)
+        d = indices[:, 0]
+        r_up = indices[:, 1]
+        c = indices[:, 2]
+        shifted_rows = shifted_row_indices[valid_mask].flatten()
+        values = upscaled_grid[valid_mask].flatten()
 
-    #     rev_indices = np.arange(len(d) - 1, -1, -1)
-    #     d_rev = d[rev_indices]
-    #     shifted_rows_rev = shifted_rows[rev_indices]
-    #     c_rev = c[rev_indices]
-    #     values_rev = values[rev_indices]
+        rev_indices = np.arange(len(d) - 1, -1, -1)
+        d_rev = d[rev_indices]
+        shifted_rows_rev = shifted_rows[rev_indices]
+        c_rev = c[rev_indices]
+        values_rev = values[rev_indices]
 
-    #     final_grid = np.zeros((depth, original_rows, original_cols), dtype=grid_3d.dtype)
-    #     final_grid[d_rev, shifted_rows_rev, c_rev] = values_rev
+        final_grid = np.zeros((depth, original_rows, original_cols), dtype=grid_3d.dtype)
+        final_grid[d_rev, shifted_rows_rev, c_rev] = values_rev
 
-    #     grid_3d[selection] = 0
-    #     grid_3d[final_grid != 0] = final_grid[final_grid != 0]
-    #     return grid_3d
+        grid_3d[selection] = 0
+        grid_3d[final_grid != 0] = final_grid[final_grid != 0]
+        return grid_3d
 
 
     def hupscale(self, grid, selection, scale_factor):
@@ -2408,3 +2408,88 @@ class Transformer:
         return grid_3d
 
     
+
+# =============================================================================
+# Final Test Block and Running Time Tests for Numpy Version
+# =============================================================================
+
+def main():
+    # Create a small grid (30x30) with a 2D boolean selection mask.
+    grid = np.random.randint(0, 10, size=(30, 30)).astype(np.int64)
+    selection = (grid == 3)  # 2D mask
+    transformer = Transformer()  # from your numpy version
+    print("Numpy new_color shape:", transformer.new_color(grid, selection, 5).shape)
+    print("Numpy flipv shape:", transformer.flipv(grid, selection).shape)
+    print("Numpy rotate_90 shape:", transformer.rotate_90(grid, selection).shape)
+    print("Numpy crop shape:", transformer.crop(grid, selection).shape)
+    print("Numpy mirror_down shape:", transformer.mirror_down(grid, selection).shape)
+    print("Numpy duplicate_horizontally shape:", transformer.duplicate_horizontally(grid, selection).shape)
+
+def run_time_tests():
+    # Create a large grid (1000x1000) with a 2D boolean selection mask.
+    grid = np.random.randint(0, 10, size=(1000, 1000)).astype(np.int64)
+    selection = (grid == 3)  # 2D mask
+    transformer = Transformer()
+    # Warm-up: call each method once.
+    _ = transformer.new_color(grid, selection, 5)
+    _ = transformer.color(grid, selection, 'color_rank', 2)
+    _ = transformer.fill_with_color(grid, selection, 'color_rank', 4)
+    _ = transformer.fill_bounding_rectangle_with_color(grid, selection, 'color_rank', 3)
+    _ = transformer.flipv(grid, selection)
+    _ = transformer.rotate_90(grid, selection)
+    _ = transformer.crop(grid, selection)
+    _ = transformer.delete(grid, selection)
+    
+    iterations = 100
+    start = time.time()
+    for _ in range(iterations):
+         _ = transformer.new_color(grid, selection, 5)
+    end = time.time()
+    print("Transformer.new_color avg time: {:.6f} s".format((end - start) / iterations))
+    
+    start = time.time()
+    for _ in range(iterations):
+         _ = transformer.color(grid, selection, 'color_rank', 2)
+    end = time.time()
+    print("Transformer.color avg time: {:.6f} s".format((end - start) / iterations))
+    
+    start = time.time()
+    for _ in range(iterations):
+         _ = transformer.fill_with_color(grid, selection, 'color_rank', 4)
+    end = time.time()
+    print("Transformer.fill_with_color avg time: {:.6f} s".format((end - start) / iterations))
+    
+    start = time.time()
+    for _ in range(iterations):
+         _ = transformer.fill_bounding_rectangle_with_color(grid, selection, 'color_rank', 3)
+    end = time.time()
+    print("Transformer.fill_bounding_rectangle_with_color avg time: {:.6f} s".format((end - start) / iterations))
+    
+    start = time.time()
+    for _ in range(iterations):
+         _ = transformer.flipv(grid, selection)
+    end = time.time()
+    print("Transformer.flipv avg time: {:.6f} s".format((end - start) / iterations))
+    
+    start = time.time()
+    for _ in range(iterations):
+         _ = transformer.rotate_90(grid, selection)
+    end = time.time()
+    print("Transformer.rotate_90 avg time: {:.6f} s".format((end - start) / iterations))
+    
+    start = time.time()
+    for _ in range(iterations):
+         _ = transformer.crop(grid, selection)
+    end = time.time()
+    print("Transformer.crop avg time: {:.6f} s".format((end - start) / iterations))
+    
+    start = time.time()
+    for _ in range(iterations):
+         _ = transformer.delete(grid, selection)
+    end = time.time()
+    print("Transformer.delete avg time: {:.6f} s".format((end - start) / iterations))
+
+
+if __name__ == '__main__':
+    main()
+    run_time_tests()
