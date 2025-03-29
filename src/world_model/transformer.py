@@ -1,9 +1,13 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import os
+import sys
 
 from typing import Optional, Tuple
 
+# Go up one directory to import utils
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from utils.util import set_device
 
 DEVICE = set_device('transformer.py')
