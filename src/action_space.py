@@ -102,16 +102,16 @@ class ARCActionSpace(Space):
         self.create_action_space()
 
         # Load or create embedded actions
-        if args.load_cleaned_actions:
+        if args.load_filtered_actions:
             try:
-                print('Loading cleaned actions from file')
-                self.cleaned_space = np.load(f'src/embedded_space/{args.filter_threshold} threshold/cleaned_actions.npy')
+                print('Loading filtered actions from file')
+                self.filtered_space = np.load(f'src/filtered_actions/{args.filter_threshold} threshold/cleaned_actions.npy')
 
             except:
-                self.cleaned_space = self.clean_actions()
+                self.filtered_space = self.clean_actions()
         else:
-            self.cleaned_space = self.clean_actions()
-        self.num_cleaned_actions = len(self.cleaned_space)
+            self.filtered_space = self.clean_actions()
+        self.num_cleaned_actions = len(self.filtered_space)
         print('Number cleaned actions:', self.num_cleaned_actions)
 
         # Create a variable to store the action embeddings
@@ -145,7 +145,7 @@ class ARCActionSpace(Space):
         cleaned_actions = filter_by_change(
             self, self.args.num_experiments_filter, self.args.filter_threshold)
         # Directory path based on your existing code
-        directory = f'src/embedded_space/{args.filter_threshold} threshold/'
+        directory = f'src/filtered_actions/{args.filter_threshold} threshold/'
 
         # Create the directory if it doesn't exist
         os.makedirs(directory, exist_ok=True)
