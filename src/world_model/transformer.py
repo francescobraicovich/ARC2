@@ -18,7 +18,7 @@ class EncoderTransformerConfig:
         vocab_size: int = 10,                       # Size of the input vocabulary (e.g., number of token types)
         max_rows: int = 30,                         # Max number of rows (e.g., height in a grid input)
         max_cols: int = 30,                         # Max number of columns (e.g., width in a grid input)
-        emb_dim: int = 64,                          # Dimensionality of token embeddings and model hidden states
+        emb_dim: int = 32,                          # Dimensionality of token embeddings and model hidden states
         latent_dim: int = 128,                      # Dimensionality of latent space (used in VAE settings)
         num_layers: int = 2,                        # Number of transformer encoder layers
         num_heads: int = 8,                         # Number of attention heads in multi-head self-attention

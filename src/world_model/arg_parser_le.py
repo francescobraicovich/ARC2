@@ -11,6 +11,7 @@ def init_parser_le():
     parser.add_argument("--max-episode", type=int, default=500000, help="Maximum number of episodes")
     parser.add_argument("--max-actions", type=int, default=int(1e9), help="Maximum number of actions")
     parser.add_argument("--max-steps", type=int, default=1000, help="Maximum number of training steps")
+    
     # Model hyperparameters (referencing model_le.py defaults)
     parser.add_argument("--num-actions", type=int, default=50000, help="Total number of discrete actions")
     parser.add_argument("--action-embed-dim", type=int, default=32, help="Dimension for action embeddings")

@@ -1,134 +1,13 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
-from typing import Optional, Tuple
-
 from utils.util import set_device
 
-DEVICE = set_device()
-print("Using device for EncoderTransformer:", DEVICE)
-# ---------------------------------------------------------------------
-# Example placeholders for configs and the PyTorch version of TransformerLayer.
-# Adjust these imports or definitions as needed to match your project.
-# ---------------------------------------------------------------------
+# Determine the device: CUDA -> MPS -> CPU
+DEVICE = set_device('action_space_embed.py')
 
-class EncoderTransformerConfig:
-    """
-    Stand-in for the real config. Adjust fields to match your usage.
-    """
-    def __init__(
-        self,
-        vocab_size=11,
-        max_rows=30,
-        max_cols=30,
-        emb_dim=32,
-        latent_dim=32,
-        num_layers=1,
-        scaled_position_embeddings=False,
-        variational=False,
-        latent_projection_bias=False,
-        dtype=torch.float32,
-        transformer_layer=None
-    ):
-        self.vocab_size = vocab_size
-        self.max_rows = max_rows
-        self.max_cols = max_cols
-        self.emb_dim = emb_dim
-        self.latent_dim = latent_dim
-        self.num_layers = num_layers
-        self.scaled_position_embeddings = scaled_position_embeddings
-        self.variational = variational
-        self.latent_projection_bias = latent_projection_bias
-        self.dtype = dtype
-        self.transformer_layer = transformer_layer
-        # For convenience:
-        self.max_len = max_rows * max_cols
-
-# Example PyTorch TransformerLayer from a previous rewrite.
-# Make sure to replace this with your actual PyTorch-based layer.
-class TransformerLayer(nn.Module):
-    def __init__(self, config):
-        super().__init__()
-        self.config = config
-        self.ln1 = nn.LayerNorm(config.emb_dim, elementwise_affine=False).to(DEVICE)
-        self.ln2 = nn.LayerNorm(config.emb_dim, elementwise_affine=False).to(DEVICE)
-        self.mha = nn.MultiheadAttention(
-            embed_dim=config.emb_dim,
-            num_heads=config.num_heads,
-            dropout=config.attention_dropout_rate,
-            bias=config.use_bias,
-            batch_first=True,
-        )
-        self.mlp_block = MlpBlock(config).to(DEVICE)  # MlpBlock from your code
-        self.resid_dropout = nn.Dropout(p=config.dropout_rate).to(DEVICE)
-
-    def forward(
-        self,
-        embeddings: torch.Tensor,
-        dropout_eval: bool,
-        pad_mask: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
-        if dropout_eval:
-            attn_dropout_p = 0.0
-            resid_dropout_p = 0.0
-        else:
-            attn_dropout_p = self.config.attention_dropout_rate
-            resid_dropout_p = self.config.dropout_rate
-
-        x = self.ln1(embeddings)
-        attn_mask = None
-        key_padding_mask = None
-        if pad_mask is not None:
-            # If pad_mask is shape [batch, seq_len, seq_len], treat it as attn_mask (boolean).
-            # If pad_mask is shape [batch, seq_len], treat it as key_padding_mask.
-            # Adjust logic as needed for your application.
-            if pad_mask.dim() == 3:
-                attn_mask = ~pad_mask  # PyTorch expects "True=do not attend", hence invert if needed
-            elif pad_mask.dim() == 2:
-                key_padding_mask = ~pad_mask
-
-        attn_output, _ = self.mha(
-            x, x, x,
-            attn_mask=attn_mask,
-            key_padding_mask=key_padding_mask,
-            need_weights=False
-        )
-        attn_output = F.dropout(attn_output, p=resid_dropout_p, training=not dropout_eval)
-        embeddings = embeddings + attn_output
-
-        x = self.ln2(embeddings)
-        mlp_out = self.mlp_block(x, dropout_eval=dropout_eval)
-        mlp_out = F.dropout(mlp_out, p=resid_dropout_p, training=not dropout_eval)
-        embeddings = embeddings + mlp_out
-        return embeddings
-
-
-class MlpBlock(nn.Module):
-    def __init__(self, config):
-        super().__init__()
-        self.config = config
-        if config.activation == "relu":
-            self.activation_fn = F.relu
-        elif config.activation == "silu":
-            self.activation_fn = F.silu
-        else:
-            raise ValueError(f"Unsupported activation: {config.activation}")
-        hidden_dim = int(config.mlp_dim_factor * config.emb_dim)
-        self.fc1 = nn.Linear(config.emb_dim, hidden_dim, bias=config.use_bias)
-        self.fc2 = nn.Linear(hidden_dim, config.emb_dim, bias=config.use_bias)
-
-    def forward(self, x: torch.Tensor, dropout_eval: bool) -> torch.Tensor:
-        dropout_p = 0.0 if dropout_eval else self.config.dropout_rate
-        x = self.fc1(x)
-        x = self.activation_fn(x)
-        x = F.dropout(x, p=dropout_p, training=not dropout_eval)
-        x = self.fc2(x)
-        return x
-
-# ---------------------------------------------------------------------
-# End placeholders. Below is the EncoderTransformer in PyTorch.
-# ---------------------------------------------------------------------
+from transformer import EncoderTransformerConfig, TransformerLayer
+from typing import Tuple, Optional
 
 class EncoderTransformer(nn.Module):
     """
@@ -153,7 +32,7 @@ class EncoderTransformer(nn.Module):
 
         # Embeddings for colors, channels, grid shapes, and CLS token
         self.colors_embed = nn.Embedding(self.config.vocab_size, self.config.emb_dim).to(DEVICE)
-        self.channels_embed = nn.Embedding(2, self.config.emb_dim).to(DEVICE)
+        #self.channels_embed = nn.Embedding(2, self.config.emb_dim).to(DEVICE)
 
         self.grid_shapes_row_embed = nn.Embedding(self.config.max_rows, self.config.emb_dim).to(DEVICE)
         self.grid_shapes_col_embed = nn.Embedding(self.config.max_cols, self.config.emb_dim).to(DEVICE)
@@ -344,37 +223,6 @@ class EncoderTransformer(nn.Module):
         x = F.dropout(x, p=embed_dropout_p, training=not dropout_eval)
         return x
     
-
-    def make_pad_mask(self, grid_shapes: torch.Tensor) -> torch.Tensor:
-        """
-        Creates a key_padding_mask of shape (B, T), where True indicates padding tokens.
-        
-        Args:
-            grid_shapes: shape (B, 2, 2), representing [[R_in, R_out], [C_in, C_out]].
-        
-        Returns:
-            key_padding_mask: shape (B, T), where T = 1 + 4 + 2 * max_rows * max_cols.
-                            True indicates positions that are padding and should be masked.
-        """
-        B = grid_shapes.shape[0]
-        T = 1 + 4 + 2 * (self.config.max_rows * self.config.max_cols)
-
-        # Compute used tokens: 1 CLS + 4 grid shapes + 2*(R*C)
-        rows_used = torch.max(grid_shapes[:, 0, :], dim=-1)[0]  # shape (B,)
-        cols_used = torch.max(grid_shapes[:, 1, :], dim=-1)[0]  # shape (B,)
-        used_tokens = 1 + 4 + 2 * (rows_used * cols_used)  # shape (B,)
-
-        # Initialize mask with all False (no padding)
-        key_padding_mask = torch.zeros((B, T), dtype=torch.bool, device=DEVICE)
-
-        # Set True for padding positions
-        for b in range(B):
-            n = used_tokens[b].long().item()
-            if n < T:
-                key_padding_mask[b, n:] = True  # Mask out padding tokens
-
-        return key_padding_mask
-    
     def make_pad_mask(self, grid_shapes: torch.Tensor) -> torch.Tensor:
 
         B = grid_shapes.shape[0]
@@ -400,5 +248,199 @@ class EncoderTransformer(nn.Module):
                 key_padding_mask[b, n:] = True  # Mask out padding tokens
 
         return key_padding_mask
-
     
+
+class EncoderTransformer(nn.Module):
+    def __init__(self, config):
+        """
+        config should have at least:
+          - max_rows, max_cols: maximum grid dimensions.
+          - emb_dim: embedding dimension.
+          - vocab_size: size of the color vocabulary.
+          - max_len: usually R * C (so that 2*max_len equals the flattened spatial tokens).
+          - scaled_position_embeddings: bool, whether to use scaled positional embeddings.
+          - latent_dim: dimension of the latent projection.
+          - latent_projection_bias: bool, whether to use bias in the latent projection.
+          - variational: bool, whether to produce a log-variance.
+          - num_layers: number of transformer layers.
+          - transformer_layer: a sub-config with fields:
+              * dropout_rate
+              * num_heads
+              * use_bias
+              * ffn_dim
+        """
+        super(EncoderTransformer, self).__init__()
+        self.config = config
+
+        # Position embeddings.
+        if config.scaled_position_embeddings:
+            self.pos_row_embed = nn.Embedding(1, config.emb_dim)
+            self.pos_col_embed = nn.Embedding(1, config.emb_dim)
+        else:
+            self.pos_row_embed = nn.Embedding(config.max_rows, config.emb_dim)
+            self.pos_col_embed = nn.Embedding(config.max_cols, config.emb_dim)
+
+        # Colors and channels embeddings.
+        self.colors_embed = nn.Embedding(config.vocab_size, config.emb_dim)
+
+        # Grid shapes embeddings.
+        self.grid_shapes_row_embed = nn.Embedding(config.max_rows, config.emb_dim)
+        self.grid_shapes_col_embed = nn.Embedding(config.max_cols, config.emb_dim)
+
+        # CLS token embedding.
+        self.cls_token = nn.Embedding(1, config.emb_dim)
+
+        # Dropout for embedding.
+        self.embed_dropout = nn.Dropout(config.transformer_layer.dropout_rate)
+
+        # Transformer layers.
+        self.transformer_layers = nn.ModuleList([
+            TransformerLayer(config.transformer_layer) for _ in range(config.num_layers)
+        ])
+
+        # CLS layer normalization.
+        self.cls_layer_norm = nn.LayerNorm(config.emb_dim, elementwise_affine=True)
+        # Fix the scaling: set weight to 1 and freeze it.
+        with torch.no_grad():
+            self.cls_layer_norm.weight.fill_(1.0)
+        self.cls_layer_norm.weight.requires_grad = False
+        if not config.transformer_layer.use_bias:
+            if self.cls_layer_norm.bias is not None:
+                self.cls_layer_norm.bias.data.zero_()
+                self.cls_layer_norm.bias.requires_grad = False
+
+        # Latent projection.
+        self.latent_mu = nn.Linear(config.emb_dim, config.latent_dim, bias=config.latent_projection_bias)
+        if config.variational:
+            self.latent_logvar = nn.Linear(config.emb_dim, config.latent_dim, bias=config.latent_projection_bias)
+        else:
+            self.latent_logvar = None
+
+    def forward(self, state, shape, dropout_eval):
+        """
+        Args:
+            state: Tensor of token indices with shape (B, R, C)
+            grid_shapes: Tensor with shape (B, 2) containing grid sizes (for rows and columns)
+            dropout_eval: bool; if True, dropout is skipped.
+        Returns:
+            latent_mu: Tensor of shape (B, latent_dim)
+            latent_logvar: Tensor of shape (B, latent_dim) or None.
+        """
+        x = self.embed_grids(state, shape, dropout_eval)
+
+        pad_mask = self.make_pad_mask(grid_shapes)
+        for layer in self.transformer_layers:
+            x = layer(embeddings=x, dropout_eval=dropout_eval, pad_mask=pad_mask)
+        # Extract the CLS token (first token).
+        cls_embed = x[:, 0, :]
+        cls_embed = self.cls_layer_norm(cls_embed)
+        latent_mu = self.latent_mu(cls_embed).to(torch.float32)
+        if self.config.variational:
+            latent_logvar = self.latent_logvar(cls_embed).to(torch.float32)
+        else:
+            latent_logvar = None
+        return latent_mu, latent_logvar
+
+    def embed_grids(self, pairs, grid_shapes, dropout_eval):
+        """
+        Build embeddings from the input tokens and grid shape tokens.
+        """
+        config = self.config
+        device = pairs.device
+
+        # Position embedding block.
+        if config.scaled_position_embeddings:
+            pos_row_indices = torch.zeros(config.max_rows, dtype=torch.long, device=device)
+            pos_row_embed = self.pos_row_embed(pos_row_indices)  # (max_rows, emb_dim)
+            pos_col_indices = torch.zeros(config.max_cols, dtype=torch.long, device=device)
+            pos_col_embed = self.pos_col_embed(pos_col_indices)  # (max_cols, emb_dim)
+            pos_row_factors = torch.arange(1, config.max_rows + 1, device=device).unsqueeze(1).type_as(pos_row_embed)
+            pos_row_embeds = pos_row_factors * pos_row_embed  # (max_rows, emb_dim)
+            pos_col_factors = torch.arange(1, config.max_cols + 1, device=device).unsqueeze(1).type_as(pos_col_embed)
+            pos_col_embeds = pos_col_factors * pos_col_embed  # (max_cols, emb_dim)
+            # Resulting pos_embed: shape (max_rows, max_cols, 1, emb_dim)
+            pos_embed = pos_row_embeds.unsqueeze(1).unsqueeze(2) + pos_col_embeds.unsqueeze(0).unsqueeze(2)
+        else:
+
+            pos_row_indices = torch.arange(config.max_rows, dtype=torch.long, device=device)
+            pos_row_embed = self.pos_row_embed(pos_row_indices)  # (max_rows, emb_dim)
+            pos_col_indices = torch.arange(config.max_cols, dtype=torch.long, device=device)
+            pos_col_embed = self.pos_col_embed(pos_col_indices)  # (max_cols, emb_dim)
+            pos_embed = pos_row_embed.unsqueeze(1).unsqueeze(2) + pos_col_embed.unsqueeze(0).unsqueeze(2)
+
+        # Colors embedding block.
+        # pairs: (B, R, C, 2) -> colors_embed: (B, R, C, 2, emb_dim)
+        colors_embed = self.colors_embed(pairs)
+
+        # Channels embedding block.
+        channels_indices = torch.arange(2, dtype=torch.long, device=device)
+        channels_embed = self.channels_embed(channels_indices)  # (2, emb_dim)
+
+        # Combine all embeddings.
+        # Broadcasting: pos_embed (max_rows, max_cols, 1, emb_dim) will broadcast to (R, C, 2, emb_dim) if R==max_rows and C==max_cols.
+        x = colors_embed + pos_embed + channels_embed  # (B, R, C, 2, emb_dim)
+
+        # Flatten the spatial and channel dimensions.
+        B = x.shape[0]
+        x = x.view(B, -1, x.shape[-1])  # (B, 2*R*C, emb_dim)
+
+        # Embed grid shape tokens.
+        # grid_shapes: (B, 2, 2)
+        grid_shapes_row = grid_shapes[:, 0, :].long() - 1  # (B, 2)
+        grid_shapes_row_embed = self.grid_shapes_row_embed(grid_shapes_row)  # (B, 2, emb_dim)
+        grid_shapes_row_embed = grid_shapes_row_embed + channels_embed  # broadcast addition
+
+        grid_shapes_col = grid_shapes[:, 1, :].long() - 1  # (B, 2)
+        grid_shapes_col_embed = self.grid_shapes_col_embed(grid_shapes_col)  # (B, 2, emb_dim)
+        grid_shapes_col_embed = grid_shapes_col_embed + channels_embed
+
+        # Concatenate row and column grid tokens.
+        grid_shapes_embed = torch.cat([grid_shapes_row_embed, grid_shapes_col_embed], dim=1)  # (B, 4, emb_dim)
+        x = torch.cat([grid_shapes_embed, x], dim=1)  # (B, 4 + 2*R*C, emb_dim)
+
+        # Add the CLS token.
+        cls_token = self.cls_token(torch.zeros(x.shape[0], 1, dtype=torch.long, device=device))  # (B, 1, emb_dim)
+        x = torch.cat([cls_token, x], dim=1)  # (B, 1 + 4 + 2*R*C, emb_dim)
+
+        expected_seq_len = 1 + 4 + 2 * config.max_len
+        assert x.shape[1] == expected_seq_len, f"Expected sequence length {expected_seq_len}, got {x.shape[1]}"
+
+        if not dropout_eval:
+            x = self.embed_dropout(x)
+        return x
+
+    def make_pad_mask(self, grid_shapes):
+        """
+        Create an attention pad mask that is True for valid tokens.
+        Args:
+            grid_shapes: Tensor with shape (B, 2, 2)
+        Returns:
+            A boolean mask of shape (B, 1, T, T) where T = 1+4+2*max_rows*max_cols.
+        """
+        B = grid_shapes.shape[0]
+        device = grid_shapes.device
+        # Create a row mask of shape (B, max_rows, 2)
+        row_arange = torch.arange(self.config.max_rows, device=device).view(1, self.config.max_rows, 1)
+        row_mask = row_arange < grid_shapes[:, 0:1, :].long()  # (B, max_rows, 2)
+        # Create a column mask of shape (B, max_cols, 2)
+        col_arange = torch.arange(self.config.max_cols, device=device).view(1, self.config.max_cols, 1)
+        col_mask = col_arange < grid_shapes[:, 1:2, :].long()  # (B, max_cols, 2)
+        # Combine to get a spatial mask.
+        row_mask = row_mask.unsqueeze(2)  # (B, max_rows, 1, 2)
+        col_mask = col_mask.unsqueeze(1)  # (B, 1, max_cols, 2)
+        pad_mask = row_mask & col_mask  # (B, max_rows, max_cols, 2)
+        pad_mask = pad_mask.view(B, 1, -1)  # (B, 1, max_rows*max_cols*2)
+        # Prepend ones for the CLS token and grid shape tokens (1+4 tokens).
+        ones_mask = torch.ones(B, 1, 1 + 4, dtype=torch.bool, device=device)
+        pad_mask = torch.cat([ones_mask, pad_mask], dim=-1)  # (B, 1, 1+4+max_rows*max_cols*2)
+        # Outer product to build a full attention mask.
+        pad_mask = pad_mask.unsqueeze(2) & pad_mask.unsqueeze(1)  # (B, 1, T, T)
+        return pad_mask
+
+config = EncoderTransformerConfig()
+model = EncoderTransformer(config)
+# Dummy inputs:
+pairs = torch.randint(0, config.vocab_size, (2, config.max_rows, config.max_cols, 2))
+grid_shapes = torch.tensor([[[30, 30], [30, 30]], [[30, 30], [30, 30]]])
+latent_mu, latent_logvar = model(pairs, grid_shapes, dropout_eval=False)
+print(latent_mu.shape, latent_logvar.shape)
