@@ -2243,6 +2243,54 @@ class Transformer:
         selection_3d_grid[capped_selection] = capped_upscaled_grid[capped_selection].ravel()
         return selection_3d_grid
 
+    # def vectorized_vupscale(self, grid, selection, scale_factor):
+    #     """
+    #     Upscale the selection in the grid vertically by a specified scale factor,
+    #     then overwrite existing values (vectorized approach).
+    #     """
+    #     grid_3d = create_grid3d(grid, selection)
+    #     depth, original_rows, original_cols = selection.shape
+
+    #     upscaled_selection = np.repeat(selection, scale_factor, axis=1)
+    #     upscaled_grid = np.repeat(grid_3d * selection, scale_factor, axis=1)
+    #     upscaled_rows = upscaled_selection.shape[1]
+
+    #     com_original = vectorized_center_of_mass(selection)
+    #     com_upscaled = vectorized_center_of_mass(upscaled_selection)
+
+    #     shift = (com_original - com_upscaled)
+    #     shifted_row_indices = (
+    #         np.arange(upscaled_rows).reshape(1, upscaled_rows, 1) + shift
+    #     )
+    #     shifted_row_indices = np.broadcast_to(shifted_row_indices, upscaled_selection.shape)
+
+    #     valid_mask = (
+    #         (shifted_row_indices >= 0) &
+    #         (shifted_row_indices < original_rows) &
+    #         upscaled_selection
+    #     )
+
+    #     indices = np.argwhere(valid_mask)
+    #     d = indices[:, 0]
+    #     r_up = indices[:, 1]
+    #     c = indices[:, 2]
+    #     shifted_rows = shifted_row_indices[valid_mask].flatten()
+    #     values = upscaled_grid[valid_mask].flatten()
+
+    #     rev_indices = np.arange(len(d) - 1, -1, -1)
+    #     d_rev = d[rev_indices]
+    #     shifted_rows_rev = shifted_rows[rev_indices]
+    #     c_rev = c[rev_indices]
+    #     values_rev = values[rev_indices]
+
+    #     final_grid = np.zeros((depth, original_rows, original_cols), dtype=grid_3d.dtype)
+    #     final_grid[d_rev, shifted_rows_rev, c_rev] = values_rev
+
+    #     grid_3d[selection] = 0
+    #     grid_3d[final_grid != 0] = final_grid[final_grid != 0]
+    #     return grid_3d
+
+
     def hupscale(self, grid, selection, scale_factor):
         """
         Horizontally upscale the selection in the grid by a specified scale factor,
@@ -2350,50 +2398,4 @@ class Transformer:
         grid_3d[selection == 1] = background_color
         return grid_3d
 
-    def vectorized_vupscale(self, grid, selection, scale_factor):
-        """
-        Upscale the selection in the grid vertically by a specified scale factor,
-        then overwrite existing values (vectorized approach).
-        """
-        grid_3d = create_grid3d(grid, selection)
-        depth, original_rows, original_cols = selection.shape
-
-        upscaled_selection = np.repeat(selection, scale_factor, axis=1)
-        upscaled_grid = np.repeat(grid_3d * selection, scale_factor, axis=1)
-        upscaled_rows = upscaled_selection.shape[1]
-
-        com_original = vectorized_center_of_mass(selection)
-        com_upscaled = vectorized_center_of_mass(upscaled_selection)
-
-        shift = (com_original - com_upscaled)
-        shifted_row_indices = (
-            np.arange(upscaled_rows).reshape(1, upscaled_rows, 1) + shift
-        )
-        shifted_row_indices = np.broadcast_to(shifted_row_indices, upscaled_selection.shape)
-
-        valid_mask = (
-            (shifted_row_indices >= 0) &
-            (shifted_row_indices < original_rows) &
-            upscaled_selection
-        )
-
-        indices = np.argwhere(valid_mask)
-        d = indices[:, 0]
-        r_up = indices[:, 1]
-        c = indices[:, 2]
-        shifted_rows = shifted_row_indices[valid_mask].flatten()
-        values = upscaled_grid[valid_mask].flatten()
-
-        rev_indices = np.arange(len(d) - 1, -1, -1)
-        d_rev = d[rev_indices]
-        shifted_rows_rev = shifted_rows[rev_indices]
-        c_rev = c[rev_indices]
-        values_rev = values[rev_indices]
-
-        final_grid = np.zeros((depth, original_rows, original_cols), dtype=grid_3d.dtype)
-        final_grid[d_rev, shifted_rows_rev, c_rev] = values_rev
-
-        grid_3d[selection] = 0
-        grid_3d[final_grid != 0] = final_grid[final_grid != 0]
-        return grid_3d
-
+    
