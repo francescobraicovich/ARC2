@@ -45,16 +45,15 @@ class WolpertingerAgent(DDPG):
      - Overridden select_target_action() for target Q-value computation using Wolpertinger logic.
     """
 
-    def __init__(self, action_space, nb_states, nb_actions, args, k):
+    def __init__(self, action_space, nb_actions, args, k):
         """
         :param action_space: Custom ARCActionSpace or similar, with .search_point(...)
-        :param nb_states: Dimension of states (int)
         :param nb_actions: Dimension of actions (int)
         :param args: Arguments/Hyperparameters (Namespace or dict)
         :param k: Number of neighbors to consider in Wolpertinger
         """
 
-        super().__init__(args, nb_states, nb_actions)
+        super().__init__(args, nb_actions)
 
         # Automatically determine the device
         self.device = DEVICE
