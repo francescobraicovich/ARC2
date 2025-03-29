@@ -4,7 +4,7 @@ import torch
 import wandb
 import copy
 
-from utils.util import to_tensor
+from .utils.util import to_tensor
 
 from dsl.utilities.plot import plot_step
 
