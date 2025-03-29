@@ -20,7 +20,7 @@ def init_parser(alg):
         parser.add_argument('--max-episode', type=int, default=500000, help='Maximum number of episodes')
         parser.add_argument('--max-actions', default=1e9, type=int, help='# max actions')
         parser.add_argument('--test-episode', type=int, default=20, help='Maximum testing episodes')
-        parser.add_argument('--warmup', default=250, type=int, help='Time without training but only filling the replay memory')
+        parser.add_argument('--warmup', default=25, type=int, help='Time without training but only filling the replay memory')
         parser.add_argument('--bsize', default=48, type=int, help='Minibatch size')
         parser.add_argument('--rmsize', default=100000, type=int, help='Replay memory size')
 
@@ -35,15 +35,26 @@ def init_parser(alg):
         parser.add_argument('--weight-decay', default=1e-4, type=float, help='L2 Regularization loss weight decay')
                             
         # Actor-Critic Architecture
-        parser.add_argument('--h1_dim_actor', default=512, type=int, help='Hidden units in the first fully connected layer')
-        parser.add_argument('--h2_dim_actor', default=512, type=int, help='Hidden units in the second fully connected layer')
-        parser.add_argument('--h1_dim_critic', default=512, type=int, help='Hidden units in the first fully connected layer')
-        parser.add_argument('--h2_dim_critic', default=512, type=int, help='Hidden units in the second fully connected layer')
-        parser.add_argument('--latent_dim', default=96, type=int, help='Latent dimension for encoder')
+        parser.add_argument('--h1_dim_actor', default=256, type=int, help='Hidden units in the first fully connected layer')
+        parser.add_argument('--h2_dim_actor', default=256, type=int, help='Hidden units in the second fully connected layer')
+        parser.add_argument('--h1_dim_critic', default=256, type=int, help='Hidden units in the first fully connected layer')
+        parser.add_argument('--h2_dim_critic', default=256, type=int, help='Hidden units in the second fully connected layer')
 
         # World Model Embedding
-        parser.add_argument('--state_emb_dim', default=256, type=int, help='State embedding dimension')
+        parser.add_argument('--world_model_pre_train', default=False, type=bool, help='Pre-train world model before the RL loop')
+        parser.add_argument('--world_model_pre_train_epochs', default=100, type=int, help='Number of epochs for pre-training world model')
+        parser.add_argument('--world_model_pre_train_batch_size', default=256, type=int, help='Batch size for pre-training world model')
+        parser.add_argument('--world_model_pre_train_lr', default=1e-4, type=float, help='Learning rate for pre-training world model')
+    
+        parser.add_argument('--state_encoded_dim', default=256, type=int, help='State latent (encoded) dimension')
         parser.add_argument('--action_emb_dim', default=256, type=int, help='Action embedding dimension')
+        parser.add_argument('--state_emb_dim', default=256, type=int, help='Embedding dimension for state representation in attention')
+        parser.add_argument('--state_encoder_num_heads', default=4, type=int, help='Number of attention heads in state encoder')
+        parser.add_argument('--state_encoder_num_layers', default=4, type=int, help='Number of transformer layers in state encoder')
+        parser.add_argument('--state_encoder_dropout', default=0.1, type=float, help='Dropout rate in state encoder')
+        parser.add_argument('--decoder_emb_dim', default=256, type=int, help='Embedding dimension for decoder')
+        parser.add_argument('--decoder_num_heads', default=4, type=int, help='Number of attention heads in decoder')
+        parser.add_argument('--decoder_num_layers', default=4, type=int, help='Number of transformer layers in decoder')
 
         # Exploration & Noise
         parser.add_argument('--epsilon', default=300000, type=int, help='Linear decay of exploration policy')
@@ -57,7 +68,7 @@ def init_parser(alg):
         parser.add_argument('--gpu-nums', type=int, default=8, help='Number of GPUs to use (default: 1)')
 
         # Filtering Action Space
-        parser.add_argument('--load_action_embedding', default=True, type=bool, help='Load action embedding or not')
+        parser.add_argument('--load_filtered_actions', default=True, type=bool, help='Load filtered actions or not')
         parser.add_argument('--num_experiments_filter', default=120, type=int, help='Number of problems used for filtering actions')
         parser.add_argument('--filter_threshold', default=0.3, type=float, help='Threshold percentage for filtering actions')
 
