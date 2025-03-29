@@ -341,3 +341,9 @@ class DDPG(object):
 
         print(f"Models and target networks saved to {output}")
 
+    def save_memory_for_world_model(self):
+        """
+        Save the replay memory to a file.
+        """
+        self.memory.save_memory_for_world_model(directory="../output/memory")
+
