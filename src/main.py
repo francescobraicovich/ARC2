@@ -89,16 +89,17 @@ def main():
         'max_iter': 1000,
     }
 
-    world_model_train(
-        state_encoder = state_encoder,
-        action_embedder = action_embedding,
-        transition_model = transition_decoder,
-        world_model_args = world_model_args,
-        save_model_dir = args.save_model_dir,
-        logger = logger,
-        save_per_epochs=1,
-        eval_interval=None
-    )
+    if args.world_model_pre_train:
+        world_model_train(
+            state_encoder = state_encoder,
+            action_embedder = action_embedding,
+            transition_model = transition_decoder,
+            world_model_args = world_model_args,
+            save_model_dir = args.save_model_dir,
+            logger = logger,
+            save_per_epochs=1,
+            eval_interval=None
+        )
 
     action_embedding = torch.randint(size=(num_filtered_actions, args.action_emb_dim), low=0, high=1).float()
     action_space.load_action_embeddings(action_embedding)

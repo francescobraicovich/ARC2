@@ -2,6 +2,7 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader, random_split
 import pickle
+import os
 
 class WorldModelDataset(Dataset):
     """
@@ -9,8 +10,12 @@ class WorldModelDataset(Dataset):
     removes the last row (which has no next state/shape), and filters out all transitions
     where terminal==True. Also provides a train-test split method.
     """
-    def __init__(self, file_path="../../output/memory/sequential_memory.pkl"):
+    def __init__(self, file_path="../output/memory/sequential_memory.pkl"):
         # Load the saved data
+        # append the file path to the current working directory
+        file_path = os.path.join(os.getcwd(), file_path)
+        print('Loading data from:', file_path)
+
         with open(file_path, "rb") as f:
             data = pickle.load(f)
         # Convert lists to numpy arrays (assuming each entry is a numpy array or a scalar)
