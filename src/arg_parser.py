@@ -35,10 +35,10 @@ def init_parser(alg):
         parser.add_argument('--weight-decay', default=1e-4, type=float, help='L2 Regularization loss weight decay')
                             
         # Actor-Critic Architecture
-        parser.add_argument('--h1_dim_actor', default=256, type=int, help='Hidden units in the first fully connected layer')
-        parser.add_argument('--h2_dim_actor', default=256, type=int, help='Hidden units in the second fully connected layer')
-        parser.add_argument('--h1_dim_critic', default=256, type=int, help='Hidden units in the first fully connected layer')
-        parser.add_argument('--h2_dim_critic', default=256, type=int, help='Hidden units in the second fully connected layer')
+        parser.add_argument('--h1_dim_actor', default=128, type=int, help='Hidden units in the first fully connected layer')
+        parser.add_argument('--h2_dim_actor', default=128, type=int, help='Hidden units in the second fully connected layer')
+        parser.add_argument('--h1_dim_critic', default=128, type=int, help='Hidden units in the first fully connected layer')
+        parser.add_argument('--h2_dim_critic', default=128, type=int, help='Hidden units in the second fully connected layer')
 
         # World Model Embedding
         parser.add_argument('--world_model_pre_train', default=False, type=bool, help='Pre-train world model before the RL loop')
