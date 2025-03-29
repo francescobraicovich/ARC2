@@ -3,6 +3,9 @@ import torch
 from torch.utils.data import Dataset, DataLoader, random_split
 import pickle
 import os
+from utils.util import set_device
+
+DEVICE=set_device('world_model/memory_data_load.py')
 
 class WorldModelDataset(Dataset):
     """
@@ -19,33 +22,48 @@ class WorldModelDataset(Dataset):
         with open(file_path, "rb") as f:
             data = pickle.load(f)
         # Convert lists to numpy arrays (assuming each entry is a numpy array or a scalar)
-        state = np.array(data['state'])
-        shape = np.array(data['shape'])
-        action = np.array(data['action'])
-        terminal = np.array(data['terminal'])
-        print('state shape:', state.shape)
+
+        state = torch.stack(data['state']).to(DEVICE)
+        shape = torch.stack(data['shape']).to(DEVICE)
+        action = torch.stack(data['action']).to(DEVICE)
+        terminal = torch.tensor(data['terminal'], dtype=torch.bool).to(DEVICE)
+        
+        # Process the states into current and target states
+        current_state, target_state = self.process_states(state)
+        current_shape, target_shape = self.process_shapes(shape)
         
         # Create next_state and next_shape by shifting the arrays one element ahead.
-        next_state = state[1:]
-        next_shape = shape[1:]
+        next_current_state, next_target_state = current_state[1:], target_state[1:]
+        next_current_shape, next_target_shape = current_shape[1:], target_shape[1:]
         
         # Remove the last row from current data since it has no corresponding next state/shape.
-        state = state[:-1]
-        shape = shape[:-1]
+        current_state = current_state[:-1]
+        current_shape = current_shape[:-1]
+        target_state = target_state[:-1]
+        target_shape = target_shape[:-1]
         action = action[:-1]
         terminal = terminal[:-1]
+
         
         # Remove transitions where terminal==True (i.e. where an episode ended)
         valid_mask = (terminal == False)
-        self.state = torch.tensor(state[valid_mask])
-        self.next_state = torch.tensor(next_state[valid_mask])
-        self.shape = torch.tensor(shape[valid_mask])
-        self.next_shape = torch.tensor(next_shape[valid_mask])
-        self.action = torch.tensor(action[valid_mask])
-        self.terminal = torch.tensor(terminal[valid_mask])
+        self.current_state = current_state[valid_mask]
+        self.current_shape = current_shape[valid_mask]
+        self.target_state = target_state[valid_mask]
+        self.target_shape = target_shape[valid_mask]
+        self.action = action[valid_mask]
+        self.terminal = terminal[valid_mask]
+
+        self.current_state = torch.tensor(self.current_state, dtype=torch.float32).to(DEVICE).long()
+        self.current_shape = torch.tensor(self.current_shape, dtype=torch.float32).to(DEVICE).long()
+        self.target_state = torch.tensor(self.target_state, dtype=torch.float32).to(DEVICE).long()
+        self.target_shape = torch.tensor(self.target_shape, dtype=torch.float32).to(DEVICE).long()
+        self.action = torch.tensor(self.action, dtype=torch.float32).to(DEVICE).long()
+        self.terminal = torch.tensor(self.terminal, dtype=torch.bool).to(DEVICE).long()
+        print('Data loaded successfully.')
         
     def __len__(self):
-        return len(self.state)
+        return len(self.current_state)
     
     def __getitem__(self, idx):
         """
@@ -54,14 +72,24 @@ class WorldModelDataset(Dataset):
           - next_state, next_shape (target features)
         """
         return {
-            'state': self.state[idx],
-            'shape': self.shape[idx],
+            'current_state': self.current_state[idx],
+            'current_shape': self.current_shape[idx],
+            'target_state': self.target_state[idx],
+            'target_shape': self.target_shape[idx],
             'action': self.action[idx],
-            'terminal': self.terminal[idx],
-            'next_state': self.next_state[idx],
-            'next_shape': self.next_shape[idx]
         }
     
+    def process_states(self, state):
+        current_state = state[:, :, :, 0]
+        target_state = state[:, :, :, 1]
+        target_state = target_state.reshape(-1, 900) + 1
+        return current_state, target_state
+    
+    def process_shapes(self, shape):
+        current_shape = shape[:, :, 0]
+        target_shape = shape[:, :, 1]
+        return current_shape, target_shape
+ 
     def train_test_split(self, test_ratio=0.2, shuffle=True):
         """
         Splits the dataset indices into training and test subsets.
