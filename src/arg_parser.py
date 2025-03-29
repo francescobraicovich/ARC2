@@ -41,20 +41,20 @@ def init_parser(alg):
         parser.add_argument('--h2_dim_critic', default=128, type=int, help='Hidden units in the second fully connected layer')
 
         # World Model Embedding
-        parser.add_argument('--world_model_pre_train', default=False, type=bool, help='Pre-train world model before the RL loop')
+        parser.add_argument('--world_model_pre_train', default=True, type=bool, help='Pre-train world model before the RL loop')
         parser.add_argument('--world_model_pre_train_epochs', default=100, type=int, help='Number of epochs for pre-training world model')
-        parser.add_argument('--world_model_pre_train_batch_size', default=256, type=int, help='Batch size for pre-training world model')
+        parser.add_argument('--world_model_pre_train_batch_size', default=32, type=int, help='Batch size for pre-training world model')
         parser.add_argument('--world_model_pre_train_lr', default=1e-4, type=float, help='Learning rate for pre-training world model')
     
-        parser.add_argument('--state_encoded_dim', default=256, type=int, help='State latent (encoded) dimension')
-        parser.add_argument('--action_emb_dim', default=256, type=int, help='Action embedding dimension')
-        parser.add_argument('--state_emb_dim', default=256, type=int, help='Embedding dimension for state representation in attention')
+        parser.add_argument('--state_encoded_dim', default=128, type=int, help='State latent (encoded) dimension')
+        parser.add_argument('--action_emb_dim', default=128, type=int, help='Action embedding dimension')
+        parser.add_argument('--state_emb_dim', default=32, type=int, help='Embedding dimension for state representation in attention')
         parser.add_argument('--state_encoder_num_heads', default=4, type=int, help='Number of attention heads in state encoder')
-        parser.add_argument('--state_encoder_num_layers', default=4, type=int, help='Number of transformer layers in state encoder')
+        parser.add_argument('--state_encoder_num_layers', default=2, type=int, help='Number of transformer layers in state encoder')
         parser.add_argument('--state_encoder_dropout', default=0.1, type=float, help='Dropout rate in state encoder')
-        parser.add_argument('--decoder_emb_dim', default=256, type=int, help='Embedding dimension for decoder')
+        parser.add_argument('--decoder_emb_dim', default=32, type=int, help='Embedding dimension for decoder')
         parser.add_argument('--decoder_num_heads', default=4, type=int, help='Number of attention heads in decoder')
-        parser.add_argument('--decoder_num_layers', default=4, type=int, help='Number of transformer layers in decoder')
+        parser.add_argument('--decoder_num_layers', default=2, type=int, help='Number of transformer layers in decoder')
 
         # Exploration & Noise
         parser.add_argument('--epsilon', default=300000, type=int, help='Linear decay of exploration policy')
@@ -76,7 +76,7 @@ def init_parser(alg):
         parser.add_argument('--init_w', default=0.003, type=float, help='Initial weight')
         parser.add_argument('--seed', default=-1, type=int, help='Random seed')
         parser.add_argument('--save_per_epochs', default=200, type=int, help='Save model every X epochs')
-        parser.add_argument('--save_memory_per_epochs', default=20, type=int, help='Save memory every X epochs')
+        parser.add_argument('--save_memory_per_epochs', default=100, type=int, help='Save memory every X epochs')
         parser.add_argument('--k_neighbors', default=75, type=int, help='Number of neighbors to consider')
         return parser
 
