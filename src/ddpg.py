@@ -10,32 +10,29 @@ from utils.util import set_device
 
 # Loss function for the Critic network
 criterion = nn.MSELoss()
+DEVICE = set_device('ddpg.py')
 
 class DDPG(object):
     """
     Deep Deterministic Policy Gradient (DDPG) class.
     Implements the Actor-Critic algorithm for reinforcement learning.
     """
-    def __init__(self, args, nb_states, nb_actions):
+    def __init__(self, args, nb_actions):
         """
         Initialize the DDPG model with the given parameters.
 
         Args:
             args: Arguments object containing hyperparameters.
-            nb_states: Number of state variables in the environment.
             nb_actions: Number of action variables in the environment.
         """
 
         # Determine the appropriate device
-        self.device = set_device()
-        print("Using device: {} for ddpg".format(self.device))
-
+        self.device = DEVICE
 
         # Set the random seed for reproducibility
         if args.seed > 0:
             self.seed(args.seed)
 
-        self.nb_states = nb_states
         self.nb_actions = nb_actions
 
         # Hyperparameters for the noise in the policy update
@@ -43,11 +40,9 @@ class DDPG(object):
         self.noise_clip = args.noise_clip
         self.policy_delay = args.policy_delay
 
-        
-
         # Network configuration for the Actor and Critic networks
         net_cfg = {
-            'state_emb_dim': args.state_emb_dim,
+            'state_encoded_dim': args.state_encoded_dim,
             'action_emb_dim': args.action_emb_dim,
         }
 
