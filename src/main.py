@@ -75,6 +75,8 @@ def main():
         embed_dim=args.action_emb_dim,
     )
     transition_decoder = ContextTransformer2D(
+        state_encoded_dim=args.state_encoded_dim,
+        action_emb_dim=args.action_emb_dim,
         num_layers=args.decoder_num_layers,
         num_heads=args.decoder_num_heads,
         emb_dim=args.decoder_emb_dim,
@@ -92,10 +94,10 @@ def main():
         action_embedder = action_embedding,
         transition_model = transition_decoder,
         world_model_args = world_model_args,
-        memory = None,  # Placeholder for memory object
-        memory_dir = None,  # Placeholder for memory directory
         save_model_dir = args.save_model_dir,
         logger = logger,
+        save_per_epochs=1,
+        eval_interval=None
     )
 
     action_embedding = torch.randint(size=(num_filtered_actions, args.action_emb_dim), low=0, high=1).float()
