@@ -1310,6 +1310,14 @@ if __name__ == '__main__':
 
 
 
+
+
+
+
+
+
+
+
 #%%
 
 import numpy as np
@@ -1424,6 +1432,9 @@ class Transformer:
         """
         Flip the grid vertically (top-to-bottom) within the bounding rectangle of each selection slice.
         """
+        # Ensure the selection is 3D
+        if selection.ndim == 2:
+            selection = selection[np.newaxis, ...]
         grid_3d = create_grid3d(grid, selection)
         bounding_rectangle = find_bounding_rectangle(selection)
         flipped_bounding_rectangle = np.flip(bounding_rectangle, axis=1)
@@ -1488,6 +1499,9 @@ class Transformer:
         Rotate the selected cells 90 degrees num_rotations times counterclockwise,
         but only if the bounding region is square-shaped.
         """
+        # Ensure the selection mask is 3D.
+        if selection.ndim == 2:
+            selection = selection[np.newaxis, ...]
         grid_3d = create_grid3d(grid, selection)
         bounding_masks = find_bounding_square(selection)
 
@@ -1531,6 +1545,9 @@ class Transformer:
         Mirror the selection vertically below the original grid.
         Works only if rows <= 15. If rows > 15, returns the grid in 3D form.
         """
+        # Ensure the selection mask is 3D.
+        if selection.ndim == 2:
+            selection = selection[np.newaxis, ...]
         d, rows, cols = selection.shape
         grid_3d = create_grid3d(grid, selection)
 
@@ -1603,6 +1620,9 @@ class Transformer:
         Duplicate the selection horizontally out of the original grid.
         Works only if columns <= 15. Otherwise, returns 3D grid form.
         """
+        # Ensure the selection mask is 3D.
+        if selection.ndim == 2:
+            selection = selection[np.newaxis, ...]        
         d, rows, cols = selection.shape
         if cols > 15:
             return create_grid3d(grid, selection)
@@ -2363,6 +2383,9 @@ class Transformer:
         Crop the grid to the bounding rectangle around the selection.
         Use -1 as the value for cells outside the selection.
         """
+        # Ensure the selection mask is 3D.
+        if selection.ndim == 2:
+            selection = selection[np.newaxis, ...]        
         grid_3d = create_grid3d(grid, selection)
         bounding_rectangle = find_bounding_rectangle(selection)
 
@@ -2441,6 +2464,7 @@ def run_time_tests():
     _ = transformer.delete(grid, selection)
     
     iterations = 100
+    
     start = time.time()
     for _ in range(iterations):
          _ = transformer.new_color(grid, selection, 5)
