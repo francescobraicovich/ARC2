@@ -1401,6 +1401,9 @@ class Transformer:
         """
         Fill the bounding rectangle around the selection with the specified color.
         """
+        # Ensure the selection mask is 3D.
+        if selection.ndim == 2:
+            selection = selection[np.newaxis, ...]        
         color = select_color(grid, method, param)
         grid_3d = create_grid3d(grid, selection)
         bounding_rectangle = find_bounding_rectangle(selection)
@@ -2437,10 +2440,11 @@ class Transformer:
 # =============================================================================
 
 def main():
-    # Create a small grid (30x30) with a 2D boolean selection mask.
+    # Create a small grid (30x30) with a 2D selection mask.
     grid = np.random.randint(0, 10, size=(30, 30)).astype(np.int64)
-    selection = (grid == 3)  # 2D mask
-    transformer = Transformer()  # from your numpy version
+    selection = (grid == 3)  # 2D mask (shape: (30, 30))
+    transformer = Transformer()  # Your NumPy Transformer class instance
+
     print("Numpy new_color shape:", transformer.new_color(grid, selection, 5).shape)
     print("Numpy flipv shape:", transformer.flipv(grid, selection).shape)
     print("Numpy rotate_90 shape:", transformer.rotate_90(grid, selection).shape)
@@ -2448,12 +2452,14 @@ def main():
     print("Numpy mirror_down shape:", transformer.mirror_down(grid, selection).shape)
     print("Numpy duplicate_horizontally shape:", transformer.duplicate_horizontally(grid, selection).shape)
 
+
 def run_time_tests():
-    # Create a large grid (1000x1000) with a 2D boolean selection mask.
+    # Create a larger grid (1000x1000) with a 2D selection mask.
     grid = np.random.randint(0, 10, size=(1000, 1000)).astype(np.int64)
     selection = (grid == 3)  # 2D mask
     transformer = Transformer()
-    # Warm-up: call each method once.
+
+    # Warm-up: call each method once to trigger any initial computations.
     _ = transformer.new_color(grid, selection, 5)
     _ = transformer.color(grid, selection, 'color_rank', 2)
     _ = transformer.fill_with_color(grid, selection, 'color_rank', 4)
@@ -2462,9 +2468,11 @@ def run_time_tests():
     _ = transformer.rotate_90(grid, selection)
     _ = transformer.crop(grid, selection)
     _ = transformer.delete(grid, selection)
-    
-    iterations = 100
-    
+
+    iterations = 1  # Number of iterations for timing tests
+
+    import time
+
     start = time.time()
     for _ in range(iterations):
          _ = transformer.new_color(grid, selection, 5)
