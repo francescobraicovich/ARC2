@@ -170,39 +170,6 @@ def convolve_numba(image, kernel, cval):
             result[i, j] = acc
     return result
 
-#Functions to be used in the Selector class
-
-# @nb.njit(parallel=True)
-# def select_color_impl(grid, color):
-#     # Ensure color is an integer
-#     color = int(color)
-#     n_rows = grid.shape[0]
-#     n_cols = grid.shape[1]
-#     # Use explicit comparison instead of "if not ..." to help numba
-#     if check_color_numba(color) == False:
-#         return np.zeros((1, n_rows, n_cols), dtype=grid.dtype)
-#     mask = grid == color
-#     mask3d = mask.reshape((1, n_rows, n_cols))
-#     if np.sum(mask3d) == 0:
-#         return np.zeros((1, n_rows, n_cols), dtype=grid.dtype)
-#     return mask3d
-
-# @nb.njit
-# def select_color_impl(grid, color):
-#     # Ensure color is an integer
-#     color = int(color)
-#     n_rows = grid.shape[0]
-#     n_cols = grid.shape[1]
-#     # Use a simple Boolean check
-#     if not check_color_numba(color):
-#         return np.zeros((1, n_rows, n_cols), dtype=grid.dtype)
-#     mask = grid == color
-#     mask3d = mask.reshape((1, n_rows, n_cols))
-#     if np.count_nonzero(mask3d) == 0:
-#         return np.zeros((1, n_rows, n_cols), dtype=grid.dtype)
-#     return mask3d
-
-
 @nb.njit(parallel=True)
 def select_color_impl(grid, color):
     # Convert color to integer
@@ -239,20 +206,20 @@ def select_color_impl(grid, color):
 def select_rectangles_impl(grid, color, height, width, min_geom):
     rows, cols = grid.shape
     if not check_integer_numba(height, min_geom, rows) or not check_integer_numba(width, min_geom, cols):
-        return np.expand_dims(np.zeros_like(grid), axis=0)
+        return np.expand_dims(np.zeros_like(grid, dtype=np.bool_), axis=0)
     color_mask = select_color_impl(grid, color)
     if np.sum(color_mask) == 0:
-        return np.expand_dims(np.zeros_like(grid), axis=0)
+        return np.expand_dims(np.zeros_like(grid, dtype=np.bool_), axis=0)
     # Remove extra dimension.
     color_mask = color_mask[0]
-    # We'll count the number of valid rectangles.
+    # Count the number of valid rectangles.
     valid_count = 0
     for i in range(rows - height + 1):
         for j in range(cols - width + 1):
             sub_rect = color_mask[i:i+height, j:j+width]
             if np.all(sub_rect):
                 valid_count += 1
-    # Preallocate result array.
+    # Preallocate the result array as boolean.
     result = np.zeros((valid_count, rows, cols), dtype=np.bool_)
     idx = 0
     for i in range(rows - height + 1):
@@ -268,11 +235,12 @@ def select_rectangles_impl(grid, color, height, width, min_geom):
                 idx += 1
     return result
 
+
 @nb.njit(parallel=True)
 def select_connected_shapes_impl(grid: np.ndarray, color: int) -> np.ndarray:
     color_mask = select_color_impl(grid, color)
     if np.sum(color_mask) == 0:
-        return np.expand_dims(np.zeros_like(grid), axis=0)
+        return np.expand_dims(np.zeros_like(grid, dtype=np.bool_), axis=0)
     color_mask = color_mask[0]
     labeled_array, num_features = label_numba(color_mask)
     result = np.zeros((num_features, color_mask.shape[0], color_mask.shape[1]), dtype=np.bool_)
@@ -280,13 +248,13 @@ def select_connected_shapes_impl(grid: np.ndarray, color: int) -> np.ndarray:
         for a in range(color_mask.shape[0]):
             for b in range(color_mask.shape[1]):
                 result[i-1, a, b] = (labeled_array[a, b] == i)
-        return result
+    return result
 
 @nb.njit(parallel=True)
 def select_connected_shapes_diag_impl(grid: np.ndarray, color: int) -> np.ndarray:
     color_mask = select_color_impl(grid, color)
     if np.sum(color_mask) == 0:
-        return np.expand_dims(np.zeros_like(grid), axis=0)
+        return np.expand_dims(np.zeros_like(grid, dtype=np.bool_), axis=0)
     color_mask = color_mask[0]
     labeled_array, num_features = label_numba_diag(color_mask)
     result = np.zeros((num_features, color_mask.shape[0], color_mask.shape[1]), dtype=np.bool_)
@@ -298,31 +266,38 @@ def select_connected_shapes_diag_impl(grid: np.ndarray, color: int) -> np.ndarra
 
 @nb.njit(parallel=True)
 def select_adjacent_to_color_impl(grid: np.ndarray, color: int, points_of_contact: int) -> np.ndarray:
+    # Check if points_of_contact is within the valid range; if not, return a 3D empty mask.
     if not check_integer_numba(points_of_contact, 1, 4):
-        return np.expand_dims(np.zeros_like(grid), axis=0)
+        return np.expand_dims(np.zeros_like(grid, dtype=np.bool_), axis=0)
     nrows, ncols = grid.shape
+    # If the grid is empty, return a 3D empty mask.
     if nrows == 0 or ncols == 0:
-        return np.zeros((0, 0), dtype=np.bool_)
+        return np.zeros((1, 0, 0), dtype=np.bool_)
+    # Get the 2D boolean mask for the specified color.
     color_mask = select_color_impl(grid, color)[0]
     # Define kernel for 4-connectivity.
     kernel = np.array([[0, 1, 0],
                        [1, 0, 1],
                        [0, 1, 0]], dtype=np.int64)
     conv_result = convolve_numba(color_mask.astype(np.int64), kernel, 0)
+    # Create the selection mask based on the number of contacts.
     selection_mask = (conv_result == points_of_contact)
+    # For any pixel that is already part of the color_mask, force the selection to be False.
     for i in range(nrows):
         for j in range(ncols):
             if color_mask[i, j]:
                 selection_mask[i, j] = False
-    return selection_mask.reshape((-1, nrows, ncols))
+    # Reshape the 2D result into a 3D array with one layer.
+    return selection_mask.reshape((1, nrows, ncols))
+
 
 @nb.njit(parallel=True)
 def select_adjacent_to_color_diag_impl(grid, color, points_of_contact):
     if not check_integer_numba(points_of_contact, 1, 8):
-        return np.expand_dims(np.zeros_like(grid), axis=0)
+        return np.expand_dims(np.zeros_like(grid, dtype=np.bool_), axis=0)
     nrows, ncols = grid.shape
     if nrows == 0 or ncols == 0:
-        return np.zeros((0, 0), dtype=np.bool_)
+        return np.zeros((1, 0, 0), dtype=np.bool_)
     color_mask = select_color_impl(grid, color)[0]
     kernel = np.ones((3, 3), dtype=np.int64)
     conv_result = convolve_numba(color_mask.astype(np.int64), kernel, 0)
@@ -415,7 +390,7 @@ class Selector:
 # --------------------------------------------------------------------
 if __name__ == '__main__':
     # Create a random grid (e.g., 1000x1000) with colors 0..9.
-    grid = np.random.randint(0, 10, size=(1000, 1000)).astype(np.int64)
+    grid = np.random.randint(0, 10, size=(100, 100)).astype(np.int64)
     sel = Selector()
     iterations = 100
 
