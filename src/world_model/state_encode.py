@@ -1,17 +1,13 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-import os
-import sys
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 # go up one directory to import utils
 from utils.util import set_device
+from world_model.transformer import TransformerLayer
 
 # Determine the device: CUDA -> MPS -> CPU
 DEVICE = set_device('action_space_embed.py')
 
-from transformer import TransformerLayer
 
 class EncoderTransformer(nn.Module):
     def __init__(self, config):
