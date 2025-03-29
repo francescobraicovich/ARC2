@@ -23,6 +23,7 @@ from world_model.transformer import EncoderTransformerConfig
 from world_model.action_embed import ActionEmbedding
 from world_model.state_encode import EncoderTransformer
 from world_model.transition_decode import ContextTransformer2D
+from world_model.train_world_model import world_model_train
 
 def main():
     warnings.filterwarnings('ignore')
@@ -46,6 +47,15 @@ def main():
     if args.mode == 'train' and wandb.run is None:
         wandb.init(project="arc-v1", config=vars(args), mode="online")
 
+    # 12. Set up logger
+    if args.mode == 'train':
+        setup_logger('RS_log', f'{args.save_model_dir}/RS_train_log')
+    elif args.mode == 'test':
+        setup_logger('RS_log', f'{args.save_model_dir}/RS_test_log')
+    else:
+        raise RuntimeError(f'Undefined mode {args.mode}')
+    logger = logging.getLogger('RS_log')
+
 
     args.load_cleaned_actions = True
     action_space = ARCActionSpace(args)
@@ -64,8 +74,29 @@ def main():
         num_actions=num_filtered_actions,
         embed_dim=args.action_emb_dim,
     )
+    transition_decoder = ContextTransformer2D(
+        num_layers=args.decoder_num_layers,
+        num_heads=args.decoder_num_heads,
+        emb_dim=args.decoder_emb_dim,
+    )
 
+    world_model_args = {
+        'epochs': args.world_model_pre_train_epochs,
+        'lr': args.world_model_pre_train_lr,
+        'batch_size': args.world_model_pre_train_batch_size,
+        'max_iter': 1000,
+    }
 
+    world_model_train(
+        state_encoder = state_encoder,
+        action_embedder = action_embedding,
+        transition_model = transition_decoder,
+        world_model_args = world_model_args,
+        memory = None,  # Placeholder for memory object
+        memory_dir = None,  # Placeholder for memory directory
+        save_model_dir = args.save_model_dir,
+        logger = logger,
+    )
 
     action_space.load_action_embeddings(action_embedding)
     action_space.create_nearest_neighbors()
@@ -104,14 +135,7 @@ def main():
     if args.load:
         agent.load_weights(args.load_model_dir)
 
-    # 12. Set up logger
-    if args.mode == 'train':
-        setup_logger('RS_log', f'{args.save_model_dir}/RS_train_log')
-    elif args.mode == 'test':
-        setup_logger('RS_log', f'{args.save_model_dir}/RS_test_log')
-    else:
-        raise RuntimeError(f'Undefined mode {args.mode}')
-    logger = logging.getLogger('RS_log')
+
 
     # 13. Log hyperparameters
     d_args = vars(args)
