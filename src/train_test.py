@@ -160,6 +160,7 @@ def train(
 
         if step % save_memory_per_epochs == 0:
             agent.save_memory_for_world_model()
+            assert False
 
 
 def evaluate(
