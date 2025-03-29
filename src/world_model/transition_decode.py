@@ -2,9 +2,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-
-
-
 class ContextTransformer2D(nn.Module):
     def __init__(
         self,
@@ -159,7 +156,7 @@ class ContextTransformer2D(nn.Module):
             sampled_rest[full_mask_grid] = -1
 
             return sampled_first, sampled_rest
-
+"""
 # === Testing the Model with Debug Print Statements ===
 if __name__ == "__main__":
     # Dummy inputs.
@@ -182,4 +179,4 @@ if __name__ == "__main__":
     print("Sampled grid tokens shape:", sampled_rest.shape)
     # Optionally, reshape grid tokens to [B, grid_size, grid_size] for visualization.
     sampled_grid = sampled_rest.view(batch_size, model.grid_size, model.grid_size)
-    print("Sampled grid tokens (reshaped):", sampled_grid)
+    print("Sampled grid tokens (reshaped):", sampled_grid)"""
