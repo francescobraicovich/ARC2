@@ -8,12 +8,11 @@ from utils.util import to_tensor
 
 from dsl.utilities.plot import plot_step
 
-state_encoder = lambda state, shape: torch.ravel(state).float()[:512]
-
 def train(
     continuous,
     train_env,
     eval_env,
+    state_encoder,
     agent,
     max_episode,
     max_actions,
@@ -43,7 +42,6 @@ def train(
     :param eval_interval: Evaluate every N training episodes
     :param eval_episodes: Number of episodes to run in evaluation
     """
-
     agent.is_training = True
 
     step = 0
@@ -66,8 +64,7 @@ def train(
             state, shape = train_env.reset()
             s_t = to_tensor(state, device=agent.device, requires_grad=True)
             shape = to_tensor(shape, device=agent.device, requires_grad=True)
-            x_t = state_encoder(s_t, shape)
-            agent.reset(x_t)
+            x_t = state_encoder.encode(s_t, shape)
 
         # Pick action
         if step <= warmup:
@@ -82,7 +79,7 @@ def train(
         (next_state, next_shape), r_t, done, truncated, info = train_env.step(action)
         next_state = to_tensor(next_state, device=agent.device, requires_grad=True)
         next_shape = to_tensor(next_shape, device=agent.device, requires_grad=True)
-        next_x_t = state_encoder(next_state, next_shape)
+        next_x_t = state_encoder.encode(next_state, next_shape)
 
         total_actions_taken += 1
 
