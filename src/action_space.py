@@ -105,14 +105,14 @@ class ARCActionSpace(Space):
         if args.load_filtered_actions:
             try:
                 print('Loading filtered actions from file')
-                self.filtered_space = np.load(f'src/filtered_actions/{args.filter_threshold} threshold/cleaned_actions.npy')
+                self.filtered_space = np.load(f'src/filtered_actions/{args.filter_threshold} threshold/filtered_actions.npy')
 
             except:
-                self.filtered_space = self.clean_actions()
+                self.filtered_space = self.filter_actions()
         else:
-            self.filtered_space = self.clean_actions()
-        self.num_cleaned_actions = len(self.filtered_space)
-        print('Number cleaned actions:', self.num_cleaned_actions)
+            self.filtered_space = self.filter_actions()
+        self.num_filtered_actions = len(self.filtered_space)
+        print('Number filtered actions:', self.num_filtered_actions)
 
         # Create a variable to store the action embeddings
         self.embedding = None
@@ -140,9 +140,9 @@ class ARCActionSpace(Space):
         numpy_embedding = to_numpy(action_embedding)
         self.embedding = numpy_embedding
     
-    def clean_actions(self):
+    def filter_actions(self):
         args = self.args
-        cleaned_actions = filter_by_change(
+        filtered_actions = filter_by_change(
             self, self.args.num_experiments_filter, self.args.filter_threshold)
         # Directory path based on your existing code
         directory = f'src/filtered_actions/{args.filter_threshold} threshold/'
@@ -151,8 +151,8 @@ class ARCActionSpace(Space):
         os.makedirs(directory, exist_ok=True)
 
         # Now save the file
-        np.save(os.path.join(directory, 'cleaned_actions.npy'), cleaned_actions)
-        return cleaned_actions
+        np.save(os.path.join(directory, 'filtered_actions.npy'), filtered_actions)
+        return filtered_actions
 
     def create_nearest_neighbors(self):
         """
