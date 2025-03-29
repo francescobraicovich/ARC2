@@ -2,6 +2,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from utils.util import set_device
+DEVICE = set_device('world_model/transition_decode.py')
+
 class ContextTransformer2D(nn.Module):
     def __init__(
         self,
@@ -24,21 +27,21 @@ class ContextTransformer2D(nn.Module):
         self.vocab_size_rest = vocab_size_rest
 
         # Project context inputs (x_t and e_t) into shared emb_dim space.
-        self.state_proj = nn.Linear(state_encoded_dim, emb_dim)
-        self.action_proj = nn.Linear(action_emb_dim, emb_dim)
+        self.state_proj = nn.Linear(state_encoded_dim, emb_dim).to(DEVICE)
+        self.action_proj = nn.Linear(action_emb_dim, emb_dim).to(DEVICE)
 
         # Learned query embeddings for all 902 tokens.
         # (These will be added to positional information.)
-        self.query_emb = nn.Parameter(torch.randn(seq_len, emb_dim))
+        self.query_emb = nn.Parameter(torch.randn(seq_len, emb_dim)).to(DEVICE)
         # For the first two tokens, we use a learned 1D positional embedding.
-        self.pos_emb = nn.Parameter(torch.randn(2, emb_dim))
+        self.pos_emb = nn.Parameter(torch.randn(2, emb_dim)).to(DEVICE)
         # For grid tokens (900 tokens), we use 2D positional embeddings.
         # Create separate embeddings for row and column positions.
-        self.row_emb = nn.Parameter(torch.randn(grid_size, emb_dim))
-        self.col_emb = nn.Parameter(torch.randn(grid_size, emb_dim))
+        self.row_emb = nn.Parameter(torch.randn(grid_size, emb_dim)).to(DEVICE)
+        self.col_emb = nn.Parameter(torch.randn(grid_size, emb_dim)).to(DEVICE)
 
         # Positional encodings for the 2 context tokens.
-        self.ctx_pos_emb = nn.Parameter(torch.randn(2, emb_dim))
+        self.ctx_pos_emb = nn.Parameter(torch.randn(2, emb_dim)).to(DEVICE)
 
         # Transformer Decoder layers.
         decoder_layer = nn.TransformerDecoderLayer(
@@ -48,29 +51,24 @@ class ContextTransformer2D(nn.Module):
             dropout=dropout,
             activation="gelu",
             batch_first=True,
-        )
-        self.decoder = nn.TransformerDecoder(decoder_layer, num_layers=num_layers)
+        ).to(DEVICE)
+        self.decoder = nn.TransformerDecoder(decoder_layer, num_layers=num_layers).to(DEVICE)
 
         # Two output heads:
         # - The first head predicts the first 2 tokens (vocab_size_first).
         # - The second head predicts the grid tokens (vocab_size_rest).
-        self.head_first = nn.Linear(emb_dim, vocab_size_first)
-        self.head_rest = nn.Linear(emb_dim, vocab_size_rest)
+        self.head_first = nn.Linear(emb_dim, vocab_size_first).to(DEVICE)
+        self.head_rest = nn.Linear(emb_dim, vocab_size_rest).to(DEVICE)
 
     def forward(self, x_t, e_t, tgt_key_padding_mask=None):
         B = x_t.size(0)
-        print("Input x_t shape:", x_t.shape)
-        print("Input e_t shape:", e_t.shape)
 
         # Project context tokens and add learned positional encodings.
         x_proj = self.state_proj(x_t) + self.ctx_pos_emb[0]  # [B, emb_dim]
         e_proj = self.action_proj(e_t) + self.ctx_pos_emb[1]   # [B, emb_dim]
-        print("x_proj shape:", x_proj.shape)
-        print("e_proj shape:", e_proj.shape)
 
         # Stack the two context tokens to form the memory for the decoder.
         memory = torch.stack([x_proj, e_proj], dim=1)          # [B, 2, emb_dim]
-        print("Memory shape (stacked context):", memory.shape)
 
         # Prepare target (tgt) tokens.
         # For the first two tokens, add 1D positional embeddings.
@@ -87,21 +85,17 @@ class ContextTransformer2D(nn.Module):
         # Concatenate first two tokens and grid tokens.
         tgt = torch.cat([first_two, grid_tokens], dim=0)  # [902, emb_dim]
         tgt = tgt.unsqueeze(0).expand(B, -1, -1)           # [B, 902, emb_dim]
-        print("Target tokens (tgt) shape:", tgt.shape)
 
         # Create a standard causal mask for autoregressive decoding.
         causal_mask = torch.triu(torch.ones(self.seq_len, self.seq_len, device=x_t.device), diagonal=1).bool()
-        print("Causal mask shape:", causal_mask.shape)
 
         # Pass the optional key padding mask into the decoder (if provided).
         output = self.decoder(tgt, memory, tgt_mask=causal_mask, tgt_key_padding_mask=tgt_key_padding_mask)
-        print("Decoder output shape:", output.shape)
+
 
         # Split outputs for the two segments.
         logits_first = self.head_first(output[:, :2])   # [B, 2, vocab_size_first]
         logits_rest  = self.head_rest(output[:, 2:])      # [B, 900, vocab_size_rest]
-        print("Logits first shape:", logits_first.shape)
-        print("Logits rest shape:", logits_rest.shape)
 
         return logits_first, logits_rest
 
@@ -122,7 +116,6 @@ class ContextTransformer2D(nn.Module):
             sampled_first = torch.multinomial(
                 probs_first.view(-1, self.head_first.out_features), 1
             ).view(x_t.size(0), 2)
-            print("Sampled first tokens (grid shape):", sampled_first)
 
             # === Stage 2: Compute key padding mask for grid tokens based on grid shape ===
             # Assume the first token indicates the number of valid rows,
@@ -140,7 +133,6 @@ class ContextTransformer2D(nn.Module):
             # Full key padding mask: first two tokens (grid shape) are always valid.
             full_mask = torch.cat([torch.zeros(B, 2, dtype=torch.bool, device=x_t.device),
                                     grid_mask_flat], dim=1)
-            print("Full key padding mask shape:", full_mask.shape)
 
             # === Stage 3: Second pass using the dynamic key padding mask ===
             logits_first_masked, logits_rest_masked = self.forward(x_t, e_t, tgt_key_padding_mask=full_mask)
