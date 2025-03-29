@@ -249,21 +249,17 @@ class SequentialMemory(Memory):
         config['limit'] = self.limit
         return config
 
-    def save_memory(self, directory):
-        """Save the memory to a specified directory."""
+    def save_memory_for_world_model(self, directory):
+        """Save only the current state (observations), shape, action, and terminal flags."""
         if not os.path.exists(directory):
             os.makedirs(directory)
         file_path = os.path.join(directory, "sequential_memory.pkl")
+        data = {
+            'state': [self.observations[i] for i in range(len(self.observations))],
+            'shape': [self.shapes[i] for i in range(len(self.shapes))],
+            'action': [self.actions[i] for i in range(len(self.actions))],
+            'terminal': [self.terminals[i] for i in range(len(self.terminals))]
+        }
         with open(file_path, "wb") as f:
-            pickle.dump(self, f)
+            pickle.dump(data, f)
         print(f"Memory saved to {file_path}")
-
-    @classmethod
-    def load_memory(cls, directory):
-        """Load the memory from a specified directory."""
-        import os, pickle
-        file_path = os.path.join(directory, "sequential_memory.pkl")
-        with open(file_path, "rb") as f:
-            memory = pickle.load(f)
-        print(f"Memory loaded from {file_path}")
-        return memory
