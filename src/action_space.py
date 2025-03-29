@@ -105,7 +105,7 @@ class ARCActionSpace(Space):
         if args.load_filtered_actions:
             try:
                 print('Loading filtered actions from file')
-                self.filtered_space = np.load(f'src/filtered_actions/{args.filter_threshold} threshold/filtered_actions.npy')
+                self.filtered_space = np.load(f'src/filtered_actions/{args.filter_threshold}_threshold.npy')
 
             except:
                 self.filtered_space = self.filter_actions()
@@ -145,13 +145,13 @@ class ARCActionSpace(Space):
         filtered_actions = filter_by_change(
             self, self.args.num_experiments_filter, self.args.filter_threshold)
         # Directory path based on your existing code
-        directory = f'src/filtered_actions/{args.filter_threshold} threshold/'
+        directory = f'src/filtered_actions/{args.filter_threshold}_threshold'
 
         # Create the directory if it doesn't exist
         os.makedirs(directory, exist_ok=True)
 
         # Now save the file
-        np.save(os.path.join(directory, 'filtered_actions.npy'), filtered_actions)
+        np.save(os.path.join(directory, '.npy'), filtered_actions)
         return filtered_actions
 
     def create_nearest_neighbors(self):
