@@ -45,3 +45,14 @@ class ActionEmbedding(nn.Module):
             return embedded.squeeze(0)
 
         return embedded
+    
+    def export_weights(self) -> torch.Tensor:
+        """
+        Returns:
+            torch.Tensor: The embedding matrix of shape [num_actions, embed_dim].
+                         If normalization is enabled, returns normalized embeddings.
+        """
+        weights = self.embedding.weight.data.clone()
+        if self.normalize:
+            weights = F.normalize(weights, p=2, dim=-1)
+        return weights
