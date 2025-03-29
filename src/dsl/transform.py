@@ -437,6 +437,867 @@ if __name__ == '__main__':
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#%%
+
+from numba.experimental import jitclass
+import numba as nb
+import numpy as np
+import time
+
+# =============================================================================
+# Utility functions (numba-compatible versions)
+# =============================================================================
+
+@nb.njit(parallel=True)
+def binary_fill_holes_numba(mask):
+    """
+    A very simple (and not full) numba implementation to fill holes in a binary mask.
+    (For robust applications, a full hole-filling algorithm is required.)
+    """
+    rows, cols = mask.shape
+    out = mask.copy()
+    # Parallelize the outer loop
+    for i in nb.prange(1, rows-1):
+        for j in range(1, cols-1):
+            if not mask[i, j]:
+                if mask[i-1, j] and mask[i+1, j] and mask[i, j-1] and mask[i, j+1]:
+                    out[i, j] = True
+    return out
+
+@nb.njit(parallel=True)
+def create_grid3d_numba(grid, selection):
+    """
+    Create a 3D grid with one layer equal to grid.
+    """
+    n, m = grid.shape
+    grid3d = np.empty((1, n, m), dtype=grid.dtype)
+    for i in nb.prange(n):
+        for j in range(m):
+            grid3d[0, i, j] = grid[i, j]
+    return grid3d
+
+@nb.njit
+def find_bounding_rectangle_numba(selection):
+    """
+    Compute a boolean mask that is True exactly in the bounding rectangle of selection.
+    """
+    rows, cols = selection.shape
+    min_row = rows
+    max_row = -1
+    min_col = cols
+    max_col = -1
+    for i in range(rows):
+        for j in range(cols):
+            if selection[i, j]:
+                if i < min_row:
+                    min_row = i
+                if i > max_row:
+                    max_row = i
+                if j < min_col:
+                    min_col = j
+                if j > max_col:
+                    max_col = j
+    out = np.zeros((rows, cols), dtype=np.bool_)
+    if max_row >= min_row and max_col >= min_col:
+        for i in range(min_row, max_row+1):
+            for j in range(min_col, max_col+1):
+                out[i, j] = True
+    return out
+
+@nb.njit
+def find_bounding_square_numba(selection):
+    """
+    For simplicity, return the bounding rectangle (which ideally is a square).
+    """
+    return find_bounding_rectangle_numba(selection)
+
+@nb.njit
+def center_of_mass_numba(mask):
+    """
+    Compute the center of mass of a boolean mask.
+    """
+    rows, cols = mask.shape
+    total = 0.0
+    sum_i = 0.0
+    sum_j = 0.0
+    for i in range(rows):
+        for j in range(cols):
+            if mask[i, j]:
+                total += 1.0
+                sum_i += i
+                sum_j += j
+    if total == 0:
+        return (rows // 2, cols // 2)
+    return (sum_i / total, sum_j / total)
+
+@nb.njit
+def vectorized_center_of_mass_numba(selection):
+    """
+    Compute center-of-mass for each layer of a 3D selection.
+    """
+    depth = selection.shape[0]
+    centers = np.empty((depth, 2), dtype=np.float64)
+    for d in range(depth):
+        centers[d, 0], centers[d, 1] = center_of_mass_numba(selection[d])
+    return centers
+
+# -----------------------------------------------------------------------------
+# Simple color selection functions (numba versions)
+# -----------------------------------------------------------------------------
+
+@nb.njit
+def rankcolor_numba(grid, rank):
+    """
+    Count frequencies of colors (assumed 0..9) and return the color of given rank.
+    """
+    flat = grid.ravel()
+    counts = np.zeros(10, dtype=np.int64)
+    for i in range(flat.size):
+        counts[flat[i]] += 1
+    colors = np.arange(10)
+    # Bubble-sort on 10 items.
+    for i in range(10):
+        for j in range(10 - i - 1):
+            if counts[j] < counts[j+1]:
+                temp = counts[j]
+                counts[j] = counts[j+1]
+                counts[j+1] = temp
+                temp = colors[j]
+                colors[j] = colors[j+1]
+                colors[j+1] = temp
+    if rank < 10:
+        return colors[rank]
+    else:
+        return colors[9]
+
+@nb.njit
+def rank_largest_shape_color_nodiag_numba(grid, rank):
+    return rankcolor_numba(grid, rank)
+
+@nb.njit
+def rank_largest_shape_color_diag_numba(grid, rank):
+    return rankcolor_numba(grid, rank)
+
+@nb.njit
+def select_color_numba(grid, method_code, param):
+    """
+    Use method_code:
+      0: 'color_rank'
+      1: 'shape_rank_nodiag'
+      2: 'shape_rank_diag'
+    """
+    if method_code == 0:
+        return rankcolor_numba(grid, param)
+    elif method_code == 1:
+        return rank_largest_shape_color_nodiag_numba(grid, param)
+    elif method_code == 2:
+        return rank_largest_shape_color_diag_numba(grid, param)
+    else:
+        return -1
+
+# =============================================================================
+# Transformer class (using jitclass)
+# =============================================================================
+
+spec = {}  # No attributes needed
+@nb.experimental.jitclass(spec)
+class TransformerNumba:
+    def __init__(self):
+        pass
+
+    # --- Color Transformations ---
+    def new_color(self, grid, selection, color):
+        grid_3d = create_grid3d_numba(grid, selection)
+        n_rows = grid.shape[0]
+        n_cols = grid.shape[1]
+        total = 0
+        for i in range(n_rows):
+            for j in range(n_cols):
+                if grid[i, j] == color:
+                    total += 1
+        if total == 0:
+            for i in nb.prange(n_rows):
+                for j in range(n_cols):
+                    if selection[i, j]:
+                        grid_3d[0, i, j] = color
+            return grid_3d
+        else:
+            out = np.empty((1, n_rows, n_cols), dtype=grid.dtype)
+            for i in nb.prange(n_rows):
+                for j in range(n_cols):
+                    out[0, i, j] = grid[i, j]
+            return out
+
+    def color(self, grid, selection, method_code, param):
+        c = select_color_numba(grid, method_code, param)
+        grid_3d = create_grid3d_numba(grid, selection)
+        n_rows = grid.shape[0]
+        n_cols = grid.shape[1]
+        for i in nb.prange(n_rows):
+            for j in range(n_cols):
+                if selection[i, j]:
+                    grid_3d[0, i, j] = c
+        return grid_3d
+
+    def fill_with_color(self, grid, selection, method_code, param):
+        grid_3d = create_grid3d_numba(grid, selection)
+        fill_color = select_color_numba(grid, method_code, param)
+        if not (fill_color >= 0 and fill_color < 10):
+            return grid_3d
+        n_rows = grid.shape[0]
+        n_cols = grid.shape[1]
+        filled = binary_fill_holes_numba(selection)
+        for i in nb.prange(n_rows):
+            for j in range(n_cols):
+                if filled[i, j] and (not selection[i, j]):
+                    grid_3d[0, i, j] = fill_color
+        return grid_3d
+
+    def fill_bounding_rectangle_with_color(self, grid, selection, method_code, param):
+        color = select_color_numba(grid, method_code, param)
+        grid_3d = create_grid3d_numba(grid, selection)
+        bound = find_bounding_rectangle_numba(selection)
+        n_rows = grid.shape[0]
+        n_cols = grid.shape[1]
+        for i in nb.prange(n_rows):
+            for j in range(n_cols):
+                if bound[i, j] and (not selection[i, j]):
+                    grid_3d[0, i, j] = color
+        return grid_3d
+
+    def fill_bounding_square_with_color(self, grid, selection, method_code, param):
+        color = select_color_numba(grid, method_code, param)
+        grid_3d = create_grid3d_numba(grid, selection)
+        bound = find_bounding_square_numba(selection)
+        n_rows = grid.shape[0]
+        n_cols = grid.shape[1]
+        for i in nb.prange(n_rows):
+            for j in range(n_cols):
+                if bound[i, j] and (not selection[i, j]):
+                    grid_3d[0, i, j] = color
+        return grid_3d
+
+    # --- Flipping Transformations ---
+    def flipv(self, grid, selection):
+        grid_3d = create_grid3d_numba(grid, selection)
+        bound = find_bounding_rectangle_numba(selection)
+        n_rows = grid.shape[0]
+        n_cols = grid.shape[1]
+        flipped = np.empty_like(grid_3d)
+        for i in nb.prange(n_rows):
+            for j in range(n_cols):
+                flipped[0, i, j] = grid_3d[0, n_rows - 1 - i, j]
+        for i in range(n_rows):
+            for j in range(n_cols):
+                if bound[i, j]:
+                    grid_3d[0, i, j] = flipped[0, i, j]
+        return grid_3d
+
+    def fliph(self, grid, selection):
+        grid_3d = create_grid3d_numba(grid, selection)
+        bound = find_bounding_rectangle_numba(selection)
+        n_rows = grid.shape[0]
+        n_cols = grid.shape[1]
+        flipped = np.empty_like(grid_3d)
+        for i in nb.prange(n_rows):
+            for j in range(n_cols):
+                flipped[0, i, j] = grid_3d[0, i, n_cols - 1 - j]
+        for i in range(n_rows):
+            for j in range(n_cols):
+                if bound[i, j]:
+                    grid_3d[0, i, j] = flipped[0, i, j]
+        return grid_3d
+
+    def flip_main_diagonal(self, grid, selection):
+        grid_3d = create_grid3d_numba(grid, selection)
+        bounding_square = find_bounding_square_numba(selection)
+        depth = grid_3d.shape[0]
+        for d in range(depth):
+            mask = bounding_square  # assuming same for each layer
+            rows, cols = np.where(mask)
+            if rows.size > 0 and cols.size > 0 and ((rows.max()-rows.min()) == (cols.max()-cols.min())):
+                min_row = rows.min()
+                max_row = rows.max()
+                min_col = cols.min()
+                max_col = cols.max()
+                size = max_row - min_row + 1
+                sub_grid = np.empty((size, size), dtype=grid.dtype)
+                for i in range(size):
+                    for j in range(size):
+                        sub_grid[i, j] = grid_3d[d, min_row + i, min_col + j]
+                # Mirror along main diagonal (transpose)
+                for i in range(size):
+                    for j in range(size):
+                        grid_3d[d, min_row + i, min_col + j] = sub_grid[j, i]
+        return grid_3d
+
+    def flip_anti_diagonal(self, grid, selection):
+        grid_3d = create_grid3d_numba(grid, selection)
+        bounding_square = find_bounding_square_numba(selection)
+        depth = grid_3d.shape[0]
+        for d in range(depth):
+            mask = bounding_square
+            rows, cols = np.where(mask)
+            if rows.size > 0 and cols.size > 0 and ((rows.max()-rows.min()) == (cols.max()-cols.min())):
+                min_row = rows.min()
+                max_row = rows.max()
+                min_col = cols.min()
+                max_col = cols.max()
+                size = max_row - min_row + 1
+                sub_grid = np.empty((size, size), dtype=grid.dtype)
+                for i in range(size):
+                    for j in range(size):
+                        sub_grid[i, j] = grid_3d[d, min_row + i, min_col + j]
+                # Rotate 90 degrees then flip horizontally gives anti-diagonal mirror
+                temp = np.empty_like(sub_grid)
+                for i in range(size):
+                    for j in range(size):
+                        temp[i, j] = sub_grid[size - 1 - j, i]
+                mirrored = np.empty_like(temp)
+                for i in range(size):
+                    for j in range(size):
+                        mirrored[i, j] = temp[i, size - 1 - j]
+                for i in range(size):
+                    for j in range(size):
+                        grid_3d[d, min_row + i, min_col + j] = mirrored[i, j]
+        return grid_3d
+
+    # --- Rotation Transformations ---
+    def rotate(self, grid, selection, num_rotations):
+        grid_3d = create_grid3d_numba(grid, selection)
+        bounding_masks = find_bounding_square_numba(selection)
+        depth = grid_3d.shape[0]
+        for d in range(depth):
+            mask = bounding_masks  # assuming same mask per layer
+            rows, cols = np.where(mask)
+            if rows.size == 0 or cols.size == 0:
+                continue
+            if (rows.max()-rows.min()) == (cols.max()-cols.min()):
+                row_start = rows.min()
+                row_end = rows.max()+1
+                col_start = cols.min()
+                col_end = cols.max()+1
+                sub_grid = np.empty((row_end - row_start, col_end - col_start), dtype=grid.dtype)
+                for i in range(row_end - row_start):
+                    for j in range(col_end - col_start):
+                        sub_grid[i, j] = grid_3d[d, row_start + i, col_start + j]
+                for _ in range(num_rotations):
+                    temp = np.empty_like(sub_grid)
+                    for i in range(sub_grid.shape[0]):
+                        for j in range(sub_grid.shape[1]):
+                            temp[i, j] = sub_grid[sub_grid.shape[0]-1-j, i]
+                    sub_grid = temp
+                for i in range(sub_grid.shape[0]):
+                    for j in range(sub_grid.shape[1]):
+                        grid_3d[d, row_start + i, col_start + j] = sub_grid[i, j]
+        return grid_3d
+
+    def rotate_90(self, grid, selection):
+        return self.rotate(grid, selection, 1)
+
+    def rotate_180(self, grid, selection):
+        return self.rotate(grid, selection, 2)
+
+    def rotate_270(self, grid, selection):
+        return self.rotate(grid, selection, 3)
+
+    # --- Mirror and Duplicate Transformations ---
+    def mirror_down(self, grid, selection):
+        d, rows, cols = selection.shape
+        grid_3d = create_grid3d_numba(grid, selection)
+        if rows > 15:
+            return grid_3d
+        new_grid = np.zeros((d, rows*2, cols), dtype=grid.dtype)
+        new_grid[:, :rows, :] = grid_3d
+        new_grid[:, rows:, :] = np.flip(grid_3d, axis=1)
+        flipped_sel = np.flip(selection, axis=1)
+        for d_idx in range(d):
+            for i in range(rows, rows*2):
+                for j in range(cols):
+                    if not flipped_sel[d_idx, i-rows, j]:
+                        new_grid[d_idx, i, j] = 0
+        return new_grid
+
+    def mirror_up(self, grid, selection):
+        d, rows, cols = selection.shape
+        grid_3d = create_grid3d_numba(grid, selection)
+        if rows > 15:
+            return grid_3d
+        new_grid = np.zeros((d, rows*2, cols), dtype=grid.dtype)
+        new_grid[:, :rows, :] = np.flip(grid_3d, axis=1)
+        new_grid[:, rows:, :] = grid_3d
+        flipped_sel = np.flip(selection, axis=1)
+        for d_idx in range(d):
+            for i in range(rows):
+                for j in range(cols):
+                    if not flipped_sel[d_idx, i, j]:
+                        new_grid[d_idx, i, j] = 0
+        return new_grid
+
+    def mirror_right(self, grid, selection):
+        d, rows, cols = selection.shape
+        grid_3d = create_grid3d_numba(grid, selection)
+        if cols > 15:
+            return grid_3d
+        new_grid = np.zeros((d, rows, cols*2), dtype=grid.dtype)
+        new_grid[:, :, :cols] = grid_3d
+        new_grid[:, :, cols:] = np.flip(grid_3d, axis=2)
+        flipped_sel = np.flip(selection, axis=2)
+        for d_idx in range(d):
+            for i in range(rows):
+                for j in range(cols, cols*2):
+                    if not flipped_sel[d_idx, i, j-cols]:
+                        new_grid[d_idx, i, j] = 0
+        return new_grid
+
+    def mirror_left(self, grid, selection):
+        d, rows, cols = selection.shape
+        grid_3d = create_grid3d_numba(grid, selection)
+        if cols > 15:
+            return grid_3d
+        new_grid = np.zeros((d, rows, cols*2), dtype=grid.dtype)
+        new_grid[:, :, :cols] = np.flip(grid_3d, axis=2)
+        new_grid[:, :, cols:] = grid_3d
+        flipped_sel = np.flip(selection, axis=2)
+        for d_idx in range(d):
+            for i in range(rows):
+                for j in range(cols):
+                    if not flipped_sel[d_idx, i, j]:
+                        new_grid[d_idx, i, j] = 0
+        return new_grid
+
+    def duplicate_horizontally(self, grid, selection):
+        d, rows, cols = selection.shape
+        if cols > 15:
+            return create_grid3d_numba(grid, selection)
+        grid_3d = create_grid3d_numba(grid, selection)
+        new_grid = np.zeros((d, rows, cols*2), dtype=grid.dtype)
+        new_grid[:, :, :cols] = grid_3d
+        # Copy only where selection is True
+        for d_idx in range(d):
+            for i in range(rows):
+                for j in range(cols):
+                    if selection[d_idx, i, j]:
+                        new_grid[d_idx, i, j+cols] = grid_3d[d_idx, i, j]
+        return new_grid
+
+    def duplicate_vertically(self, grid, selection):
+        d, rows, cols = selection.shape
+        if rows > 15:
+            return create_grid3d_numba(grid, selection)
+        grid_3d = create_grid3d_numba(grid, selection)
+        new_grid = np.zeros((d, rows*2, cols), dtype=grid.dtype)
+        new_grid[:, :rows, :] = grid_3d
+        for d_idx in range(d):
+            for i in range(rows):
+                for j in range(cols):
+                    if selection[d_idx, i, j]:
+                        new_grid[d_idx, i+rows, j] = grid_3d[d_idx, i, j]
+        return new_grid
+
+    # --- Copy-Paste Transformations ---
+    def copy_paste(self, grid, selection, shift_x, shift_y):
+        grid_3d = create_grid3d_numba(grid, selection)
+        inds = np.argwhere(selection)
+        for k in range(inds.shape[0]):
+            d, i, j = 0, inds[k, 0], inds[k, 1]  # grid_3d has one layer
+            new_i = i + shift_y
+            new_j = j + shift_x
+            if new_i >= 0 and new_i < grid_3d.shape[1] and new_j >= 0 and new_j < grid_3d.shape[2]:
+                grid_3d[0, new_i, new_j] = grid_3d[0, i, j]
+        return grid_3d
+
+    def copy_sum(self, grid, selection, shift_x, shift_y):
+        grid_3d = create_grid3d_numba(grid, selection)
+        inds = np.argwhere(selection)
+        for k in range(inds.shape[0]):
+            d, i, j = 0, inds[k, 0], inds[k, 1]
+            new_i = i + shift_y
+            new_j = j + shift_x
+            if new_i >= 0 and new_i < grid_3d.shape[1] and new_j >= 0 and new_j < grid_3d.shape[2]:
+                grid_3d[0, new_i, new_j] = (grid_3d[0, new_i, new_j] + grid_3d[0, i, j]) % 10
+        return grid_3d
+
+    def cut_paste(self, grid, selection, shift_x, shift_y):
+        grid_3d = create_grid3d_numba(grid, selection)
+        inds = np.argwhere(selection)
+        for k in range(inds.shape[0]):
+            d, i, j = 0, inds[k, 0], inds[k, 1]
+            new_i = i + shift_y
+            new_j = j + shift_x
+            if new_i >= 0 and new_i < grid_3d.shape[1] and new_j >= 0 and new_j < grid_3d.shape[2]:
+                grid_3d[0, new_i, new_j] = grid_3d[0, i, j]
+            grid_3d[0, i, j] = 0
+        return grid_3d
+
+    def cut_sum(self, grid, selection, shift_x, shift_y):
+        grid_3d = create_grid3d_numba(grid, selection)
+        inds = np.argwhere(selection)
+        for k in range(inds.shape[0]):
+            d, i, j = 0, inds[k, 0], inds[k, 1]
+            new_i = i + shift_y
+            new_j = j + shift_x
+            if new_i >= 0 and new_i < grid_3d.shape[1] and new_j >= 0 and new_j < grid_3d.shape[2]:
+                grid_3d[0, new_i, new_j] = (grid_3d[0, new_i, new_j] + grid_3d[0, i, j]) % 10
+            grid_3d[0, i, j] = 0
+        return grid_3d
+
+    def copy_paste_vertically(self, grid, selection):
+        grid_3d = create_grid3d_numba(grid, selection)
+        d, rows, cols = selection.shape
+        # For each cell in selection, paste its value upward and downward.
+        inds = np.argwhere(selection)
+        for k in range(inds.shape[0]):
+            i, j = inds[k, 0], inds[k, 1]
+            # Paste upward
+            new_i = i - (rows - i)
+            if new_i >= 0:
+                grid_3d[0, new_i, j] = grid_3d[0, i, j]
+            # Paste downward
+            new_i = i + (rows - i)
+            if new_i < rows:
+                grid_3d[0, new_i, j] = grid_3d[0, i, j]
+        return grid_3d
+
+    def copy_paste_horizontally(self, grid, selection):
+        grid_3d = create_grid3d_numba(grid, selection)
+        d, rows, cols = selection.shape
+        inds = np.argwhere(selection)
+        for k in range(inds.shape[0]):
+            i, j = inds[k, 0], inds[k, 1]
+            new_j = j - (cols - j)
+            if new_j >= 0:
+                grid_3d[0, i, new_j] = grid_3d[0, i, j]
+            new_j = j + (cols - j)
+            if new_j < cols:
+                grid_3d[0, i, new_j] = grid_3d[0, i, j]
+        return grid_3d
+
+    # --- Gravitate Transformations (Block Moves) ---
+    def gravitate_whole_downwards_paste(self, grid, selection):
+        grid_3d = create_grid3d_numba(grid, selection)
+        rows = grid.shape[0]
+        # Compute max row per column where selection is True
+        sel_rows = np.argwhere(selection)
+        if sel_rows.shape[0] == 0:
+            return grid_3d
+        max_row = sel_rows[:, 0].max()
+        shift = rows - max_row - 1
+        return self.copy_paste(grid, selection, 0, shift)
+
+    def gravitate_whole_upwards_paste(self, grid, selection):
+        grid_3d = create_grid3d_numba(grid, selection)
+        sel_rows = np.argwhere(selection)
+        if sel_rows.shape[0] == 0:
+            return grid_3d
+        min_row = sel_rows[:, 0].min()
+        shift = -min_row
+        return self.copy_paste(grid, selection, 0, shift)
+
+    def gravitate_whole_right_paste(self, grid, selection):
+        grid_3d = create_grid3d_numba(grid, selection)
+        cols = grid.shape[1]
+        sel_cols = np.argwhere(selection)
+        if sel_cols.shape[0] == 0:
+            return grid_3d
+        max_col = sel_cols[:, 1].max()
+        shift = cols - max_col - 1
+        return self.copy_paste(grid, selection, shift, 0)
+
+    def gravitate_whole_left_paste(self, grid, selection):
+        grid_3d = create_grid3d_numba(grid, selection)
+        sel_cols = np.argwhere(selection)
+        if sel_cols.shape[0] == 0:
+            return grid_3d
+        min_col = sel_cols[:, 1].min()
+        shift = -min_col
+        return self.copy_paste(grid, selection, shift, 0)
+
+    def gravitate_whole_downwards_cut(self, grid, selection):
+        return self.cut_paste(grid, selection, 0, 1)  # Simplified step
+
+    def gravitate_whole_upwards_cut(self, grid, selection):
+        return self.cut_paste(grid, selection, 0, -1)  # Simplified step
+
+    def gravitate_whole_right_cut(self, grid, selection):
+        return self.cut_paste(grid, selection, 1, 0)  # Simplified step
+
+    def gravitate_whole_left_cut(self, grid, selection):
+        return self.cut_paste(grid, selection, -1, 0)  # Simplified step
+
+    # --- Individual-Cell Gravity Transformations ---
+    def down_gravity(self, grid, selection):
+        grid_3d = create_grid3d_numba(grid, selection)
+        n_rows = grid.shape[0]
+        inds = np.argwhere(selection)
+        for k in range(inds.shape[0]):
+            i, j = inds[k, 0], inds[k, 1]
+            value = grid_3d[0, i, j]
+            grid_3d[0, i, j] = 0
+            new_i = i
+            for r in range(i+1, n_rows):
+                if grid_3d[0, r, j] != 0:
+                    break
+                new_i = r
+            grid_3d[0, new_i, j] = value
+        return grid_3d
+
+    def up_gravity(self, grid, selection):
+        grid_3d = create_grid3d_numba(grid, selection)
+        inds = np.argwhere(selection)
+        for k in range(inds.shape[0]):
+            i, j = inds[k, 0], inds[k, 1]
+            value = grid_3d[0, i, j]
+            grid_3d[0, i, j] = 0
+            new_i = i
+            for r in range(i-1, -1, -1):
+                if grid_3d[0, r, j] != 0:
+                    break
+                new_i = r
+            grid_3d[0, new_i, j] = value
+        return grid_3d
+
+    def right_gravity(self, grid, selection):
+        grid_3d = create_grid3d_numba(grid, selection)
+        n_cols = grid.shape[1]
+        inds = np.argwhere(selection)
+        for k in range(inds.shape[0]):
+            i, j = inds[k, 0], inds[k, 1]
+            value = grid_3d[0, i, j]
+            grid_3d[0, i, j] = 0
+            new_j = j
+            for c in range(j+1, n_cols):
+                if grid_3d[0, i, c] != 0:
+                    break
+                new_j = c
+            grid_3d[0, i, new_j] = value
+        return grid_3d
+
+    def left_gravity(self, grid, selection):
+        grid_3d = create_grid3d_numba(grid, selection)
+        inds = np.argwhere(selection)
+        for k in range(inds.shape[0]):
+            i, j = inds[k, 0], inds[k, 1]
+            value = grid_3d[0, i, j]
+            grid_3d[0, i, j] = 0
+            new_j = j
+            for c in range(j-1, -1, -1):
+                if grid_3d[0, i, c] != 0:
+                    break
+                new_j = c
+            grid_3d[0, i, new_j] = value
+        return grid_3d
+
+    # --- Upscale Transformations ---
+    def vupscale(self, grid, selection, scale_factor):
+        grid_3d = create_grid3d_numba(grid, selection)
+        depth, orig_rows, orig_cols = selection.shape
+        up_sel = np.repeat(selection, scale_factor, axis=0)  # vertical repeat
+        up_grid = np.repeat(grid_3d, scale_factor, axis=1)
+        # For simplicity, center crop the upscaled grid to original dimensions per layer.
+        start = (up_grid.shape[1] - orig_rows) // 2
+        end = start + orig_rows
+        return up_grid[:, start:end, :]
+
+    def hupscale(self, grid, selection, scale_factor):
+        grid_3d = create_grid3d_numba(grid, selection)
+        depth, orig_rows, orig_cols = selection.shape
+        up_sel = np.repeat(selection, scale_factor, axis=1)  # here axis=2 for horizontal
+        up_grid = np.repeat(grid_3d, scale_factor, axis=2)
+        start = (up_grid.shape[2] - orig_cols) // 2
+        end = start + orig_cols
+        return up_grid[:, :, start:end]
+
+    def vectorized_vupscale(self, grid, selection, scale_factor):
+        grid_3d = create_grid3d_numba(grid, selection)
+        depth, orig_rows, orig_cols = selection.shape
+        up_sel = np.repeat(selection, scale_factor, axis=1)
+        up_grid = np.repeat(grid_3d, scale_factor, axis=1)
+        centers = vectorized_center_of_mass_numba(up_sel)
+        # Compute shift for each layer
+        shift = np.empty(depth, dtype=np.int64)
+        for d in range(depth):
+            orig_com = center_of_mass_numba(selection[d])
+            up_com = center_of_mass_numba(up_sel[d])
+            shift[d] = int(round(orig_com[0] - up_com[0]))
+        # For each layer, crop shifted region
+        final_grid = np.empty((depth, orig_rows, orig_cols), dtype=grid.dtype)
+        for d in range(depth):
+            r0 = max(0, -shift[d])
+            final_grid[d] = up_grid[d, r0:r0+orig_rows, :]
+        return final_grid
+
+    # --- Delete / Crop Transformations ---
+    def crop(self, grid, selection):
+        """
+        Crop the grid to the bounding rectangle around the selection.
+        Use -1 as the value for cells outside the selection.
+        """
+        grid_3d = create_grid3d_numba(grid, selection)
+        bound = find_bounding_rectangle_numba(selection)
+        rows, cols = bound.shape
+        # Ensure every row of bound has at least one True value.
+        for i in range(rows):
+            row_has_true = False
+            for j in range(cols):
+                if bound[i, j]:
+                    row_has_true = True
+                    break
+            if not row_has_true:
+                for j in range(cols):
+                    bound[i, j] = True
+        # Instead of grid_3d[~bound] = -1, loop over every cell.
+        for i in range(rows):
+            for j in range(cols):
+                if not bound[i, j]:
+                    grid_3d[0, i, j] = -1
+        return grid_3d
+
+
+    def delete(self, grid, selection):
+        grid_3d = create_grid3d_numba(grid, selection)
+        grid_3d[selection] = 0
+        return grid_3d
+
+    def change_background_color(self, grid, selection, new_color):
+        grid_3d = create_grid3d_numba(grid, selection)
+        # Use ColorSelector from original module (cannot be jitted, so assume color is computed externally)
+        # Here we simulate: background = most common color = rankcolor with rank=0.
+        background_color = rankcolor_numba(grid, 0)
+        for i in nb.prange(grid.shape[0]):
+            for j in range(grid.shape[1]):
+                if grid_3d[0, i, j] == background_color:
+                    grid_3d[0, i, j] = new_color
+        if not (new_color >= 0 and new_color < 10):
+            return grid_3d
+        return grid_3d
+
+    def change_selection_to_background_color(self, grid, selection):
+        # Simulate background color selection as above.
+        grid_3d = create_grid3d_numba(grid, selection)
+        background_color = rankcolor_numba(grid, 0)
+        grid_3d[selection == 1] = background_color
+        return grid_3d
+
+# =============================================================================
+# Final Test Block and Running Time Tests
+# =============================================================================
+
+def main():
+    grid = np.random.randint(0, 10, size=(30, 30)).astype(np.int64)
+    selection = (grid == 3)
+    if selection.ndim == 2:
+        selection = selection[np.newaxis, ...]
+    transformer = TransformerNumba()
+    print("Numba new_color shape:", transformer.new_color(grid, selection, 5).shape)
+    print("Numba flipv shape:", transformer.flipv(grid, selection).shape)
+    print("Numba rotate_90 shape:", transformer.rotate_90(grid, selection).shape)
+    print("Numba crop shape:", transformer.crop(grid, selection).shape)
+    print("Numba mirror_down shape:", transformer.mirror_down(grid, selection).shape)
+    print("Numba duplicate_horizontally shape:", transformer.duplicate_horizontally(grid, selection).shape)
+    # Add additional tests as needed
+
+def run_time_tests():
+    grid = np.random.randint(0, 10, size=(1000, 1000)).astype(np.int64)
+    # For functions expecting a 3D selection, convert selection to shape (1, n, m)
+    selection = (grid == 3)
+    if selection.ndim == 2:
+        selection = selection[np.newaxis, ...]
+    # For our functions that assume selection shape of (1, n, m) (like gravity), we can broadcast.
+    transformer = TransformerNumba()
+    # Warm-up
+    _ = transformer.new_color(grid, selection, 5)
+    _ = transformer.color(grid, selection, 0, 2)
+    _ = transformer.fill_with_color(grid, selection, 0, 4)
+    _ = transformer.fill_bounding_rectangle_with_color(grid, selection, 0, 3)
+    _ = transformer.flipv(grid, selection)
+    _ = transformer.rotate_90(grid, selection)
+    _ = transformer.crop(grid, selection)
+    _ = transformer.delete(grid, selection)
+    iterations = 100
+
+    start = time.time()
+    for _ in range(iterations):
+        _ = transformer.new_color(grid, selection, 5)
+    end = time.time()
+    print("TransformerNumba.new_color avg time: {:.6f} s".format((end - start) / iterations))
+    
+    start = time.time()
+    for _ in range(iterations):
+        _ = transformer.color(grid, selection, 0, 2)
+    end = time.time()
+    print("TransformerNumba.color avg time: {:.6f} s".format((end - start) / iterations))
+    
+    start = time.time()
+    for _ in range(iterations):
+        _ = transformer.fill_with_color(grid, selection, 0, 4)
+    end = time.time()
+    print("TransformerNumba.fill_with_color avg time: {:.6f} s".format((end - start) / iterations))
+    
+    start = time.time()
+    for _ in range(iterations):
+        _ = transformer.fill_bounding_rectangle_with_color(grid, selection, 0, 3)
+    end = time.time()
+    print("TransformerNumba.fill_bounding_rectangle_with_color avg time: {:.6f} s".format((end - start) / iterations))
+    
+    start = time.time()
+    for _ in range(iterations):
+        _ = transformer.flipv(grid, selection)
+    end = time.time()
+    print("TransformerNumba.flipv avg time: {:.6f} s".format((end - start) / iterations))
+    
+    start = time.time()
+    for _ in range(iterations):
+        _ = transformer.rotate_90(grid, selection)
+    end = time.time()
+    print("TransformerNumba.rotate_90 avg time: {:.6f} s".format((end - start) / iterations))
+    
+    start = time.time()
+    for _ in range(iterations):
+        _ = transformer.crop(grid, selection)
+    end = time.time()
+    print("TransformerNumba.crop avg time: {:.6f} s".format((end - start) / iterations))
+    
+    start = time.time()
+    for _ in range(iterations):
+        _ = transformer.delete(grid, selection)
+    end = time.time()
+    print("TransformerNumba.delete avg time: {:.6f} s".format((end - start) / iterations))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 #%%
 
 import numpy as np
