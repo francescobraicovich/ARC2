@@ -1,29 +1,27 @@
 import wandb
 import os
 import torch
+from torch.utils.data import DataLoader
+
 from utils.util import set_device
-from errors_optimizer_le import max_overlap_loss
+#from errors_optimizer_le import max_overlap_loss
+from world_model.memory_data_load import WorldModelDataset
 
 # Determine the device: CUDA -> MPS -> CPU
-DEVICE = set_device()
-print("Using device for model:", DEVICE)
+DEVICE = set_device('world_model/train_world_model.py')
 
 def world_model_train(
         state_encoder,
         action_embedder,
         transition_model,
         world_model_args,
-        memory,
-        memory_dir,
         save_model_dir,
         logger,
         save_per_epochs,
         eval_interval
 ):
 
-    # Load memory from disk and reassign (if needed)
-    memory = memory.load_memory(memory_dir)
-
+    dataset = WorldModelDataset()
     # Hyperparameters from world_model_args
     epochs = world_model_args.epochs
     lr = world_model_args.lr
