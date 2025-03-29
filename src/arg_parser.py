@@ -12,7 +12,7 @@ def init_parser(alg):
         parser.add_argument('--id', default='0', type=str, help='Experiment ID')
         parser.add_argument('--load', default=False, metavar='L', help='Load a trained model')
         parser.add_argument('--load-model-dir', default='ARC-run13', metavar='LMD', help='Folder to load trained models from')
-        parser.add_argument('--eval-interval', default=300, type=int, help='Evaluate model every X episodes')
+        parser.add_argument('--eval-interval', default=10000, type=int, help='Evaluate model every X episodes')
         parser.add_argument('--eval-episodes', default=25, type=int, help='Number of episodes to evaluate')
 
         # Episode & Training Settings
@@ -20,8 +20,8 @@ def init_parser(alg):
         parser.add_argument('--max-episode', type=int, default=500000, help='Maximum number of episodes')
         parser.add_argument('--max-actions', default=1e9, type=int, help='# max actions')
         parser.add_argument('--test-episode', type=int, default=20, help='Maximum testing episodes')
-        parser.add_argument('--warmup', default=100000, type=int, help='Time without training but only filling the replay memory')
-        parser.add_argument('--bsize', default=48, type=int, help='Minibatch size')
+        parser.add_argument('--warmup', default=200, type=int, help='Time without training but only filling the replay memory')
+        parser.add_argument('--bsize', default=32, type=int, help='Minibatch size')
         parser.add_argument('--rmsize', default=100000, type=int, help='Replay memory size')
 
         # Policy Update Settings
@@ -42,22 +42,22 @@ def init_parser(alg):
 
         # World Model Embedding
         parser.add_argument('--world_model_pre_train', default=True, type=bool, help='Pre-train world model before the RL loop')
-        parser.add_argument('--world_model_pre_train_epochs', default=100, type=int, help='Number of epochs for pre-training world model')
-        parser.add_argument('--world_model_pre_train_batch_size', default=32, type=int, help='Batch size for pre-training world model')
-        parser.add_argument('--world_model_pre_train_lr', default=1e-4, type=float, help='Learning rate for pre-training world model')
+        parser.add_argument('--world_model_pre_train_epochs', default=10, type=int, help='Number of epochs for pre-training world model')
+        parser.add_argument('--world_model_pre_train_batch_size', default=16, type=int, help='Batch size for pre-training world model')
+        parser.add_argument('--world_model_pre_train_lr', default=1e-3, type=float, help='Learning rate for pre-training world model')
     
-        parser.add_argument('--state_encoded_dim', default=128, type=int, help='State latent (encoded) dimension')
+        parser.add_argument('--state_encoded_dim', default=64, type=int, help='State latent (encoded) dimension')
         parser.add_argument('--action_emb_dim', default=128, type=int, help='Action embedding dimension')
         parser.add_argument('--state_emb_dim', default=32, type=int, help='Embedding dimension for state representation in attention')
         parser.add_argument('--state_encoder_num_heads', default=4, type=int, help='Number of attention heads in state encoder')
         parser.add_argument('--state_encoder_num_layers', default=2, type=int, help='Number of transformer layers in state encoder')
-        parser.add_argument('--state_encoder_dropout', default=0.1, type=float, help='Dropout rate in state encoder')
-        parser.add_argument('--decoder_emb_dim', default=16, type=int, help='Embedding dimension for decoder')
+        parser.add_argument('--state_encoder_dropout', default=0, type=float, help='Dropout rate in state encoder')
+        parser.add_argument('--decoder_emb_dim', default=32, type=int, help='Embedding dimension for decoder')
         parser.add_argument('--decoder_num_heads', default=4, type=int, help='Number of attention heads in decoder')
         parser.add_argument('--decoder_num_layers', default=2, type=int, help='Number of transformer layers in decoder')
 
         # Exploration & Noise
-        parser.add_argument('--epsilon', default=300000, type=int, help='Linear decay of exploration policy')
+        parser.add_argument('--epsilon', default=3000, type=int, help='Linear decay of exploration policy')
         parser.add_argument('--epsilon_start', default=1.0, type=float, help='Starting epsilon value for resuming training')
         parser.add_argument('--ou_theta', default=0.5, type=float, help='Ornstein-Uhlenbeck noise theta')
         parser.add_argument('--ou_sigma', default=0.2, type=float, help='Ornstein-Uhlenbeck noise sigma')
@@ -76,7 +76,7 @@ def init_parser(alg):
         parser.add_argument('--init_w', default=0.003, type=float, help='Initial weight')
         parser.add_argument('--seed', default=-1, type=int, help='Random seed')
         parser.add_argument('--save_per_epochs', default=200, type=int, help='Save model every X epochs')
-        parser.add_argument('--save_memory_per_epochs', default=100, type=int, help='Save memory every X epochs')
+        parser.add_argument('--save_memory_per_epochs', default=10000, type=int, help='Save memory every X epochs')
         parser.add_argument('--k_neighbors', default=75, type=int, help='Number of neighbors to consider')
         return parser
 
