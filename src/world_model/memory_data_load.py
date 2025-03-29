@@ -30,7 +30,7 @@ class WorldModelDataset(Dataset):
         
         # Process the states into current and target states
         current_state, target_state = self.process_states(state)
-        current_shape, target_shape = self.process_shapes(shape)
+        current_shape, target_shape = self.process_shapes(shape, current_state, target_state)
         
         # Create next_state and next_shape by shifting the arrays one element ahead.
         next_current_state, next_target_state = current_state[1:], target_state[1:]
@@ -85,9 +85,20 @@ class WorldModelDataset(Dataset):
         target_state = target_state.reshape(-1, 900) + 1
         return current_state, target_state
     
-    def process_shapes(self, shape):
+    def process_shapes(self, shape, current_state, target_state):
         current_shape = shape[:, :, 0]
         target_shape = shape[:, :, 1]
+
+        for i in range(current_shape.shape[0]):
+            current_shape[i] = current_shape[i]
+            target_shape[i] = target_shape[i]
+
+            if not torch.equal(current_shape[i], target_shape[i]):
+                current_mask = current_state[i] != -1
+                target_mask = target_state[i] != -1
+                current_shape_product = torch.prod(current_shape[i])
+                target_shape_product = torch.prod(target_shape[i])
+        
         return current_shape, target_shape
  
     def train_test_split(self, test_ratio=0.2, shuffle=True):
