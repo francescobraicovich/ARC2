@@ -19,6 +19,11 @@ from action_space import ARCActionSpace
 from wolp_agent import WolpertingerAgent
 from train_test import train, evaluate
 
+from world_model.transformer import EncoderTransformerConfig
+from world_model.action_embed import ActionEmbedding
+from world_model.state_encode import EncoderTransformer
+from world_model.transition_decode import ContextTransformer2D
+
 def main():
     warnings.filterwarnings('ignore')
 
@@ -44,10 +49,24 @@ def main():
 
     args.load_cleaned_actions = True
     action_space = ARCActionSpace(args)
-    num_cleaned_actions = action_space.num_cleaned_actions # number of actions after filtering
+    num_filtered_actions = action_space.num_filtered_actions # number of actions after filtering
 
-    # NOTE: Load a random embedding
-    action_embedding = torch.randn(num_cleaned_actions, args.action_emb_dim).to(device)
+    # Create the world model
+    encoder_config = EncoderTransformerConfig(
+        emb_dim=args.state_emb_dim,
+        latent_dim=args.state_encoded_dim,
+        num_heads=args.state_encoder_num_heads,
+        num_layers=args.state_encoder_num_layers,
+        dropout_rate=args.state_encoder_dropout
+    )
+    state_encoder = EncoderTransformer(encoder_config)
+    action_embedding = ActionEmbedding(
+        num_actions=num_filtered_actions,
+        embed_dim=args.action_emb_dim,
+    )
+
+
+
     action_space.load_action_embeddings(action_embedding)
     action_space.create_nearest_neighbors()
 
@@ -74,8 +93,7 @@ def main():
 
     # 9. Create the agent
     agent_args = {
-        'nb_states': nb_states,
-        'nb_actions': num_cleaned_actions,
+        'nb_actions': num_filtered_actions,
         'args': args,
         'k': args.k_neighbors,
         'action_space': action_space
@@ -97,8 +115,9 @@ def main():
 
     # 13. Log hyperparameters
     d_args = vars(args)
-    d_args['nb_states'] = nb_states
+    #d_args['nb_states'] = nb_states
     #d_args['nb_actions'] = nb_actions
+
     d_args['continuous'] = continuous
     for k, v in d_args.items():
         logger.info(f"{k}: {v}")
