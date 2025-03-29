@@ -8,10 +8,10 @@ import torch.nn.functional as F
 class ContextTransformer2D(nn.Module):
     def __init__(
         self,
-        state_emb_dim,
+        state_encoded_dim,
         action_emb_dim,
-        d_model=256,
-        n_layers=6,
+        emb_dim=256,
+        num_layers=6,
         n_heads=8,
         dropout=0.1,
         seq_len=902,      # Total output tokens: 2 (grid-shape) + 900 grid cells
@@ -21,44 +21,44 @@ class ContextTransformer2D(nn.Module):
     ):
         super().__init__()
         self.seq_len = seq_len
-        self.d_model = d_model
+        self.emb_dim = emb_dim
         self.grid_size = grid_size
         self.vocab_size_first = vocab_size_first
         self.vocab_size_rest = vocab_size_rest
 
-        # Project context inputs (x_t and e_t) into shared d_model space.
-        self.state_proj = nn.Linear(state_emb_dim, d_model)
-        self.action_proj = nn.Linear(action_emb_dim, d_model)
+        # Project context inputs (x_t and e_t) into shared emb_dim space.
+        self.state_proj = nn.Linear(state_encoded_dim, emb_dim)
+        self.action_proj = nn.Linear(action_emb_dim, emb_dim)
 
         # Learned query embeddings for all 902 tokens.
         # (These will be added to positional information.)
-        self.query_emb = nn.Parameter(torch.randn(seq_len, d_model))
+        self.query_emb = nn.Parameter(torch.randn(seq_len, emb_dim))
         # For the first two tokens, we use a learned 1D positional embedding.
-        self.pos_emb = nn.Parameter(torch.randn(2, d_model))
+        self.pos_emb = nn.Parameter(torch.randn(2, emb_dim))
         # For grid tokens (900 tokens), we use 2D positional embeddings.
         # Create separate embeddings for row and column positions.
-        self.row_emb = nn.Parameter(torch.randn(grid_size, d_model))
-        self.col_emb = nn.Parameter(torch.randn(grid_size, d_model))
+        self.row_emb = nn.Parameter(torch.randn(grid_size, emb_dim))
+        self.col_emb = nn.Parameter(torch.randn(grid_size, emb_dim))
 
         # Positional encodings for the 2 context tokens.
-        self.ctx_pos_emb = nn.Parameter(torch.randn(2, d_model))
+        self.ctx_pos_emb = nn.Parameter(torch.randn(2, emb_dim))
 
         # Transformer Decoder layers.
         decoder_layer = nn.TransformerDecoderLayer(
-            d_model=d_model,
+            emb_dim=emb_dim,
             nhead=n_heads,
-            dim_feedforward=d_model * 4,
+            dim_feedforward=emb_dim * 4,
             dropout=dropout,
             activation="gelu",
             batch_first=True,
         )
-        self.decoder = nn.TransformerDecoder(decoder_layer, num_layers=n_layers)
+        self.decoder = nn.TransformerDecoder(decoder_layer, num_layers=num_layers)
 
         # Two output heads:
         # - The first head predicts the first 2 tokens (vocab_size_first).
         # - The second head predicts the grid tokens (vocab_size_rest).
-        self.head_first = nn.Linear(d_model, vocab_size_first)
-        self.head_rest = nn.Linear(d_model, vocab_size_rest)
+        self.head_first = nn.Linear(emb_dim, vocab_size_first)
+        self.head_rest = nn.Linear(emb_dim, vocab_size_rest)
 
     def forward(self, x_t, e_t, tgt_key_padding_mask=None):
         B = x_t.size(0)
@@ -66,30 +66,30 @@ class ContextTransformer2D(nn.Module):
         print("Input e_t shape:", e_t.shape)
 
         # Project context tokens and add learned positional encodings.
-        x_proj = self.state_proj(x_t) + self.ctx_pos_emb[0]  # [B, d_model]
-        e_proj = self.action_proj(e_t) + self.ctx_pos_emb[1]   # [B, d_model]
+        x_proj = self.state_proj(x_t) + self.ctx_pos_emb[0]  # [B, emb_dim]
+        e_proj = self.action_proj(e_t) + self.ctx_pos_emb[1]   # [B, emb_dim]
         print("x_proj shape:", x_proj.shape)
         print("e_proj shape:", e_proj.shape)
 
         # Stack the two context tokens to form the memory for the decoder.
-        memory = torch.stack([x_proj, e_proj], dim=1)          # [B, 2, d_model]
+        memory = torch.stack([x_proj, e_proj], dim=1)          # [B, 2, emb_dim]
         print("Memory shape (stacked context):", memory.shape)
 
         # Prepare target (tgt) tokens.
         # For the first two tokens, add 1D positional embeddings.
-        first_two = self.query_emb[:2] + self.pos_emb  # [2, d_model]
+        first_two = self.query_emb[:2] + self.pos_emb  # [2, emb_dim]
 
         # For the grid tokens, add 2D positional embeddings.
-        grid_tokens = self.query_emb[2:]  # [900, d_model]
+        grid_tokens = self.query_emb[2:]  # [900, emb_dim]
         # Create grid positions (row-major order).
         rows = torch.arange(self.grid_size, device=x_t.device).unsqueeze(1).repeat(1, self.grid_size).flatten()  # [900]
         cols = torch.arange(self.grid_size, device=x_t.device).unsqueeze(0).repeat(self.grid_size, 1).flatten()  # [900]
-        grid_pos = self.row_emb[rows] + self.col_emb[cols]  # [900, d_model]
+        grid_pos = self.row_emb[rows] + self.col_emb[cols]  # [900, emb_dim]
         grid_tokens = grid_tokens + grid_pos
 
         # Concatenate first two tokens and grid tokens.
-        tgt = torch.cat([first_two, grid_tokens], dim=0)  # [902, d_model]
-        tgt = tgt.unsqueeze(0).expand(B, -1, -1)           # [B, 902, d_model]
+        tgt = torch.cat([first_two, grid_tokens], dim=0)  # [902, emb_dim]
+        tgt = tgt.unsqueeze(0).expand(B, -1, -1)           # [B, 902, emb_dim]
         print("Target tokens (tgt) shape:", tgt.shape)
 
         # Create a standard causal mask for autoregressive decoding.
@@ -164,14 +164,14 @@ class ContextTransformer2D(nn.Module):
 if __name__ == "__main__":
     # Dummy inputs.
     batch_size = 2
-    state_emb_dim = 128
+    state_encoded_dim = 128
     action_emb_dim = 64
 
-    x_t = torch.randn(batch_size, state_emb_dim)
+    x_t = torch.randn(batch_size, state_encoded_dim)
     e_t = torch.randn(batch_size, action_emb_dim)
 
     # Instantiate the model.
-    model = ContextTransformer2D(state_emb_dim, action_emb_dim, d_model=256, n_layers=4, n_heads=8)
+    model = ContextTransformer2D(state_encoded_dim, action_emb_dim, emb_dim=256, num_layers=4, n_heads=8)
     
     print("\n=== Forward Pass (without dynamic mask) ===")
     logits_first, logits_rest = model(x_t, e_t)
