@@ -461,11 +461,28 @@ class EncoderTransformer(nn.Module):
         pad_mask = pad_mask.unsqueeze(2) & pad_mask.unsqueeze(3)  # (B, 1, T, T)
         print('pad_mask.shape after outer product', pad_mask.shape)
         return pad_mask
+    
+    def embed_state(self, state, new_episode=False):
+        #NOTE: This method is just a sketch
+        current_state = state[:, :self.config.max_cols]
+        target_state = state[:, self.config.max_cols:]
+
+        if torch.equal(target_state, self.target_state):
+            embedded_target_state = self.target_state_embed
+        else:
+            self.target_state = target_state
+            self.target_state_embed = self.forward(target_state)
+
+        current_state_embed = self.forward(current_state)
+        x = torch.cat([current_state_embed, self.target_state_embed], dim=1)
+        return x
+
+
 
 config = EncoderTransformerConfig()
 model = EncoderTransformer(config)
 
-state = torch.randint(10, (8, 30, 30)).to(DEVICE)
+state = torch.randint(11, (8, 30, 30)).to(DEVICE)
 shape = torch.randint(30, (8, 2)).to(DEVICE)
 
 latent_mu, latent_logvar = model(state, shape, dropout_eval=False)
