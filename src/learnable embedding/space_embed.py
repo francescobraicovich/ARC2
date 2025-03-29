@@ -41,34 +41,6 @@ class EncoderTransformerConfig:
         # For convenience:
         self.max_len = max_rows * max_cols
 
-class ActionEmbedding(nn.Module):
-    def __init__(self, num_actions, embed_dim):
-        """
-        num_actions: Total number of discrete actions (e.g., 50,000)
-        embed_dim: Dimensionality of the action embedding vector.
-        """
-        super(ActionEmbedding, self).__init__()
-        self.embedding = nn.Embedding(num_actions, embed_dim)
-        
-    def forward(self, action):
-        """
-        action: single action index (int) or a scalar tensor.
-        Returns:
-            A tensor of shape [embed_dim] representing the embedded action.
-        """
-        # Convert to tensor if needed.
-        if not torch.is_tensor(action):
-            action = torch.tensor([action], dtype=torch.long, device=next(self.embedding.parameters()).device)
-        else:
-            # Ensure the action has a batch dimension.
-            if action.dim() == 0:
-                action = action.unsqueeze(0)
-        
-        # Get embedding; output shape is [1, embed_dim].
-        embedded = self.embedding(action)
-        # Remove the batch dimension to return shape [embed_dim].
-        return embedded.squeeze(0)
-
 class EncoderTransformer(nn.Module):
     """
     PyTorch re-implementation of the Flax-based EncoderTransformer.
