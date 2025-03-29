@@ -19,7 +19,7 @@ class EncoderTransformerConfig:
     """
     def __init__(
         self,
-        vocab_size: int = 10,                       # Size of the input vocabulary (e.g., number of token types)
+        vocab_size: int = 11,                       # Size of the input vocabulary (e.g., number of token types) + 1 for padding
         max_rows: int = 30,                         # Max number of rows (e.g., height in a grid input)
         max_cols: int = 30,                         # Max number of columns (e.g., width in a grid input)
         emb_dim: int = 32,                          # Dimensionality of token embeddings and model hidden states
