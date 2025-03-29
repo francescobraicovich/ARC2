@@ -2,6 +2,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from utils.util import set_device
+DEVICE = set_device('world_model/action_embed.py')
+
 class ActionEmbedding(nn.Module):
     def __init__(self, num_actions: int, embed_dim: int, normalize: bool = False, dropout: float = 0.0):
         """
@@ -12,7 +15,7 @@ class ActionEmbedding(nn.Module):
             dropout (float): Dropout probability applied after embedding.
         """
         super().__init__()
-        self.embedding = nn.Embedding(num_actions, embed_dim)
+        self.embedding = nn.Embedding(num_actions, embed_dim).to(DEVICE)
         self.normalize = normalize
         self.dropout = nn.Dropout(dropout) if dropout > 0.0 else nn.Identity()
 
