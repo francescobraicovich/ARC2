@@ -30,6 +30,7 @@ class EncoderTransformer(nn.Module):
         """
         super(EncoderTransformer, self).__init__()
         self.config = config
+        self.target_state = torch.tensor([0, 0, 0, 0, 0, 0, 0, 0, 0, 0], dtype=torch.long).to(DEVICE)
 
         # Position embeddings.
         if config.scaled_position_embeddings:
@@ -195,17 +196,31 @@ class EncoderTransformer(nn.Module):
         pad_mask = pad_mask.unsqueeze(2) & pad_mask.unsqueeze(3)  # (B, 1, T, T)
         return pad_mask
     
-    def embed_state(self, state, new_episode=False):
-        #NOTE: This method is just a sketch
-        current_state = state[:, :self.config.max_cols]
-        target_state = state[:, self.config.max_cols:]
+    def encode(self, state, shape, new_episode=False):
+        current_state = state[:, :, 1]
+        target_state = state[:, :, 0]
+        current_shape = shape[:, 1]
+        target_shape = shape[:, 0]
+
+        # unsqueeze to add batch dimension
+        current_state = current_state.unsqueeze(0)
+        target_state = target_state.unsqueeze(0)
+        current_shape = current_shape.unsqueeze(0)
+        target_shape = target_shape.unsqueeze(0)
 
         if torch.equal(target_state, self.target_state):
             embedded_target_state = self.target_state_embed
         else:
-            self.target_state = target_state
-            self.target_state_embed = self.forward(target_state)
+            with torch.no_grad():
+                target_state = target_state.long()
+                target_shape = target_shape.long()
+                embedded_target_state = self.forward(target_state, target_shape, dropout_eval=True)
+                self.target_state_embed = embedded_target_state
 
-        current_state_embed = self.forward(current_state)
-        x = torch.cat([current_state_embed, self.target_state_embed], dim=1)
+        with torch.no_grad():
+            current_state = current_state.long()
+            current_shape = current_shape.long()
+            current_state_embed = self.forward(current_state, current_shape, dropout_eval=True)
+            x = torch.cat([current_state_embed, self.target_state_embed], dim=1)
+            x = x.squeeze(0)        
         return x
