@@ -179,15 +179,23 @@ class ARCActionSpace(Space):
         """
         if self.nearest_neighbors is None:
             raise ValueError("NearestNeighbors model is not initialized. Call create_nearest_neighbors() first.")
-        
+        reshape = False
         if type(query_actions) is not np.ndarray:
             query_actions = to_numpy(query_actions)
         if query_actions.ndim == 1:
             query_actions = query_actions.reshape(1, -1)
+        if query_actions.ndim == 3:
+            B, H, W = query_actions.shape
+            reshape = True
+            query_actions = query_actions.reshape(query_actions.shape[0], -1)
 
         # Query the k-nearest neighbors
         distances, indices = self.nearest_neighbors.kneighbors(query_actions, n_neighbors=k)
         embedded_actions = np.array([self.embedding[indices[i]] for i in range(len(indices))])
+
+        if reshape:
+            # Reshape the embedded actions back to B, H, emb_dim
+            embedded_actions = embedded_actions.reshape(B, k, -1) #NOTE: This might break the select_top_actions
 
         # If only a single query was provided, return a flattened result
         if query_actions.shape[0] == 1:
