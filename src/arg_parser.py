@@ -52,7 +52,7 @@ def init_parser(alg):
         parser.add_argument('--state_encoder_num_heads', default=4, type=int, help='Number of attention heads in state encoder')
         parser.add_argument('--state_encoder_num_layers', default=2, type=int, help='Number of transformer layers in state encoder')
         parser.add_argument('--state_encoder_dropout', default=0.1, type=float, help='Dropout rate in state encoder')
-        parser.add_argument('--decoder_emb_dim', default=32, type=int, help='Embedding dimension for decoder')
+        parser.add_argument('--decoder_emb_dim', default=16, type=int, help='Embedding dimension for decoder')
         parser.add_argument('--decoder_num_heads', default=4, type=int, help='Number of attention heads in decoder')
         parser.add_argument('--decoder_num_layers', default=2, type=int, help='Number of transformer layers in decoder')
 
