@@ -28,7 +28,7 @@ class EncoderTransformerConfig:
         num_heads: int = 8,                         # Number of attention heads in multi-head self-attention
         attention_dropout_rate: float = 0.1,        # Dropout probability applied within the attention layer
         dropout_rate: float = 0.1,                  # Dropout probability for all other dropout layers
-        mlp_dim_factor: int = 4,                    # Expansion factor for the MLP hidden layer (usually 4× emb_dim)
+        mlp_dim_factor: int = 2,                    # Expansion factor for the MLP hidden layer (usually 4× emb_dim)
         use_bias: bool = True,                      # Whether to use bias terms in linear layers
         activation: str = "silu",                   # Activation function used in MLP block: 'relu', 'gelu', or 'silu'
         scaled_position_embeddings: bool = False,   # Whether to scale positional encodings (for stability)
