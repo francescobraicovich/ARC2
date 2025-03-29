@@ -175,7 +175,7 @@ def evaluate_world_model(state_encoder, action_embedder, transition_model, test_
             next_current_shape = batch['target_shape'].to(device)
             action = batch['action'].to(device)
 
-            state_encoded = state_encoder(current_state, current_shape, dropout_eval=False)
+            state_encoded = state_encoder(current_state, current_shape, dropout_eval=True)
             action_encoded = action_embedder(action)
             next_shape_logits, next_state_logits = transition_model(state_encoded, action_encoded)
 
