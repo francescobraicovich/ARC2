@@ -261,10 +261,10 @@ class ARC_Env(gym.Env):
             solveds[i] = solved
             current_states[i, :, :, 0] = current_state_padded
             current_states[i, :, :, 1] = target_state
-            shapes[i, 0, 0] = nrows
-            shapes[i, 0, 1] = target_rows
-            shapes[i, 1, 0] = ncols
-            shapes[i, 1, 1] = target_cols
+            shapes[i, 0, 0] = nrows # current rows
+            shapes[i, 0, 1] = target_rows # target rows
+            shapes[i, 1, 0] = ncols # current cols
+            shapes[i, 1, 1] = target_cols # target cols
 
         # Select the top n states
         num_states_to_evaluate = min(self.MAX_STATES_PER_ACTION, current_state_tensor.shape[0])
