@@ -53,28 +53,28 @@ def geometries_overlap(geo1, geo2):
     return row_overlap and col_overlap
 
 # --- Recursive function to find non‐overlapping combinations.
-# Because our Numba version does not accept the "recursive" option,
-# we use forceobj=True (which compiles in object mode) for this function.
+# Because recursion is not supported in full nopython mode, we use forceobj=True.
 @nb.njit(forceobj=True)
 def recursive_combinations_finder(free_array, current_combinations):
     """
-    free_array: a 2D boolean array of shape (N, N) where free_array[i,j] is True
+    free_array: 2D boolean array of shape (N, N) where free_array[i,j] is True
                 if geometry i and j do NOT overlap.
-    current_combinations: a typed List of typed Dicts (acting as sets of int64 indices).
+    current_combinations: a typed List of Dicts (acting as sets of int64 indices).
     Recursively adds new indices that are free (non-overlapping) with all indices in each combination.
     """
     new_combinations = List()
     for comb in current_combinations:
-        # Convert the dict's keys to an array of indices.
+        # Count number of indices already in this combination.
         n_comb = 0
         for _ in comb.keys():
             n_comb += 1
+        # Create an array to hold the indices.
         indices = np.empty(n_comb, dtype=nb.int64)
         k = 0
         for x in comb.keys():
             indices[k] = x
             k += 1
-        # Compute free_row: for each candidate index j, check if it is free with all in comb.
+        # Compute the "free row": for each candidate index j, check if it is free with all in comb.
         free_row = np.ones(free_array.shape[1], dtype=nb.int64)
         for i in range(indices.shape[0]):
             for j in range(free_array.shape[1]):
@@ -100,14 +100,11 @@ def recursive_combinations_finder(free_array, current_combinations):
             current_combinations.append(s)
     return current_combinations
 
-@nb.njit
-def find_non_overlapping_combinations(geometries):
-    """
-    Given a list of geometries (tuples of 4 int64 values),
-    return a typed List of tuples (sorted in increasing order)
-    representing all combinations of indices for which the geometries do not overlap.
-    """
+
+@nb.njit(parallel=True)
+def find_non_overlapping_combinations_iter(geometries):
     n = len(geometries)
+    # Precompute a free_array: free_array[i,j] is True if geometry i and j do NOT overlap.
     free_array = np.empty((n, n), dtype=np.bool_)
     for i in range(n):
         for j in range(n):
@@ -116,20 +113,60 @@ def find_non_overlapping_combinations(geometries):
             else:
                 free_array[i, j] = False
 
-    current_combinations = List()
+    # We'll build combinations iteratively.
+    # Start with each geometry in its own combination.
+    combos = List()
     for i in range(n):
-        s = Dict.empty(key_type=int64, value_type=boolean)
-        s[i] = True
-        current_combinations.append(s)
-    all_combinations = recursive_combinations_finder(free_array, current_combinations)
-    result = List()
-    for comb in all_combinations:
-        temp_list = []
-        for x in comb.keys():
-            temp_list.append(x)
-        temp_list.sort()
-        result.append(tuple(temp_list))
-    return result
+        # We store each combination as a 1D array of indices.
+        a = np.empty(1, dtype=np.int64)
+        a[0] = i
+        combos.append(a)
+
+    changed = True
+    while changed:
+        changed = False
+        new_combos = List()
+        # Try to add a new index to each current combination.
+        for comb in combos:
+            # For each candidate index not already in comb, check if it is free with every element in comb.
+            for candidate in range(n):
+                found = False
+                for idx in range(comb.shape[0]):
+                    # Check free_array for pair (comb[idx], candidate). Since free_array is defined for i<j,
+                    # we must handle order.
+                    a = comb[idx]
+                    if a < candidate:
+                        if not free_array[a, candidate]:
+                            found = True
+                            break
+                    elif a > candidate:
+                        if not free_array[candidate, a]:
+                            found = True
+                            break
+                if not found:
+                    # Candidate is free with all in comb; build a new combination by appending candidate.
+                    # First, check if candidate is already in comb.
+                    already_in = False
+                    for idx in range(comb.shape[0]):
+                        if comb[idx] == candidate:
+                            already_in = True
+                            break
+                    if not already_in:
+                        # Create new combination array with one extra element.
+                        new_len = comb.shape[0] + 1
+                        new_arr = np.empty(new_len, dtype=np.int64)
+                        for k in range(comb.shape[0]):
+                            new_arr[k] = comb[k]
+                        new_arr[new_len - 1] = candidate
+                        new_combos.append(new_arr)
+                        changed = True
+        # Append all new combinations to combos.
+        for arr in new_combos:
+            combos.append(arr)
+    return combos
+
+
+
 
 # ------------------------------------------------------------
 # Testing functions for the Numba code
@@ -151,10 +188,11 @@ def test_geometry_functions():
     overlap = geometries_overlap(geo1, geo2)
     print("geometries_overlap (geo1 vs geo2):", overlap)
     
+    # Test find_non_overlapping_combinations with a small list of geometries.
     geos = [(10, 10, 20, 20), (15, 15, 25, 25), (30, 30, 40, 40)]
     non_overlap = find_non_overlapping_combinations(geos)
-    # Convert the typed List to a Python list for printing.
-    non_overlap_list = list(non_overlap)
+    # Convert the typed List to a Python list of lists for printing.
+    non_overlap_list = [list(arr) for arr in non_overlap]
     print("Non-overlapping combinations:", non_overlap_list)
 
 def run_time_tests():
@@ -168,6 +206,7 @@ def run_time_tests():
     print("find_matching_geometries average time: {:.6f} s".format((end - start) / iterations))
     
     geos = find_matching_geometries(mask, 5, 5)
+    # Use at most 10 geometries to keep combinations manageable.
     if len(geos) > 10:
         geos = geos[:10]
     iterations = 10
@@ -180,6 +219,10 @@ def run_time_tests():
 if __name__ == '__main__':
     test_geometry_functions()
     run_time_tests()
+
+
+
+
 
 
 
