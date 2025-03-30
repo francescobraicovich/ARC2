@@ -98,7 +98,6 @@ def main():
             save_model_dir = args.save_model_dir,
             logger = logger,
             save_per_epochs=10,
-            eval_interval=None
         )
 
     action_embedding = action_embedding.export_weights()
@@ -162,7 +161,7 @@ def main():
             max_episode_length=args.max_episode_length,
             logger=logger,
             save_per_epochs=args.save_per_epochs,
-            save_memory_per_epochs=args.save_memory_per_epochs,
+            save_memory_at_steps=args.save_memory_at_steps,
             eval_interval=args.eval_interval,     # e.g. evaluate every 10 episodes
             eval_episodes=args.eval_episodes     # e.g. 5 episodes each evaluation
         )
