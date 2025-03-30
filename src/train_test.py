@@ -18,7 +18,7 @@ def train(
     max_actions,
     warmup,
     save_model_dir,
-    save_memory_per_epochs,
+    save_memory_at_steps,
     max_episode_length,
     logger,
     save_per_epochs,
@@ -92,12 +92,14 @@ def train(
             episode_positive_rewards += 1
 
         # Check if we hit the max steps in an episode
-        if max_episode_length and episode_steps >= max_episode_length - 1:
+        if max_episode_length and episode_steps >= max_episode_length - 1 or done:
             truncated = True
 
         # Observe and update policy
         action = torch.tensor(action, device=agent.device, dtype=torch.int64)
-        agent.observe(s_t, shape, x_t, action, r_t, done)
+        num_actions = torch.tensor(info['num_actions'], device=agent.device, dtype=torch.int64)
+        
+        agent.observe(s_t, shape, x_t, action, r_t, truncated, num_actions)
         if step > warmup:
             agent.update_policy(step)
 
@@ -155,7 +157,7 @@ def train(
             agent.save_model(save_model_dir)
             logger.info(f"### Model saved to {save_model_dir} at episode {episode} ###")
 
-        if step % save_memory_per_epochs == 0:
+        if step == save_memory_at_steps:
             agent.save_memory_for_world_model()
             assert False
 
