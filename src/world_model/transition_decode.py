@@ -35,6 +35,12 @@ class ContextTransformer2D(nn.Module):
         self.query_emb = nn.Parameter(torch.randn(seq_len, emb_dim)).to(DEVICE)
         # For the first two tokens, we use a learned 1D positional embedding.
         self.pos_emb = nn.Parameter(torch.randn(2, emb_dim)).to(DEVICE)
+        self.shape_token_transform = nn.Sequential(
+                        nn.Linear(emb_dim, emb_dim),
+                        nn.LayerNorm(emb_dim),
+                        nn.GELU()
+                    ).to(DEVICE)
+
         # For grid tokens (900 tokens), we use 2D positional embeddings.
         # Create separate embeddings for row and column positions.
         self.row_emb = nn.Parameter(torch.randn(grid_size, emb_dim)).to(DEVICE)
@@ -72,7 +78,9 @@ class ContextTransformer2D(nn.Module):
 
         # Prepare target (tgt) tokens.
         # For the first two tokens, add 1D positional embeddings.
+        # In forward, modify first_two tokens:
         first_two = self.query_emb[:2] + self.pos_emb  # [2, emb_dim]
+        first_two = self.shape_token_transform(first_two)  # Enhance representation
 
         # For the grid tokens, add 2D positional embeddings.
         grid_tokens = self.query_emb[2:]  # [900, emb_dim]
@@ -91,7 +99,6 @@ class ContextTransformer2D(nn.Module):
 
         # Pass the optional key padding mask into the decoder (if provided).
         output = self.decoder(tgt, memory, tgt_mask=causal_mask, tgt_key_padding_mask=tgt_key_padding_mask)
-
 
         # Split outputs for the two segments.
         logits_first = self.head_first(output[:, :2])   # [B, 2, vocab_size_first]
