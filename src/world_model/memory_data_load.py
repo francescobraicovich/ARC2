@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader, random_split
-import pickle
+import lzma
 import os
 from utils.util import set_device
 
@@ -13,46 +13,22 @@ class WorldModelDataset(Dataset):
     removes the last row (which has no next state/shape), and filters out all transitions
     where terminal==True. Also provides a train-test split method.
     """
-    def __init__(self, file_path="../output/memory/sequential_memory.pkl"):
+    def __init__(self, file_path="../output/memory/sequential_memory.pt.xz"):
         # Load the saved data
         # append the file path to the current working directory
         file_path = os.path.join(os.getcwd(), file_path)
         print('Loading data from:', file_path)
 
-        with open(file_path, "rb") as f:
-            data = pickle.load(f)
-        # Convert lists to numpy arrays (assuming each entry is a numpy array or a scalar)
+        with lzma.open(file_path, "rb") as f:
+            data = torch.load(f)
 
-        state = torch.stack(data['state']).to(DEVICE)
-        shape = torch.stack(data['shape']).to(DEVICE)
-        action = torch.stack(data['action']).to(DEVICE)
-        terminal = torch.tensor(data['terminal'], dtype=torch.bool).to(DEVICE)
-        
-        # Process the states into current and target states
-        current_state, target_state = self.process_states(state)
-        current_shape, target_shape = self.process_shapes(shape, current_state, target_state)
-        
-        # Create next_state and next_shape by shifting the arrays one element ahead.
-        next_current_state, next_target_state = current_state[1:], target_state[1:]
-        next_current_shape, next_target_shape = current_shape[1:], target_shape[1:]
-        
-        # Remove the last row from current data since it has no corresponding next state/shape.
-        current_state = current_state[:-1]
-        current_shape = current_shape[:-1]
-        target_state = target_state[:-1]
-        target_shape = target_shape[:-1]
-        action = action[:-1]
-        terminal = terminal[:-1]
+        self.current_state = data['current_state']
+        self.current_shape = data['current_shape']
+        self.target_state = data['target_state']
+        self.target_shape = data['target_shape']
+        self.action = data['action']
+        self.terminal = data['terminal']
 
-        
-        # Remove transitions where terminal==True (i.e. where an episode ended)
-        valid_mask = (terminal == False)
-        self.current_state = current_state[valid_mask]
-        self.current_shape = current_shape[valid_mask]
-        self.target_state = target_state[valid_mask]
-        self.target_shape = target_shape[valid_mask]
-        self.action = action[valid_mask]
-        self.terminal = terminal[valid_mask]
 
         self.current_state = torch.tensor(self.current_state, dtype=torch.float32).to(DEVICE).long()
         self.current_shape = torch.tensor(self.current_shape, dtype=torch.float32).to(DEVICE).long()
@@ -84,22 +60,6 @@ class WorldModelDataset(Dataset):
         target_state = state[:, :, :, 1]
         target_state = target_state.reshape(-1, 900) + 1
         return current_state, target_state
-    
-    def process_shapes(self, shape, current_state, target_state):
-        current_shape = shape[:, :, 0]
-        target_shape = shape[:, :, 1]
-
-        for i in range(current_shape.shape[0]):
-            current_shape[i] = current_shape[i]
-            target_shape[i] = target_shape[i]
-
-            if not torch.equal(current_shape[i], target_shape[i]):
-                current_mask = current_state[i] != -1
-                target_mask = target_state[i] != -1
-                current_shape_product = torch.prod(current_shape[i])
-                target_shape_product = torch.prod(target_shape[i])
-        
-        return current_shape, target_shape
  
     def train_test_split(self, test_ratio=0.2, shuffle=True):
         """
