@@ -199,8 +199,8 @@ class EncoderTransformer(nn.Module):
     def encode(self, state, shape, new_episode=False):
         current_state = state[:, :, 1]
         target_state = state[:, :, 0]
-        current_shape = shape[:, 1]
-        target_shape = shape[:, 0]
+        current_shape = shape[0, :]
+        target_shape = shape[1, :]
 
         # unsqueeze to add batch dimension
         current_state = current_state.unsqueeze(0)
