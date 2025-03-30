@@ -28,4 +28,6 @@ def unpad_grid(grid: np.ndarray) -> np.ndarray:
         return np.zeros((0, 0), dtype=int)
     unpadded = np.zeros((max(rows)+1, max(cols)+1), dtype=dtype)
     unpadded[rows, cols] = grid[mask]
+
+    assert np.all(unpadded >= 0), "Unpadded grid contains negative values."
     return unpadded
