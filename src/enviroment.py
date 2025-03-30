@@ -135,7 +135,9 @@ class ARC_Env(gym.Env):
 
         nrows, ncols = random_input.shape
         nrows_target, ncols_target = random_output.shape
-        shape = np.array([[nrows, nrows_target],[ncols, ncols_target]])
+        shape = np.zeros((2, 2))
+        shape[0, 0], shape[0, 1] = nrows, ncols
+        shape[1, 0], shape[1, 1] = nrows_target, ncols_target
         
         # Pad the grids
         training_grid = np.zeros(self.observation_shape, dtype=np.int16)
@@ -232,7 +234,10 @@ class ARC_Env(gym.Env):
         # Extract the target state (unpadded)
         target_state = state[:, :, 1]
         target_state_not_padded = unpad_grid(target_state)
+        assert np.sum(target_state_not_padded == -1) == 0, "The target state has not been padded correctly."
         target_rows, target_cols = target_state_not_padded.shape
+        target_shape = shape[1,:]
+        nrows_should_be, ncols_should_be = target_shape[0], target_shape[1]
 
         # Apply the action to the previous state
         current_state_tensor = self.act(previous_state_not_padded, action_vector)
@@ -246,12 +251,15 @@ class ARC_Env(gym.Env):
         # Compute rewards etc. for each possible next state
         for i in range(current_state_tensor.shape[0]):
             current_state_not_padded = current_state_tensor[i, :, :]
-            nrows, ncols = current_state_not_padded.shape
+            current_state_not_padded = unpad_grid(current_state_not_padded)  # remove the padding that was added during the action
             
             # Compute reward for this particular next state
             reward, solved = self.best_overlap_reward(
                 previous_state_not_padded, current_state_not_padded, target_state_not_padded
             )
+            nrows, ncols = current_state_not_padded.shape
+            assert np.sum(current_state_not_padded == -1) == 0, "The current state has not been padded correctly."
+            assert np.sum(target_state_not_padded == -1) == 0, "The target state has not been padded correctly."
             
             # Pad the current state for storing
             current_state_padded = pad_grid(current_state_not_padded)
@@ -261,9 +269,13 @@ class ARC_Env(gym.Env):
             solveds[i] = solved
             current_states[i, :, :, 0] = current_state_padded
             current_states[i, :, :, 1] = target_state
+
+
+            # Store the shapes
             shapes[i, 0, 0] = nrows # current rows
-            shapes[i, 0, 1] = target_rows # target rows
-            shapes[i, 1, 0] = ncols # current cols
+            shapes[i, 0, 1] = ncols # current cols
+            
+            shapes[i, 1, 0] = target_rows # target rows
             shapes[i, 1, 1] = target_cols # target cols
 
         # Select the top n states
