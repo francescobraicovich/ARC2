@@ -4,6 +4,7 @@ import torch
 from torch.utils.data import DataLoader
 import torch.nn as nn
 from tqdm import tqdm
+import numpy as np
 
 from utils.util import set_device
 from world_model.memory_data_load import WorldModelDataset
@@ -67,6 +68,9 @@ def world_model_train(
         
         running_loss = 0.0
         progress_bar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{epochs}")
+        total_losses = []
+        shape_losses = []
+        state_losses = []
         for batch in progress_bar:
             # Transfer data to the device
             current_state = batch['current_state'].to(DEVICE)
@@ -85,10 +89,16 @@ def world_model_train(
             shape_logits = next_shape_logits.permute(0, 2, 1)
             state_logits = next_state_logits.permute(0, 2, 1)
 
-            # Compute losses
+            # Compute individual losses.
             shape_loss = criterion(shape_logits, next_current_shape)
             state_loss = criterion(state_logits, next_current_state)
+
+            # Compute the total loss with weighting.
             total_loss = shape_loss + state_loss
+
+            shape_losses.append(shape_loss.item())
+            state_losses.append(state_loss.item())
+            total_losses.append(total_loss.item())
 
             # Backward pass and optimization step
             total_loss.backward()
@@ -112,15 +122,22 @@ def world_model_train(
                 'state_loss': state_loss.item(),
                 'shape_loss': shape_loss.item()
             }
-            """
-            if logger is not None:
-                logger.log(log_data)
-            wandb.log(log_data)
-"""
+
+            #if logger is not None:
+            #    logger.log(log_data)
+            #wandb.log(log_data)
+
             # Early stopping condition based on max_iter if provided
             if max_iter is not None and global_step >= max_iter:
                 break
-"""
+        # print the average loss
+        avg_loss = np.mean(total_losses)
+        avg_shape_loss = np.mean(shape_losses)
+        avg_state_loss = np.mean(state_losses)
+        print(f"Avg Loss: {avg_loss:.4f}, Avg Shape Loss: {avg_shape_loss:.4f}, Avg State Loss: {avg_state_loss:.4f}")
+    
+
+
         # Save checkpoint every save_per_epochs epochs
         if (epoch + 1) % save_per_epochs == 0:
             checkpoint_path = os.path.join(save_model_dir, f'checkpoint_epoch_{epoch+1}.pt')
@@ -144,7 +161,7 @@ def world_model_train(
             break
 
     return state_encoder, action_embedder, transition_model
-"""
+
 def evaluate_world_model(state_encoder, action_embedder, transition_model, test_loader, device):
     """
     Evaluate the world model on the test set.
