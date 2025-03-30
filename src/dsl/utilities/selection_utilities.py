@@ -1,3 +1,196 @@
+#%%
+import numpy as np
+import numba as nb
+from numba.typed import List, Dict
+from numba.core.types import int64, boolean
+import time
+
+# ------------------------------------------------------------
+# Utility functions for geometry selection (Numba version)
+# ------------------------------------------------------------
+
+@nb.njit
+def is_valid_geometry(color_mask, start_row, start_col, end_row, end_col):
+    """
+    Check if the sub-array specified by the rectangle
+    [start_row:end_row, start_col:end_col] is completely True.
+    Also, ensure the indices are within bounds.
+    """
+    rows, cols = color_mask.shape
+    if end_row > rows or end_col > cols:
+        return False
+    for i in range(start_row, end_row):
+        for j in range(start_col, end_col):
+            if not color_mask[i, j]:
+                return False
+    return True
+
+@nb.njit
+def find_matching_geometries(color_mask, height, width):
+    """
+    Find all geometries (as 4‐tuples: (start_row, start_col, end_row, end_col))
+    matching the specified dimensions that are completely True in color_mask.
+    Returns a typed List of 4‐tuples.
+    """
+    nrows, ncols = color_mask.shape
+    matching = List()  # will hold tuples (int64, int64, int64, int64)
+    for i in range(nrows - height + 1):
+        for j in range(ncols - width + 1):
+            if is_valid_geometry(color_mask, i, j, i + height, j + width):
+                matching.append((i, j, i + height, j + width))
+    return matching
+
+@nb.njit
+def geometries_overlap(geo1, geo2):
+    """
+    Check if two geometries (each given as (r1, c1, r1_end, c1_end))
+    overlap.
+    """
+    r1, c1, r1_end, c1_end = geo1
+    r2, c2, r2_end, c2_end = geo2
+    row_overlap = (r1 <= r2 and r2 < r1_end) or (r2 <= r1 and r1 < r2_end)
+    col_overlap = (c1 <= c2 and c2 < c1_end) or (c2 <= c1 and c1 < c2_end)
+    return row_overlap and col_overlap
+
+# --- Recursive function to find non‐overlapping combinations.
+# Because our Numba version does not accept the "recursive" option,
+# we use forceobj=True (which compiles in object mode) for this function.
+@nb.njit(forceobj=True)
+def recursive_combinations_finder(free_array, current_combinations):
+    """
+    free_array: a 2D boolean array of shape (N, N) where free_array[i,j] is True
+                if geometry i and j do NOT overlap.
+    current_combinations: a typed List of typed Dicts (acting as sets of int64 indices).
+    Recursively adds new indices that are free (non-overlapping) with all indices in each combination.
+    """
+    new_combinations = List()
+    for comb in current_combinations:
+        # Convert the dict's keys to an array of indices.
+        n_comb = 0
+        for _ in comb.keys():
+            n_comb += 1
+        indices = np.empty(n_comb, dtype=nb.int64)
+        k = 0
+        for x in comb.keys():
+            indices[k] = x
+            k += 1
+        # Compute free_row: for each candidate index j, check if it is free with all in comb.
+        free_row = np.ones(free_array.shape[1], dtype=nb.int64)
+        for i in range(indices.shape[0]):
+            for j in range(free_array.shape[1]):
+                if not free_array[indices[i], j]:
+                    free_row[j] = 0
+        # Exclude indices already in the combination.
+        for i in range(indices.shape[0]):
+            free_row[indices[i]] = 0
+
+        # For every index j that is free, add it to the combination.
+        for j in range(free_row.shape[0]):
+            if free_row[j] != 0:
+                new_set = Dict.empty(key_type=int64, value_type=boolean)
+                for x in comb.keys():
+                    new_set[x] = True
+                new_set[j] = True
+                new_combinations.append(new_set)
+    if len(new_combinations) > 0:
+        sub_combinations = recursive_combinations_finder(free_array, new_combinations)
+        for s in new_combinations:
+            current_combinations.append(s)
+        for s in sub_combinations:
+            current_combinations.append(s)
+    return current_combinations
+
+@nb.njit
+def find_non_overlapping_combinations(geometries):
+    """
+    Given a list of geometries (tuples of 4 int64 values),
+    return a typed List of tuples (sorted in increasing order)
+    representing all combinations of indices for which the geometries do not overlap.
+    """
+    n = len(geometries)
+    free_array = np.empty((n, n), dtype=np.bool_)
+    for i in range(n):
+        for j in range(n):
+            if i < j:
+                free_array[i, j] = not geometries_overlap(geometries[i], geometries[j])
+            else:
+                free_array[i, j] = False
+
+    current_combinations = List()
+    for i in range(n):
+        s = Dict.empty(key_type=int64, value_type=boolean)
+        s[i] = True
+        current_combinations.append(s)
+    all_combinations = recursive_combinations_finder(free_array, current_combinations)
+    result = List()
+    for comb in all_combinations:
+        temp_list = []
+        for x in comb.keys():
+            temp_list.append(x)
+        temp_list.sort()
+        result.append(tuple(temp_list))
+    return result
+
+# ------------------------------------------------------------
+# Testing functions for the Numba code
+# ------------------------------------------------------------
+
+def test_geometry_functions():
+    # Create a random boolean grid (simulate a color mask)
+    np.random.seed(0)
+    mask = np.random.randint(0, 2, size=(50, 50)).astype(np.bool_)
+    
+    valid = is_valid_geometry(mask, 10, 10, 20, 20)
+    print("is_valid_geometry (10,10,20,20):", valid)
+    
+    matches = find_matching_geometries(mask, 5, 5)
+    print("Number of matching geometries (5x5):", len(matches))
+    
+    geo1 = (10, 10, 20, 20)
+    geo2 = (15, 15, 25, 25)
+    overlap = geometries_overlap(geo1, geo2)
+    print("geometries_overlap (geo1 vs geo2):", overlap)
+    
+    geos = [(10, 10, 20, 20), (15, 15, 25, 25), (30, 30, 40, 40)]
+    non_overlap = find_non_overlapping_combinations(geos)
+    # Convert the typed List to a Python list for printing.
+    non_overlap_list = list(non_overlap)
+    print("Non-overlapping combinations:", non_overlap_list)
+
+def run_time_tests():
+    # Create a large random boolean mask (simulate a color mask)
+    mask = np.random.randint(0, 2, size=(500, 500)).astype(np.bool_)
+    iterations = 50
+    start = time.time()
+    for _ in range(iterations):
+        _ = find_matching_geometries(mask, 5, 5)
+    end = time.time()
+    print("find_matching_geometries average time: {:.6f} s".format((end - start) / iterations))
+    
+    geos = find_matching_geometries(mask, 5, 5)
+    if len(geos) > 10:
+        geos = geos[:10]
+    iterations = 10
+    start = time.time()
+    for _ in range(iterations):
+        _ = find_non_overlapping_combinations(geos)
+    end = time.time()
+    print("find_non_overlapping_combinations average time: {:.6f} s".format((end - start) / iterations))
+
+if __name__ == '__main__':
+    test_geometry_functions()
+    run_time_tests()
+
+
+
+
+
+
+
+
+
+
+#%%
 import numpy as np
 
 # This file contains utility methods for selecting geometries in a color mask.
