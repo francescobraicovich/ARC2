@@ -4,7 +4,9 @@ import random
 from collections import deque, namedtuple
 import numpy as np
 import torch
-import os, pickle
+import os, lzma
+from torchrl.data import ReplayBuffer, TensorStorage
+
 
 from utils.util import set_device
 
@@ -124,12 +126,13 @@ class SequentialMemory(Memory):
         self.actions      = RingBuffer(limit)
         self.rewards      = RingBuffer(limit)
         self.terminals    = RingBuffer(limit)
+        self.num_actions  = RingBuffer(limit)
 
     @property
     def nb_entries(self):
         return len(self.observations)
 
-    def append(self, observation, embedded_observation, shape, action, reward, terminal, training=True):
+    def append(self, observation, embedded_observation, shape, action, reward, terminal, num_actions, training=True):
         """
         Add a new transition to memory:
           observation -> (take action) -> reward, terminal
@@ -142,6 +145,7 @@ class SequentialMemory(Memory):
             self.actions.append(action)
             self.rewards.append(reward)
             self.terminals.append(terminal)
+            self.num_actions.append(num_actions)
 
     def sample(self, batch_size, batch_idxs=None):
         """
@@ -184,6 +188,7 @@ class SequentialMemory(Memory):
             action   = self.actions[idx - 1]
             reward   = self.rewards[idx - 1]
             terminal1 = self.terminals[idx - 1]
+            num_actions = self.num_actions[idx - 1]
 
             state1   = self.observations[idx]
             shape1   = self.shapes[idx]
@@ -250,16 +255,87 @@ class SequentialMemory(Memory):
         return config
 
     def save_memory_for_world_model(self, directory):
-        """Save only the current state (observations), shape, action, and terminal flags."""
-        if not os.path.exists(directory):
-            os.makedirs(directory)
-        file_path = os.path.join(directory, "sequential_memory.pkl")
+        """Efficiently save memory for world model training."""
+        os.makedirs(directory, exist_ok=True)
+        file_path = os.path.join(directory, "sequential_memory.pt.xz")
+
         data = {
             'state': [self.observations[i] for i in range(len(self.observations))],
             'shape': [self.shapes[i] for i in range(len(self.shapes))],
             'action': [self.actions[i] for i in range(len(self.actions))],
-            'terminal': [self.terminals[i] for i in range(len(self.terminals))]
+            'terminal': [self.terminals[i] for i in range(len(self.terminals))],
+            'num_actions': [self.num_actions[i] for i in range(len(self.num_actions))]
         }
-        with open(file_path, "wb") as f:
-            pickle.dump(data, f)
-        print(f"Memory saved to {file_path}")
+
+        data = self.process_data_for_world_model(data)
+        keys = ['current_state', 'current_shape', 'target_state', 'target_shape', 'action', 'terminal']
+
+        with lzma.open(file_path, "wb") as f:
+            torch.save(dict(zip(keys, data)), f)
+
+        print(f"Memory saved (compressed) to {file_path}")
+
+    def process_data_for_world_model(self, data):
+        
+        state = torch.stack(data['state']).to(DEVICE)
+        shape = torch.stack(data['shape']).to(DEVICE)
+        action = torch.stack(data['action']).to(DEVICE)
+        terminal = torch.tensor(data['terminal'], dtype=torch.bool).to(DEVICE)
+        num_actions = torch.tensor(data['num_actions'], dtype=torch.float).to(DEVICE)
+
+        # Process the states into current and target states
+        current_state, target_state = self.process_states(state)
+        current_shape, target_shape = self.process_shapes(shape)
+        
+        # Create next_state and next_shape by shifting the arrays one element ahead.
+        next_num_actions = num_actions[1:]
+        
+        # Remove the last row from current data since it has no corresponding next state/shape.
+        current_state = current_state[:-1]
+        current_shape = current_shape[:-1]
+        target_state = target_state[:-1]
+        target_shape = target_shape[:-1]
+        action = action[:-1]
+        terminal = terminal[:-1]
+        
+        # Remove transitions where terminal==True (i.e. where an episode ended)
+        valid_mask = (terminal == False)
+        for i in range(current_state.shape[0]):
+            num_actions_i = num_actions[i].item()
+            next_num_actions_i = next_num_actions[i].item()
+            if valid_mask[i].item() == True:
+                assert next_num_actions_i == num_actions_i + 1, f"num_actions mismatch: {next_num_actions_i} != {num_actions_i + 1}"
+            else:
+                assert next_num_actions_i == 1
+
+        current_state = current_state[valid_mask]
+        current_shape = current_shape[valid_mask]
+        target_state = target_state[valid_mask]
+        target_shape = target_shape[valid_mask]
+        action = action[valid_mask]
+        terminal = terminal[valid_mask]
+
+        current_state = torch.tensor(current_state, dtype=torch.float32).to(DEVICE).long()
+        current_shape = torch.tensor(current_shape, dtype=torch.float32).to(DEVICE).long()
+        target_state = torch.tensor(target_state, dtype=torch.float32).to(DEVICE).long()
+        target_shape = torch.tensor(target_shape, dtype=torch.float32).to(DEVICE).long()
+        action = torch.tensor(action, dtype=torch.float32).to(DEVICE).long()
+        terminal = torch.tensor(terminal, dtype=torch.bool).to(DEVICE).long()
+
+        return current_state, current_shape, target_state, target_shape, action, terminal
+
+    def process_states(self, state):
+        current_state = state[:, :, :, 0]
+        target_state = state[:, :, :, 1]
+        target_state = target_state.reshape(-1, 900) + 1
+        return current_state, target_state
+    
+    def process_shapes(self, shape):
+        current_shape = shape[:, 0, :]
+        target_shape = shape[:, 1, :]
+
+        for i in range(current_shape.shape[0]):
+            current_shape[i] = current_shape[i]
+            target_shape[i] = target_shape[i]
+        
+        return current_shape, target_shape
