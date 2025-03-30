@@ -152,7 +152,7 @@ class DDPG(object):
         self.critic2.to(self.device)
         self.critic2_target.to(self.device)
 
-    def observe(self, state, shape, x_t, action, r_t, done):
+    def observe(self, state, shape, x_t, action, r_t, done, num_actions):
         """
         Store the most recent transition in the replay buffer.
         """
@@ -162,6 +162,40 @@ class DDPG(object):
         assert type(action) == torch.Tensor, "Action should be a torch tensor, got {}".format(type(action))
         assert type(r_t) == np.float64, "Reward should be a float, got {}".format(type(r_t))
 
+        # Assume state and shape are torch tensors
+        current_state = state[:, :, 0]
+        target_state = state[:, :, 1]
+        current_shape = shape[0, :]
+        target_shape = shape[1, :]
+
+        current_nrows, current_ncols = int(current_shape[0].item()), int(current_shape[1].item())
+        target_nrows, target_ncols = int(target_shape[0].item()), int(target_shape[1].item())
+
+        # Extract unpadded parts
+        current_unpadded_state = current_state[0:current_nrows, 0:current_ncols]
+        target_unpadded_state = target_state[0:target_nrows, 0:target_ncols]
+
+        # Assert no -1 in unpadded regions
+        if not torch.sum(current_unpadded_state == -1) == 0:
+            print("Current state contains -1 values in unpadded region")
+            print('current shape: ', current_shape)
+            print('current state: ', current_state)
+            assert False, "Current state contains -1 values in unpadded region"
+        if not torch.sum(target_unpadded_state == -1) == 0:
+            print("Target state contains -1 values in unpadded region")
+            print('target shape: ', target_shape)
+            print('target state: ', target_state)
+            assert False, "Target state contains -1 values in unpadded region"
+
+        # Extract padded parts and check they are -1
+        current_padded_mask = torch.ones_like(current_state, dtype=torch.bool)
+        current_padded_mask[0:current_nrows, 0:current_ncols] = False
+        assert torch.all(current_state[current_padded_mask] == -1), "Current state padded region is not all -1"
+
+        target_padded_mask = torch.ones_like(target_state, dtype=torch.bool)
+        target_padded_mask[0:target_nrows, 0:target_ncols] = False
+        assert torch.all(target_state[target_padded_mask] == -1), "Target state padded region is not all -1"
+        
         if self.is_training:
             self.memory.append(
                 observation=state,
@@ -169,7 +203,8 @@ class DDPG(object):
                 shape=shape,
                 action=action,
                 reward=r_t,
-                terminal=done
+                terminal=done,
+                num_actions=num_actions
             )
 
     def random_action(self):
