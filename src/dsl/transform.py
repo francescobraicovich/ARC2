@@ -48,6 +48,7 @@ class Transformer:
         if np.sum(grid == color) == 0:
             grid_3d[selection == 1] = color
             return grid_3d
+        assert np.sum(grid_3d == -1) == 0, "Invalid transformation: negative values present."
         return np.expand_dims(grid, axis=0)
 
     def color(self, grid, selection, method, param):
@@ -58,6 +59,7 @@ class Transformer:
         color_selected = select_color(grid, method, param)
         grid_3d = create_grid3d(grid, selection)
         grid_3d[selection == 1] = color_selected
+        assert np.sum(grid_3d == -1) == 0, "Invalid transformation: negative values present."
         return grid_3d
 
     def fill_with_color(self, grid, selection, method, param):
@@ -73,6 +75,7 @@ class Transformer:
         filled_masks = np.array([binary_fill_holes(i) for i in selection])
         new_masks = filled_masks & (~selection)
         grid_3d[new_masks] = fill_color
+        assert np.sum(grid_3d == -1) == 0, "Invalid transformation: negative values present."
         return grid_3d
 
     def fill_bounding_rectangle_with_color(self, grid, selection, method, param):
@@ -87,6 +90,7 @@ class Transformer:
             color,
             grid_3d
         )
+        assert np.sum(grid_3d == -1) == 0, "Invalid transformation: negative values present."
         return grid_3d
 
     def fill_bounding_square_with_color(self, grid, selection, method, param):
@@ -101,6 +105,7 @@ class Transformer:
             color,
             grid_3d
         )
+        assert np.sum(grid_3d == -1) == 0, "Invalid transformation: negative values present."
         return grid_3d
 
     # -------------------------------------------------------------------------
@@ -114,6 +119,7 @@ class Transformer:
         bounding_rectangle = find_bounding_rectangle(selection)
         flipped_bounding_rectangle = np.flip(bounding_rectangle, axis=1)
         grid_3d[bounding_rectangle] = np.flip(grid_3d, axis=1)[flipped_bounding_rectangle]
+        assert np.sum(grid_3d == -1) == 0, "Invalid transformation: negative values present."
         return grid_3d
 
     def fliph(self, grid, selection):
@@ -124,6 +130,7 @@ class Transformer:
         bounding_rectangle = find_bounding_rectangle(selection)
         flipped_bounding_rectangle = np.flip(bounding_rectangle, axis=2)
         grid_3d[bounding_rectangle] = np.flip(grid_3d, axis=2)[flipped_bounding_rectangle]
+        assert np.sum(grid_3d == -1) == 0, "Invalid transformation: negative values present."
         return grid_3d
 
     def flip_main_diagonal(self, grid, selection):
@@ -144,6 +151,7 @@ class Transformer:
                 square = grid_3d[i, min_row:max_row + 1, min_col:max_col + 1]
                 mirrored = square.T
                 grid_3d[i, min_row:max_row + 1, min_col:max_col + 1] = mirrored
+        assert np.sum(grid_3d == -1) == 0, "Invalid transformation: negative values present."
         return grid_3d
 
     def flip_anti_diagonal(self, grid, selection):
@@ -164,6 +172,7 @@ class Transformer:
                 square = grid_3d[i, min_row:max_row + 1, min_col:max_col + 1].copy()
                 mirrored = np.flip(np.rot90(square), 1)
                 grid_3d[i, min_row:max_row + 1, min_col:max_col + 1] = mirrored
+        assert np.sum(grid_3d == -1) == 0, "Invalid transformation: negative values present."
         return grid_3d
 
     # -------------------------------------------------------------------------
@@ -189,6 +198,7 @@ class Transformer:
                 sub_grid = grid_3d[i, row_start:row_end, col_start:col_end]
                 rotated_sub_grid = np.rot90(sub_grid, num_rotations)
                 grid_3d[i, row_start:row_end, col_start:col_end] = rotated_sub_grid
+        assert np.sum(grid_3d == -1) == 0, "Invalid transformation: negative values present."
         return grid_3d
 
     def rotate_90(self, grid, selection):
@@ -228,6 +238,7 @@ class Transformer:
         new_grid_3d[:, rows:, :] = np.flip(grid_3d, axis=1)
         flipped_selection = np.flip(selection, axis=1).astype(bool)
         new_grid_3d[:, rows:, :][~flipped_selection] = 0
+        assert np.sum(grid_3d == -1) == 0, "Invalid transformation: negative values present."
         return new_grid_3d.astype(int)
 
     def mirror_up(self, grid, selection):
@@ -246,6 +257,7 @@ class Transformer:
         new_grid_3d[:, rows:, :] = grid_3d
         flipped_selection = np.flip(selection, axis=1).astype(bool)
         new_grid_3d[:, :rows, :][~flipped_selection] = 0
+        assert np.sum(grid_3d == -1) == 0, "Invalid transformation: negative values present."
         return new_grid_3d.astype(int)
 
     def mirror_right(self, grid, selection):
@@ -264,6 +276,7 @@ class Transformer:
         new_grid_3d[:, :, cols:] = np.flip(grid_3d, axis=2)
         flipped_selection = np.flip(selection, axis=2).astype(bool)
         new_grid_3d[:, :, cols:][~flipped_selection] = 0
+        assert np.sum(grid_3d == -1) == 0, "Invalid transformation: negative values present."
         return new_grid_3d.astype(int)
 
     def mirror_left(self, grid, selection):
@@ -282,6 +295,7 @@ class Transformer:
         new_grid_3d[:, :, cols:] = grid_3d
         flipped_selection = np.flip(selection, axis=2).astype(bool)
         new_grid_3d[:, :, :cols][~flipped_selection] = 0
+        assert np.sum(grid_3d == -1) == 0, "Invalid transformation: negative values present."
         return new_grid_3d.astype(int)
 
     def duplicate_horizontally(self, grid, selection):
@@ -297,6 +311,7 @@ class Transformer:
         new_grid_3d = np.zeros((d, rows, cols * 2))
         new_grid_3d[:, :, :cols] = grid_3d
         new_grid_3d[:, :, cols:][selection.astype(bool)] = grid_3d[selection.astype(bool)]
+        assert np.sum(grid_3d == -1) == 0, "Invalid transformation: negative values present."
         return new_grid_3d
 
     def duplicate_vertically(self, grid, selection):
@@ -312,6 +327,7 @@ class Transformer:
         new_grid_3d = np.zeros((d, rows * 2, cols))
         new_grid_3d[:, :rows, :] = grid_3d
         new_grid_3d[:, rows:, :][selection.astype(bool)] = grid_3d[selection.astype(bool)]
+        assert np.sum(grid_3d == -1) == 0, "Invalid transformation: negative values present."
         return new_grid_3d
 
     # -------------------------------------------------------------------------
@@ -340,7 +356,7 @@ class Transformer:
 
         values = grid_3d[layer_idxs, old_row_idxs, old_col_idxs]
         grid_3d[layer_idxs, new_row_idxs, new_col_idxs] = values
-
+        assert np.sum(grid_3d == -1) == 0, "Invalid transformation: negative values present."
         return grid_3d
 
     def copy_sum(self, grid, selection, shift_x, shift_y):
@@ -368,7 +384,7 @@ class Transformer:
         values = grid_3d[layer_idxs, old_row_idxs, old_col_idxs]
         np.add.at(grid_3d, (layer_idxs, new_row_idxs, new_col_idxs), values)
         grid_3d = grid_3d % 10
-
+        assert np.sum(grid_3d == -1) == 0, "Invalid transformation: negative values present."
         return grid_3d
 
     def cut_paste(self, grid, selection, shift_x, shift_y):
@@ -390,6 +406,7 @@ class Transformer:
         values = grid_3d[layer_idxs[valid_mask], old_row_idxs[valid_mask], old_col_idxs[valid_mask]]
         grid_3d[layer_idxs, old_row_idxs, old_col_idxs] = 0
         grid_3d[layer_idxs[valid_mask], new_row_idxs[valid_mask], new_col_idxs[valid_mask]] = values
+        assert np.sum(grid_3d == -1) == 0, "Invalid transformation: negative values present."
 
         return grid_3d
 
@@ -413,7 +430,7 @@ class Transformer:
         grid_3d[layer_idxs, old_row_idxs, old_col_idxs] = 0
         np.add.at(grid_3d, (layer_idxs[valid_mask], new_row_idxs[valid_mask], new_col_idxs[valid_mask]), values)
         grid_3d = grid_3d % 10
-
+        assert np.sum(grid_3d == -1) == 0, "Invalid transformation: negative values present."
         return grid_3d
 
     def copy_paste_vertically(self, grid, selection):
@@ -457,6 +474,8 @@ class Transformer:
                 grid_layer_3d = self.copy_paste(grid_layer_3d, selection_layer_3d, 0, shift)
 
             final_transformation[idx] = grid_layer_3d[0]
+
+        assert np.sum(final_transformation == -1) == 0, "Invalid transformation: negative values present."
 
         return final_transformation
 
@@ -502,6 +521,8 @@ class Transformer:
 
             final_transformation[idx] = grid_layer_3d[0]
 
+        assert np.sum(final_transformation == -1) == 0, "Invalid transformation: negative values present."
+
         return final_transformation
 
     # -------------------------------------------------------------------------
@@ -537,6 +558,7 @@ class Transformer:
         layer_idxs, old_row_idxs, old_col_idxs = np.where(selection)
         shift_y = shift_per_depth[layer_idxs]
         grid_3d = self.copy_paste(grid_3d, selection, shift_x=0, shift_y=shift_y)
+        assert np.sum(grid_3d == -1) == 0, "Invalid transformation: negative values present."
         return grid_3d
 
     def gravitate_whole_upwards_paste(self, grid, selection):
@@ -569,6 +591,8 @@ class Transformer:
         layer_idxs, old_row_idxs, old_col_idxs = np.where(selection)
         shift_y = -shift_per_depth[layer_idxs]
         grid_3d = self.copy_paste(grid_3d, selection, shift_x=0, shift_y=shift_y)
+
+        assert np.sum(grid_3d == -1) == 0, "Invalid transformation: negative values present."
         return grid_3d
 
     def gravitate_whole_right_paste(self, grid, selection):
@@ -601,6 +625,7 @@ class Transformer:
         layer_idxs, old_row_idxs, old_col_idxs = np.where(selection)
         shift_x = shift_per_depth[layer_idxs]
         grid_3d = self.copy_paste(grid_3d, selection, shift_x=shift_x, shift_y=0)
+        assert np.sum(grid_3d == -1) == 0, "Invalid transformation: negative values present."
         return grid_3d
 
     def gravitate_whole_left_paste(self, grid, selection):
@@ -633,6 +658,7 @@ class Transformer:
         layer_idxs, old_row_idxs, old_col_idxs = np.where(selection)
         shift_x = -shift_per_depth[layer_idxs]
         grid_3d = self.copy_paste(grid_3d, selection, shift_x=shift_x, shift_y=0)
+        assert np.sum(grid_3d == -1) == 0, "Invalid transformation: negative values present."
         return grid_3d
 
     def gravitate_whole_downwards_cut(self, grid, selection):
@@ -665,6 +691,7 @@ class Transformer:
         layer_idxs, old_row_idxs, old_col_idxs = np.where(selection)
         shift_y = shift_per_depth[layer_idxs]
         grid_3d = self.cut_paste(grid_3d, selection, shift_x=0, shift_y=shift_y)
+        assert np.sum(grid_3d == -1) == 0, "Invalid transformation: negative values present."
         return grid_3d
 
     def gravitate_whole_upwards_cut(self, grid, selection):
@@ -697,6 +724,7 @@ class Transformer:
         layer_idxs, old_row_idxs, old_col_idxs = np.where(selection)
         shift_y = -shift_per_depth[layer_idxs]
         grid_3d = self.cut_paste(grid_3d, selection, shift_x=0, shift_y=shift_y)
+        assert np.sum(grid_3d == -1) == 0, "Invalid transformation: negative values present."
         return grid_3d
 
     def gravitate_whole_right_cut(self, grid, selection):
@@ -729,6 +757,7 @@ class Transformer:
         layer_idxs, old_row_idxs, old_col_idxs = np.where(selection)
         shift_x = shift_per_depth[layer_idxs]
         grid_3d = self.cut_paste(grid_3d, selection, shift_x=shift_x, shift_y=0)
+        assert np.sum(grid_3d == -1) == 0, "Invalid transformation: negative values present."
         return grid_3d
 
     def gravitate_whole_left_cut(self, grid, selection):
@@ -761,6 +790,7 @@ class Transformer:
         layer_idxs, old_row_idxs, old_col_idxs = np.where(selection)
         shift_x = -shift_per_depth[layer_idxs]
         grid_3d = self.cut_paste(grid_3d, selection, shift_x=shift_x, shift_y=0)
+        assert np.sum(grid_3d == -1) == 0, "Invalid transformation: negative values present."
         return grid_3d
 
     # -------------------------------------------------------------------------
@@ -793,6 +823,7 @@ class Transformer:
                 else:
                     grid_3d[layer_idx, num_rows - 1, col] = value
                     selection_layer[num_rows - 1, col] = 1
+        assert np.sum(grid_3d == -1) == 0, "Invalid transformation: negative values present."
         return grid_3d
 
     def up_gravity(self, grid, selection):
@@ -822,6 +853,8 @@ class Transformer:
                 else:
                     grid_3d[layer_idx, 0, col] = value
                     selection_layer[0, col] = 1
+
+        assert np.sum(grid_3d == -1) == 0, "Invalid transformation: negative values present."
         return grid_3d
 
     def right_gravity(self, grid, selection):
@@ -851,6 +884,7 @@ class Transformer:
                 else:
                     grid_3d[layer_idx, row, num_cols - 1] = value
                     selection_layer[row, num_cols - 1] = 1
+        assert np.sum(grid_3d == -1) == 0, "Invalid transformation: negative values present."
         return grid_3d
 
     def left_gravity(self, grid, selection):
@@ -880,6 +914,7 @@ class Transformer:
                 else:
                     grid_3d[layer_idx, row, 0] = value
                     selection_layer[row, 0] = 1
+        assert np.sum(grid_3d == -1) == 0, "Invalid transformation: negative values present."
         return grid_3d
 
     # -------------------------------------------------------------------------
@@ -936,6 +971,7 @@ class Transformer:
 
         selection_3d_grid[selection == 1] = 0
         selection_3d_grid[capped_selection] = capped_upscaled_grid[capped_selection].ravel()
+        assert np.sum(selection_3d_grid == -1) == 0, "Invalid transformation: negative values present."
         return selection_3d_grid
 
     def hupscale(self, grid, selection, scale_factor):
@@ -991,6 +1027,7 @@ class Transformer:
         selection_3d_grid[selection == 1] = 0
         capped_mask = capped_selection.astype(bool)
         selection_3d_grid[capped_mask] = capped_upscaled_grid[capped_mask].ravel()
+        assert np.sum(selection_3d_grid == -1) == 0, "Invalid transformation: negative values present."
         return selection_3d_grid
 
     # -------------------------------------------------------------------------
@@ -1017,6 +1054,7 @@ class Transformer:
         """
         grid_3d = create_grid3d(grid, selection)
         grid_3d[selection] = 0
+        assert np.sum(grid_3d == -1) == 0, "Invalid transformation: negative values present."
         return grid_3d
 
     def change_background_color(self, grid, selection, new_color):
@@ -1032,6 +1070,7 @@ class Transformer:
 
         if not check_color(new_color):
             return grid3d
+        assert np.sum(grid3d == -1) == 0, "Invalid transformation: negative values present."
         return grid3d
 
     def change_selection_to_background_color(self, grid, selection):
@@ -1043,6 +1082,7 @@ class Transformer:
         background_color = color_selector.mostcolor(grid)
         grid_3d = create_grid3d(grid, selection)
         grid_3d[selection == 1] = background_color
+        assert np.sum(grid_3d == -1) == 0, "Invalid transformation: negative values present."
         return grid_3d
 
     def vectorized_vupscale(self, grid, selection, scale_factor):
@@ -1090,4 +1130,5 @@ class Transformer:
 
         grid_3d[selection] = 0
         grid_3d[final_grid != 0] = final_grid[final_grid != 0]
+        assert np.sum(grid_3d == -1) == 0, "Invalid transformation: negative values present."
         return grid_3d
