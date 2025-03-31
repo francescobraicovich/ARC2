@@ -97,6 +97,7 @@ class EncoderTransformer(nn.Module):
             latent_mu: Tensor of shape (B, latent_dim)
             latent_logvar: Tensor of shape (B, latent_dim) or None.
         """
+        state = state + 1
         x = self.embed_grids(state, shape, dropout_eval)
 
         pad_mask = self.make_pad_mask(shape)
