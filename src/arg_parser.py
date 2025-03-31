@@ -1,6 +1,39 @@
 import argparse
 
-def init_parser(alg):
+PRESETS = {
+    'generate_world_model_data': {
+        'save_memory_at_steps': 2 * int(1e5), # 200k
+        'max_episode_length': 50,
+    },
+    # Add more presets here
+}
+def check_presets(PRESETS):
+    world_model_preset = PRESETS['generate_world_model_data']
+
+    world_model_preset['rmsize'] = world_model_preset['save_memory_at_steps'] + 1
+    world_model_preset['max_actions'] = world_model_preset['save_memory_at_steps'] + 1
+    world_model_preset['max_episode'] = world_model_preset['save_memory_at_steps'] + 1
+    world_model_preset['eval_interval'] = world_model_preset['save_memory_at_steps'] + 1
+    world_model_preset['warmpup'] = world_model_preset['save_memory_at_steps'] + 1
+    world_model_preset['eval_episodes'] = 0
+    world_model_preset['world_model_pre_train'] = False
+    world_model_preset['load_world_model_weights'] = False
+
+    world_model_preset['state_encoded_dim'] = 2
+    world_model_preset['action_emb_dim'] = 2
+    world_model_preset['state_emb_dim'] = 2
+    world_model_preset['state_encoder_num_heads'] = 1
+    world_model_preset['state_encoder_num_layers'] = 1
+    world_model_preset['state_encoder_dropout'] = 0
+
+    # assert the embedding dimension is divisible by the number of heads
+    assert world_model_preset['state_emb_dim'] % world_model_preset['state_encoder_num_heads'] == 0
+    
+    return PRESETS
+
+PRESETS = check_presets(PRESETS)
+
+def init_parser(alg, preset_name=None):
     """Initialize argument parser for the specified algorithm."""
 
     if alg == 'WOLP_DDPG':
@@ -16,7 +49,7 @@ def init_parser(alg):
         parser.add_argument('--eval-episodes', default=25, type=int, help='Number of episodes to evaluate')
 
         # Episode & Training Settings
-        parser.add_argument('--max-episode-length', type=int, default=30, metavar='M', help='Max episode length (default: 50)')  # Changed from 1440
+        parser.add_argument('--max-episode-length', type=int, default=30, metavar='M', help='Max episode length (default: 50)')
         parser.add_argument('--max-episode', type=int, default=500000, help='Maximum number of episodes')
         parser.add_argument('--max-actions', default=1e9, type=int, help='# max actions')
         parser.add_argument('--test-episode', type=int, default=20, help='Maximum testing episodes')
@@ -79,7 +112,15 @@ def init_parser(alg):
         parser.add_argument('--save_per_epochs', default=200, type=int, help='Save model every X epochs')
         parser.add_argument('--save_memory_at_steps', default=20000, type=int, help='Save memory every X epochs')
         parser.add_argument('--k_neighbors', default=75, type=int, help='Number of neighbors to consider')
+
+        # Apply preset defaults if provided
+        if preset_name and preset_name in PRESETS:
+            parser.set_defaults(**PRESETS[preset_name])
+
         return parser
 
     else:
         raise RuntimeError(f'Undefined algorithm {alg}')
+
+
+
