@@ -124,6 +124,7 @@ def world_model_train(
         action_embedder.save_weights(save_model_dir)
         state_encoder.save_weights(save_model_dir)
         transition_model.save_weights(save_model_dir)
+        logger.info(f'Saved model weights to {save_model_dir}')
     
         # print the average loss
         avg_loss = np.mean(total_losses)
