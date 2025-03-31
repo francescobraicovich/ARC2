@@ -1,12 +1,7 @@
 gymnasium
-patsy
 scikit-image
 setproctitle
-shapely
-sympy
 torch
-torchvision
-torchviz
 wandb
 matplotlib
 scikit-learn
