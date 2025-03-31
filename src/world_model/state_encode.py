@@ -76,6 +76,9 @@ class EncoderTransformer(nn.Module):
         else:
             self.latent_logvar = None
 
+        # Bring self to the right device
+        self.to(DEVICE)
+
     def forward(self, state, shape, dropout_eval):
         """
         Args:
