@@ -2,7 +2,7 @@ import argparse
 
 PRESETS = {
     'generate_world_model_data': {
-        'save_memory_at_steps': 2 * int(1e5), # 200k
+        'save_memory_at_steps': 2 * int(1e4), # 200k
         'max_episode_length': 50,
     },
     # Add more presets here
@@ -33,11 +33,14 @@ def check_presets(PRESETS):
 
 PRESETS = check_presets(PRESETS)
 
-def init_parser(alg, preset_name=None):
+def init_parser(alg):
     """Initialize argument parser for the specified algorithm."""
 
     if alg == 'WOLP_DDPG':
         parser = argparse.ArgumentParser(description='WOLP_DDPG')
+
+        # PRESETS
+        parser.add_argument('--generate_world_model_data', default=False, type=bool, help='Generate world model data, overwrites some parameters')
 
         # Environment & Training Mode
         parser.add_argument('--env', default='ARC', metavar='ENV', help='Environment to train on')
@@ -114,9 +117,8 @@ def init_parser(alg, preset_name=None):
         parser.add_argument('--k_neighbors', default=75, type=int, help='Number of neighbors to consider')
 
         # Apply preset defaults if provided
-        if preset_name and preset_name in PRESETS:
-            parser.set_defaults(**PRESETS[preset_name])
-
+        if 'generate_world_model_data' in PRESETS:
+            parser.set_defaults(**PRESETS['generate_world_model_data'])
         return parser
 
     else:
