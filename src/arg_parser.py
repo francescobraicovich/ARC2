@@ -117,7 +117,8 @@ def init_parser(alg):
         parser.add_argument('--k_neighbors', default=75, type=int, help='Number of neighbors to consider')
 
         # Apply preset defaults if provided
-        if 'generate_world_model_data' in PRESETS:
+        if parser.parse_args().generate_world_model_data:
+            print('Generating world model data, overwriting some parameters')
             parser.set_defaults(**PRESETS['generate_world_model_data'])
         return parser
 
