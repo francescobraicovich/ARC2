@@ -1,0 +1,14 @@
+name: myenv
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python
+  - gymnasium
+  - scikit-image
+  - setproctitle
+  - pytorch
+  - wandb
+  - matplotlib
+  - scikit-learn
+  - tqdm
