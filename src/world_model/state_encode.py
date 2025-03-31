@@ -8,6 +8,14 @@ from world_model.transformer import TransformerLayer
 # Determine the device: CUDA -> MPS -> CPU
 DEVICE = set_device('action_space_embed.py')
 
+if torch.cuda.is_available():
+    print(f"CUDA is available: {torch.cuda.is_available()}")
+    print(f"Number of CUDA devices: {torch.cuda.device_count()}")
+    print(f"Current CUDA device index: {torch.cuda.current_device()}")
+    print(f"CUDA device name: {torch.cuda.get_device_name(0)}")
+    print(f"CUDA version (reported by torch): {torch.version.cuda}")
+else:
+    print("CUDA is not available.")
 
 class EncoderTransformer(nn.Module):
     def __init__(self, config):
