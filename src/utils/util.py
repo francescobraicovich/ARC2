@@ -130,16 +130,12 @@ def setup_logger(logger_name, log_file, level=logging.INFO):
     l.addHandler(streamHandler)
 
 def set_device(file='file.py'):
-    try:
-        import torch_xla.core.xla_model as xm
-        device = xm.xla_device()
-    except ImportError:
-        if torch.cuda.is_available():
-            device = torch.device("cuda")
-        elif torch.backends.mps.is_available():
-            device = torch.device("mps")
-        else:
-            device = torch.device("cpu")
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+    elif torch.backends.mps.is_available():
+        device = torch.device("mps")
+    else:
+        device = torch.device("cpu")
 
     print(f"Using device: {device} for {file}")
     return device
