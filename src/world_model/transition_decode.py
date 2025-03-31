@@ -155,6 +155,35 @@ class ContextTransformer2D(nn.Module):
             sampled_rest[full_mask_grid] = -1
 
             return sampled_first, sampled_rest
+        
+    def save_weights(self, path: str):
+        """
+        Save the model weights to a file.
+        
+        Args:
+            path (str): Path to save the weights.
+        """
+        # append 'decoder.pt' to the path
+        path = path + '/decoder.pt'
+        torch.save(self.state_dict(), path)
+
+    def load_weights(self, path: str):
+        """
+        Load the model weights from a file.
+        
+        Args:
+            path (str): Path to load the weights from.
+        """
+        # append 'decoder.pt' to the path
+        path = path + '/decoder.pt'
+        self.load_state_dict(torch.load(path))
+
+    @property
+    def num_parameters(self):
+        """
+        Returns the number of parameters in the model.
+        """
+        return sum(p.numel() for p in self.parameters() if p.requires_grad)
 """
 # === Testing the Model with Debug Print Statements ===
 if __name__ == "__main__":
