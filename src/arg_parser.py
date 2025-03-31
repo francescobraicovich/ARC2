@@ -20,7 +20,7 @@ def init_parser(alg):
         parser.add_argument('--max-episode', type=int, default=500000, help='Maximum number of episodes')
         parser.add_argument('--max-actions', default=1e9, type=int, help='# max actions')
         parser.add_argument('--test-episode', type=int, default=20, help='Maximum testing episodes')
-        parser.add_argument('--warmup', default=200, type=int, help='Time without training but only filling the replay memory')
+        parser.add_argument('--warmup', default=200000, type=int, help='Time without training but only filling the replay memory')
         parser.add_argument('--bsize', default=32, type=int, help='Minibatch size')
         parser.add_argument('--rmsize', default=100000, type=int, help='Replay memory size')
 
@@ -29,8 +29,8 @@ def init_parser(alg):
         parser.add_argument('--policy-noise', default=0, type=float, help='Noise added to target policy during critic update')
         parser.add_argument('--noise-clip', default=0.25, type=float, help='Range to clip target policy noise')
         parser.add_argument('--policy-delay', default=2, type=int, help='Delay policy updates')
-        parser.add_argument('--c-lr', default=3e-4, type=float, help='Critic network learning rate')
-        parser.add_argument('--p-lr', default=3e-4, type=float, help='Policy network learning rate (for DDPG)')
+        parser.add_argument('--c-lr', default=1e-4, type=float, help='Critic network learning rate')
+        parser.add_argument('--p-lr', default=1e-4, type=float, help='Policy network learning rate (for DDPG)')
         parser.add_argument('--tau-update', default=0.0005, type=float, help='Moving average for target network')
         parser.add_argument('--weight-decay', default=1e-4, type=float, help='L2 Regularization loss weight decay')
                             
@@ -42,17 +42,17 @@ def init_parser(alg):
 
         # World Model Embedding
         parser.add_argument('--world_model_pre_train', default=True, type=bool, help='Pre-train world model before the RL loop')
-        parser.add_argument('--world_model_pre_train_epochs', default=10, type=int, help='Number of epochs for pre-training world model')
+        parser.add_argument('--world_model_pre_train_epochs', default=15, type=int, help='Number of epochs for pre-training world model')
         parser.add_argument('--world_model_pre_train_batch_size', default=16, type=int, help='Batch size for pre-training world model')
         parser.add_argument('--world_model_pre_train_lr', default=1e-3, type=float, help='Learning rate for pre-training world model')
     
-        parser.add_argument('--state_encoded_dim', default=64, type=int, help='State latent (encoded) dimension')
-        parser.add_argument('--action_emb_dim', default=128, type=int, help='Action embedding dimension')
-        parser.add_argument('--state_emb_dim', default=32, type=int, help='Embedding dimension for state representation in attention')
+        parser.add_argument('--state_encoded_dim', default=256, type=int, help='State latent (encoded) dimension')
+        parser.add_argument('--action_emb_dim', default=512, type=int, help='Action embedding dimension')
+        parser.add_argument('--state_emb_dim', default=256, type=int, help='Embedding dimension for state representation in attention')
         parser.add_argument('--state_encoder_num_heads', default=4, type=int, help='Number of attention heads in state encoder')
         parser.add_argument('--state_encoder_num_layers', default=2, type=int, help='Number of transformer layers in state encoder')
         parser.add_argument('--state_encoder_dropout', default=0, type=float, help='Dropout rate in state encoder')
-        parser.add_argument('--decoder_emb_dim', default=32, type=int, help='Embedding dimension for decoder')
+        parser.add_argument('--decoder_emb_dim', default=256, type=int, help='Embedding dimension for decoder')
         parser.add_argument('--decoder_num_heads', default=4, type=int, help='Number of attention heads in decoder')
         parser.add_argument('--decoder_num_layers', default=2, type=int, help='Number of transformer layers in decoder')
 
@@ -76,7 +76,7 @@ def init_parser(alg):
         parser.add_argument('--init_w', default=0.003, type=float, help='Initial weight')
         parser.add_argument('--seed', default=-1, type=int, help='Random seed')
         parser.add_argument('--save_per_epochs', default=200, type=int, help='Save model every X epochs')
-        parser.add_argument('--save_memory_per_epochs', default=10000, type=int, help='Save memory every X epochs')
+        parser.add_argument('--save_memory_at_steps', default=20000, type=int, help='Save memory every X epochs')
         parser.add_argument('--k_neighbors', default=75, type=int, help='Number of neighbors to consider')
         return parser
 
