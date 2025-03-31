@@ -10,7 +10,6 @@ dependencies:
   - gymnasium
   - scikit-image
   - setproctitle
-  - wandb
   - matplotlib
   - scikit-learn
   - tqdm
