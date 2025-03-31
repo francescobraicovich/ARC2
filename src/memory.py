@@ -276,7 +276,9 @@ class SequentialMemory(Memory):
 
     def process_data_for_world_model(self, data):
         
-        state = torch.stack(data['state']).to(DEVICE)
+        state = torch.stack(data['state']).to(DEVICE) + 1
+        # assert all values are between 0 and 10
+        assert torch.all(state >= 0) and torch.all(state <= 10), "State values out of bounds"
         shape = torch.stack(data['shape']).to(DEVICE)
         action = torch.stack(data['action']).to(DEVICE)
         terminal = torch.tensor(data['terminal'], dtype=torch.bool).to(DEVICE)
