@@ -5,7 +5,6 @@ from collections import deque, namedtuple
 import numpy as np
 import torch
 import os, lzma
-from torchrl.data import ReplayBuffer, TensorStorage
 
 
 from utils.util import set_device
