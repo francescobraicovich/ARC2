@@ -29,7 +29,6 @@ class WorldModelDataset(Dataset):
         self.action = data['action']
         self.terminal = data['terminal']
 
-
         self.current_state = torch.tensor(self.current_state, dtype=torch.float32).to(DEVICE).long()
         self.current_shape = torch.tensor(self.current_shape, dtype=torch.float32).to(DEVICE).long()
         self.target_state = torch.tensor(self.target_state, dtype=torch.float32).to(DEVICE).long()

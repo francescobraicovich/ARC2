@@ -1,22 +1,58 @@
 import argparse
 
+PRESETS = {
+    'generate_world_model_data': {
+        'save_memory_at_steps': 2 * int(1e4), # 200k
+        'max_episode_length': 50,
+    },
+    # Add more presets here
+}
+def check_presets(PRESETS):
+    world_model_preset = PRESETS['generate_world_model_data']
+
+    world_model_preset['rmsize'] = world_model_preset['save_memory_at_steps'] + 1
+    world_model_preset['max_actions'] = world_model_preset['save_memory_at_steps'] + 1
+    world_model_preset['max_episode'] = world_model_preset['save_memory_at_steps'] + 1
+    world_model_preset['eval_interval'] = world_model_preset['save_memory_at_steps'] + 1
+    world_model_preset['warmpup'] = world_model_preset['save_memory_at_steps'] + 1
+    world_model_preset['eval_episodes'] = 0
+    world_model_preset['world_model_pre_train'] = False
+    world_model_preset['load_world_model_weights'] = False
+
+    world_model_preset['state_encoded_dim'] = 2
+    world_model_preset['action_emb_dim'] = 2
+    world_model_preset['state_emb_dim'] = 2
+    world_model_preset['state_encoder_num_heads'] = 1
+    world_model_preset['state_encoder_num_layers'] = 1
+    world_model_preset['state_encoder_dropout'] = 0
+
+    # assert the embedding dimension is divisible by the number of heads
+    assert world_model_preset['state_emb_dim'] % world_model_preset['state_encoder_num_heads'] == 0
+    
+    return PRESETS
+
+PRESETS = check_presets(PRESETS)
+
 def init_parser(alg):
     """Initialize argument parser for the specified algorithm."""
 
     if alg == 'WOLP_DDPG':
         parser = argparse.ArgumentParser(description='WOLP_DDPG')
 
+        # PRESETS
+        parser.add_argument('--generate_world_model_data', default=False, type=bool, help='Generate world model data, overwrites some parameters')
+
         # Environment & Training Mode
         parser.add_argument('--env', default='ARC', metavar='ENV', help='Environment to train on')
         parser.add_argument('--mode', default='train', type=str, help='Mode: train/test')
         parser.add_argument('--id', default='0', type=str, help='Experiment ID')
         parser.add_argument('--load', default=False, metavar='L', help='Load a trained model')
-        parser.add_argument('--load-model-dir', default='ARC-run13', metavar='LMD', help='Folder to load trained models from')
+        parser.add_argument('--load-model-dir', default='ARC-run4', metavar='LMD', help='Folder to load trained models from')
         parser.add_argument('--eval-interval', default=10000, type=int, help='Evaluate model every X episodes')
         parser.add_argument('--eval-episodes', default=25, type=int, help='Number of episodes to evaluate')
 
         # Episode & Training Settings
-        parser.add_argument('--max-episode-length', type=int, default=30, metavar='M', help='Max episode length (default: 50)')  # Changed from 1440
+        parser.add_argument('--max-episode-length', type=int, default=30, metavar='M', help='Max episode length (default: 50)')
         parser.add_argument('--max-episode', type=int, default=500000, help='Maximum number of episodes')
         parser.add_argument('--max-actions', default=1e9, type=int, help='# max actions')
         parser.add_argument('--test-episode', type=int, default=20, help='Maximum testing episodes')
@@ -42,17 +78,18 @@ def init_parser(alg):
 
         # World Model Embedding
         parser.add_argument('--world_model_pre_train', default=True, type=bool, help='Pre-train world model before the RL loop')
-        parser.add_argument('--world_model_pre_train_epochs', default=15, type=int, help='Number of epochs for pre-training world model')
-        parser.add_argument('--world_model_pre_train_batch_size', default=16, type=int, help='Batch size for pre-training world model')
+        parser.add_argument('--load_world_model_weights', default=False, type=bool, help='Load pre-trained world model from load-model-dir folder')
+        parser.add_argument('--world_model_pre_train_epochs', default=100, type=int, help='Number of epochs for pre-training world model')
+        parser.add_argument('--world_model_pre_train_batch_size', default=32, type=int, help='Batch size for pre-training world model')
         parser.add_argument('--world_model_pre_train_lr', default=1e-3, type=float, help='Learning rate for pre-training world model')
     
-        parser.add_argument('--state_encoded_dim', default=256, type=int, help='State latent (encoded) dimension')
-        parser.add_argument('--action_emb_dim', default=512, type=int, help='Action embedding dimension')
+        parser.add_argument('--state_encoded_dim', default=512, type=int, help='State latent (encoded) dimension')
+        parser.add_argument('--action_emb_dim', default=256, type=int, help='Action embedding dimension')
         parser.add_argument('--state_emb_dim', default=256, type=int, help='Embedding dimension for state representation in attention')
         parser.add_argument('--state_encoder_num_heads', default=4, type=int, help='Number of attention heads in state encoder')
         parser.add_argument('--state_encoder_num_layers', default=2, type=int, help='Number of transformer layers in state encoder')
         parser.add_argument('--state_encoder_dropout', default=0, type=float, help='Dropout rate in state encoder')
-        parser.add_argument('--decoder_emb_dim', default=256, type=int, help='Embedding dimension for decoder')
+        parser.add_argument('--decoder_emb_dim', default=128, type=int, help='Embedding dimension for decoder')
         parser.add_argument('--decoder_num_heads', default=4, type=int, help='Number of attention heads in decoder')
         parser.add_argument('--decoder_num_layers', default=2, type=int, help='Number of transformer layers in decoder')
 
@@ -78,7 +115,15 @@ def init_parser(alg):
         parser.add_argument('--save_per_epochs', default=200, type=int, help='Save model every X epochs')
         parser.add_argument('--save_memory_at_steps', default=20000, type=int, help='Save memory every X epochs')
         parser.add_argument('--k_neighbors', default=75, type=int, help='Number of neighbors to consider')
+
+        # Apply preset defaults if provided
+        if parser.parse_args().generate_world_model_data:
+            print('Generating world model data, overwriting some parameters')
+            parser.set_defaults(**PRESETS['generate_world_model_data'])
         return parser
 
     else:
         raise RuntimeError(f'Undefined algorithm {alg}')
+
+
+

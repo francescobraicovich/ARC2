@@ -59,3 +59,33 @@ class ActionEmbedding(nn.Module):
         if self.normalize:
             weights = F.normalize(weights, p=2, dim=-1)
         return weights
+    
+    def save_weights(self, path: str):
+        """
+        Save the embedding weights to a file.
+        
+        Args:
+            path (str): Path to save the weights.
+        """
+        # append the 'action_embedding.pt' to the path
+        path = path + '/action_embedding.pt'
+        torch.save(self.export_weights(), path)
+
+    def load_weights(self, path: str):
+        """
+        Load the embedding weights from a file.
+        
+        Args:
+            path (str): Path to load the weights from.
+        """
+        # append the 'action_embedding.pt' to the path
+        path = path + '/action_embedding.pt'
+        self.embedding.weight.data.copy_(torch.load(path))
+
+    @property
+    def num_parameters(self) -> int:
+        """
+        Returns:
+            int: Number of parameters in the embedding layer.
+        """
+        return sum(p.numel() for p in self.parameters() if p.requires_grad)
