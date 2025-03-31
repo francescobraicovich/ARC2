@@ -82,6 +82,13 @@ def main():
         emb_dim=args.decoder_emb_dim,
     )
 
+    if args.load_world_model_weights:
+        load_dir = '../output/' + args.load_model_dir
+        action_embedding.load_weights(load_dir)
+        state_encoder.load_weights(load_dir)
+        transition_decoder.load_weights(load_dir)
+        logger.info(f"Loaded world model weights from {args.load_model_dir}")
+
     world_model_args = {
         'epochs': args.world_model_pre_train_epochs,
         'lr': args.world_model_pre_train_lr,
