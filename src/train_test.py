@@ -139,8 +139,6 @@ def train(
             num_equal_states = 0
             episode += 1
 
-            # NOTE: Siamo rimasti qui
-
             # --- EVALUATION after eval_interval episodes ---
             if eval_interval > 0 and (episode % eval_interval == 0):
                 evaluate(
