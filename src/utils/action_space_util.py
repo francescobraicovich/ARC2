@@ -20,7 +20,6 @@ Dependencies:
 import sys
 import os
 import numpy as np
-from rearc.main import *
 
 # Add parent directory to sys.path to allow relative imports.
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
