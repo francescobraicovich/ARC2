@@ -314,12 +314,12 @@ class SequentialMemory(Memory):
         action = action[valid_mask]
         terminal = terminal[valid_mask]
 
-        current_state = torch.tensor(current_state, dtype=torch.float32).to(DEVICE).long()
-        current_shape = torch.tensor(current_shape, dtype=torch.float32).to(DEVICE).long()
-        target_state = torch.tensor(target_state, dtype=torch.float32).to(DEVICE).long()
-        target_shape = torch.tensor(target_shape, dtype=torch.float32).to(DEVICE).long()
-        action = torch.tensor(action, dtype=torch.float32).to(DEVICE).long()
-        terminal = torch.tensor(terminal, dtype=torch.bool).to(DEVICE).long()
+        current_state = torch.tensor(current_state, dtype=torch.float32).to('cpu').long()
+        current_shape = torch.tensor(current_shape, dtype=torch.float32).to('cpu').long()
+        target_state = torch.tensor(target_state, dtype=torch.float32).to('cpu').long()
+        target_shape = torch.tensor(target_shape, dtype=torch.float32).to('cpu').long()
+        action = torch.tensor(action, dtype=torch.float32).to('cpu').long()
+        terminal = torch.tensor(terminal, dtype=torch.bool).to('cpu').long()
 
         return current_state, current_shape, target_state, target_shape, action, terminal
 
