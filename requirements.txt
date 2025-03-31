@@ -1,5 +1,4 @@
 gymnasium
-opencv-python
 patsy
 scikit-image
 setproctitle
