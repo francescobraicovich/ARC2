@@ -45,8 +45,7 @@ def main():
 
     # 5. Initialize wandb (only if training)
     if args.mode == 'train' and wandb.run is None:
-        #wandb.init(project="arc-v1", config=vars(args), mode="online")
-        pass
+        wandb.init(project="arc-v1", config=vars(args), mode="online")
 
     # 12. Set up logger
     if args.mode == 'train':
