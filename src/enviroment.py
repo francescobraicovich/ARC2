@@ -260,6 +260,7 @@ class ARC_Env(gym.Env):
             nrows, ncols = current_state_not_padded.shape
             assert np.sum(current_state_not_padded == -1) == 0, "The current state has not been padded correctly."
             assert np.sum(target_state_not_padded == -1) == 0, "The target state has not been padded correctly."
+            assert np.sum(current_state_not_padded>9)==0, "The current state has values greater than 9."
             
             # Pad the current state for storing
             current_state_padded = pad_grid(current_state_not_padded)
@@ -269,7 +270,6 @@ class ARC_Env(gym.Env):
             solveds[i] = solved
             current_states[i, :, :, 0] = current_state_padded
             current_states[i, :, :, 1] = target_state
-
 
             # Store the shapes
             shapes[i, 0, 0] = nrows # current rows
