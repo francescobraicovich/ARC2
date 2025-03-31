@@ -1,16 +1,15 @@
 name: myenv
 channels:
-  - nvidia        # Required for pytorch-cuda
-  - pytorch       # Required for latest GPU PyTorch
-  - conda-forge
+  - nvidia
+  - pytorch
   - defaults
 dependencies:
-  - python
+  - python=3.10
+  - pytorch
+  - pytorch-cuda=12.1
   - gymnasium
   - scikit-image
   - setproctitle
-  - pytorch
-  - pytorch-cuda=12.1
   - wandb
   - matplotlib
   - scikit-learn
