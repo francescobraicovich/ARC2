@@ -224,3 +224,32 @@ class EncoderTransformer(nn.Module):
             x = torch.cat([current_state_embed, self.target_state_embed], dim=1)
             x = x.squeeze(0)        
         return x
+    
+    def save_weights(self, path: str):
+        """
+        Save the embedding weights to a file.
+        
+        Args:
+            path (str): Path to save the weights.
+        """
+        # append the 'encoder.pt' to the path
+        path = path + '/encoder.pt'
+        torch.save(self.state_dict(), path)
+
+    def load_weights(self, path: str):
+        """
+        Load the embedding weights from a file.
+        
+        Args:
+            path (str): Path to load the weights from.
+        """
+        # append the 'encoder.pt' to the path
+        path = path + '/encoder.pt'
+        self.load_state_dict(torch.load(path))
+
+    @property
+    def num_parameters(self):
+        """
+        Returns the number of trainable parameters in the model.
+        """
+        return sum(p.numel() for p in self.parameters() if p.requires_grad)
