@@ -56,6 +56,10 @@ def main():
         raise RuntimeError(f'Undefined mode {args.mode}')
     logger = logging.getLogger('RS_log')
 
+    # 13. Log hyperparameters
+    d_args = vars(args)
+    for k, v in d_args.items():
+        logger.info(f"{k}: {v}")
 
     args.load_filtered_actions = True
     action_space = ARCActionSpace(args)
@@ -145,12 +149,6 @@ def main():
     if args.load:
         agent.load_weights(args.load_model_dir)
 
-    # 13. Log hyperparameters
-    d_args = vars(args)
-
-    d_args['continuous'] = continuous
-    for k, v in d_args.items():
-        logger.info(f"{k}: {v}")
 
     # 14. Run training or (separate) test
     if args.mode == 'train':
