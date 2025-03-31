@@ -60,6 +60,16 @@ def world_model_train(
     train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
     test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=False)
 
+    action_embedding_num_params = action_embedder.num_parameters
+    state_encoder_num_params = state_encoder.num_parameters
+    transition_model_num_params = transition_model.num_parameters
+
+    print('-' * 50)
+    logger.info('Starting World Model Training')
+    logger.info(f"Action Embedding Parameters: {action_embedding_num_params}")
+    logger.info(f"State Encoder Parameters: {state_encoder_num_params}")
+    logger.info(f"Transition Model Parameters: {transition_model_num_params}")
+
     global_step = 0
     for epoch in range(epochs):
         state_encoder.train()
@@ -107,37 +117,25 @@ def world_model_train(
             running_loss += total_loss.item()
             global_step += 1
 
-            # Update progress bar
-            progress_bar.set_postfix({
-                'total_loss': total_loss.item(),
-                'state_loss': state_loss.item(),
-                'shape_loss': shape_loss.item()
-            })
-
-            # Log training progress
-            log_data = {
-                'epoch': epoch,
-                'global_step': global_step,
-                'total_loss': total_loss.item(),
-                'state_loss': state_loss.item(),
-                'shape_loss': shape_loss.item()
-            }
-
-            #if logger is not None:
-            #    logger.log(log_data)
-            #wandb.log(log_data)
-
             # Early stopping condition based on max_iter if provided
             if max_iter is not None and global_step >= max_iter:
                 break
+        
+        action_embedder.save_weights(save_model_dir)
+        state_encoder.save_weights(save_model_dir)
+        transition_model.save_weights(save_model_dir)
+    
         # print the average loss
         avg_loss = np.mean(total_losses)
         avg_shape_loss = np.mean(shape_losses)
         avg_state_loss = np.mean(state_losses)
-        print(f"Avg Loss: {avg_loss:.4f}, Avg Shape Loss: {avg_shape_loss:.4f}, Avg State Loss: {avg_state_loss:.4f}")
+        logger.info(f"Epoch {epoch+1}/{epochs} - Loss: {avg_loss:.4f}, Shape Loss: {avg_shape_loss:.4f}, State Loss: {avg_state_loss:.4f}")
+        wandb.log({
+            "train_loss": avg_loss,
+            "train_shape_loss": avg_shape_loss,
+            "train_state_loss": avg_state_loss,
+        })
     
-
-
         # Save checkpoint every save_per_epochs epochs
         if (epoch + 1) % save_per_epochs == 0:
             checkpoint_path = os.path.join(save_model_dir, f'checkpoint_epoch_{epoch+1}.pt')
@@ -151,10 +149,15 @@ def world_model_train(
 
         # Evaluate the model at specified intervals
         if (epoch + 1) % eval_interval == 0:
-            eval_loss = evaluate_world_model(
+            eval_loss, eval_shape_loss, eval_state_loss = evaluate_world_model(
                 state_encoder, action_embedder, transition_model, test_loader, DEVICE
             )
-            wandb.log({'eval_loss': eval_loss, 'epoch': epoch})
+            logger.info(f"Evaluation - Loss: {eval_loss:.4f}, Shape Loss: {eval_shape_loss:.4f}, State Loss: {eval_state_loss:.4f}")
+            wandb.log({
+                "eval_loss": eval_loss,
+                "eval_shape_loss": eval_shape_loss,
+                "eval_state_loss": eval_state_loss,
+            })
 
         # Exit early if global_step reached max_iter
         if max_iter is not None and global_step >= max_iter:
@@ -182,6 +185,8 @@ def evaluate_world_model(state_encoder, action_embedder, transition_model, test_
 
     criterion = nn.CrossEntropyLoss()
     total_loss = 0.0
+    total_shape_loss = 0.0
+    total_state_loss = 0.0
     count = 0
 
     with torch.no_grad():
@@ -202,12 +207,17 @@ def evaluate_world_model(state_encoder, action_embedder, transition_model, test_
             shape_loss = criterion(shape_logits, next_current_shape)
             state_loss = criterion(state_logits, next_current_state)
             batch_loss = shape_loss + state_loss
+
+
+            total_shape_loss += shape_loss.item()
+            total_state_loss += state_loss.item()
             total_loss += batch_loss.item()
             count += 1
 
     avg_loss = total_loss / count if count > 0 else 0.0
-    print(f"Evaluation Loss: {avg_loss:.4f}")
-    return avg_loss
+    avg_shape_loss = total_shape_loss / count if count > 0 else 0.0
+    avg_state_loss = total_state_loss / count if count > 0 else 0.0
+    return avg_loss, avg_shape_loss, avg_state_loss
 
 
 """
