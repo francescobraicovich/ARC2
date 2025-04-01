@@ -250,6 +250,7 @@ def evaluate_world_model(state_encoder, action_embedder, transition_model, test_
             next_shape_logits, next_state_logits = transition_model(state_encoded, action_encoded)
             next_shape_predicted, next_state_predicted = transition_model.generate(state_encoded, action_encoded)
 
+            """
             if i == 0:
                 for j in range(2):
                     next_state_j = next_current_state[j]
@@ -262,15 +263,15 @@ def evaluate_world_model(state_encoder, action_embedder, transition_model, test_
                     #print('next state predicted:', next_state_predicted_j.reshape(-1, 30, 30))
                     #print('overlap:', (next_state_j == next_state_predicted_j).sum())
                     #print('-' * 50)
-
+            """
             # Calculate the loss
-            total_loss, state_loss, shape_loss, non_padded_loss = loss_fn(
+            batch_loss, state_loss, shape_loss, non_padded_loss = loss_fn(
                 next_state_logits, next_shape_logits, next_current_state, next_current_shape
             )
             
             total_shape_loss += shape_loss.item()
             total_state_loss += state_loss.item()
-            total_loss += total_loss.item()
+            total_loss += batch_loss.item()
             total_non_padded_loss += non_padded_loss.item()
             count += 1
 
