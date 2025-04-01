@@ -160,19 +160,25 @@ def plot_selection(selection_mask):
         axs[idx].axis('off')
     plt.show()
 
+import matplotlib.pyplot as plt
+
 def plot_grid_3d(grid_3d, title=None):
-    num_transformations = grid_3d.shape[0] # Number of transformations to plot
+    """
+    Plots a 3D array of grids (e.g., a list of 2D grids).
+    Now accepts an optional 'save_path' to save the figure.
+    """
+    num_transformations = grid_3d.shape[0]  # number of transformations to plot
 
     # Calculate the number of rows and columns for the subplots
-    num_cols = min(5, num_transformations)  # Max 5 columns
+    num_cols = min(5, num_transformations)  # max 5 columns
     num_rows = (num_transformations - 1) // num_cols + 1
 
-    ig, axs = plt.subplots(num_rows, num_cols, figsize=(4*num_cols, 4*num_rows))
+    fig, axs = plt.subplots(num_rows, num_cols, figsize=(4*num_cols, 4*num_rows))
     axs = axs.flatten() if num_transformations > 1 else [axs]
 
+    # Plot each grid
     for idx, grid in enumerate(grid_3d):
-        axs[idx].imshow(grid, cmap=cmap, norm=norm)
-        #axs[idx].set_title(f'Transformation on selection {idx}')
+        axs[idx].imshow(grid, cmap=cmap)
         axs[idx].axis('off')
 
     # Hide any unused subplots
@@ -182,12 +188,51 @@ def plot_grid_3d(grid_3d, title=None):
     if title is not None:
         plt.suptitle(title)
 
-    plt.show()
+    plt.show()    # Display the figure (optional if running headless)
 
-def plot_grid(grid, title=None):
-    # add a dimension to the grid to make it 3D
+def plot_grid(grid, title=None, save_path=None):
+    """
+    Plots a single 2D grid by temporarily adding a dimension (1 x H x W).
+    """
     grid_3d = np.expand_dims(grid, axis=0)
-    plot_grid_3d(grid_3d, title)
+    plot_grid_3d(grid_3d, title=title)
+
+def save_grid_3d(grid_3d, title=None, save_path=None):
+    """
+    Plots a 3D array of grids (e.g., a list of 2D grids).
+    Now accepts an optional 'save_path' to save the figure.
+    """
+    num_transformations = grid_3d.shape[0]  # number of transformations to plot
+
+    # Calculate the number of rows and columns for the subplots
+    num_cols = min(5, num_transformations)  # max 5 columns
+    num_rows = (num_transformations - 1) // num_cols + 1
+
+    fig, axs = plt.subplots(num_rows, num_cols, figsize=(4*num_cols, 4*num_rows))
+    axs = axs.flatten() if num_transformations > 1 else [axs]
+
+    # Plot each grid
+    for idx, grid in enumerate(grid_3d):
+        axs[idx].imshow(grid, cmap=cmap)  # pick your colormap or normalizer
+        axs[idx].axis('off')
+
+    # Hide any unused subplots
+    for idx in range(num_transformations, len(axs)):
+        axs[idx].axis('off')
+
+    if title is not None:
+        plt.suptitle(title)
+
+    # If you want to save before showing (common practice):
+    if save_path is not None:
+        plt.savefig(save_path, bbox_inches='tight')
+
+def save_grid(grid, title=None, save_path=None):
+    """
+    Plots a single 2D grid by temporarily adding a dimension (1 x H x W).
+    """
+    grid_3d = np.expand_dims(grid, axis=0)
+    save_grid_3d(grid_3d, title=title, save_path=save_path)
 
 def plot_step(state, next_state, shape, next_shape, r_t, info):
     fig, axs = plt.subplots(2, 2, figsize=(8, 8))
