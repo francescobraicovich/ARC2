@@ -82,9 +82,9 @@ def init_parser(alg):
         # World Model Embedding
         parser.add_argument('--world_model_pre_train', default=True, type=bool, help='Pre-train world model before the RL loop')
         parser.add_argument('--load_world_model_weights', default=False, type=bool, help='Load pre-trained world model from load-model-dir folder')
-        parser.add_argument('--world_model_pre_train_epochs', default=1, type=int, help='Number of epochs for pre-training world model')
+        parser.add_argument('--world_model_pre_train_epochs', default=30, type=int, help='Number of epochs for pre-training world model')
         parser.add_argument('--world_model_pre_train_batch_size', default=32, type=int, help='Batch size for pre-training world model')
-        parser.add_argument('--world_model_pre_train_lr', default=1e-3, type=float, help='Learning rate for pre-training world model')
+        parser.add_argument('--world_model_pre_train_lr', default=1e-4, type=float, help='Learning rate for pre-training world model')
     
         parser.add_argument('--state_encoded_dim', default=256, type=int, help='State latent (encoded) dimension')
         parser.add_argument('--action_emb_dim', default=256, type=int, help='Action embedding dimension')
