@@ -126,6 +126,10 @@ class SequentialMemory(Memory):
         self.terminals    = RingBuffer(limit)
         self.num_actions  = RingBuffer(limit)
 
+        # Initialize chunk count for saving memory chunks
+        self.chunk_count = 0 
+
+
     @property
     def nb_entries(self):
         return len(self.observations)
@@ -273,67 +277,151 @@ class SequentialMemory(Memory):
 
         print(f"Memory saved (compressed) to {file_path}")
 
-    def process_data_for_world_model(self, data):
-        
-        state = torch.stack(data['state']).to(DEVICE) + 1 # add 1 to get values between 0 and 10
-        shape = torch.stack(data['shape']).to(DEVICE) - 1 # subtract 1 to get values between 0 and 29
-
-        # assert all values are between 0 and 10
-        assert torch.all(state >= 0) and torch.all(state <= 10), "State values out of bounds"
-        assert torch.all(shape >= 0) and torch.all(shape <= 29), "Shape values out of bounds"
-        action = torch.stack(data['action']).to(DEVICE)
-        terminal = torch.tensor(data['terminal'], dtype=torch.bool).to(DEVICE)
-        num_actions = torch.tensor(data['num_actions'], dtype=torch.float).to(DEVICE)
-
-        # Process the states into current and target states
-        current_state, target_state = self.process_states(state)
-        current_shape, target_shape = self.process_shapes(shape)
-        
-        # Create next_state and next_shape by shifting the arrays one element ahead.
-        next_num_actions = num_actions[1:]
-        
-        # Remove the last row from current data since it has no corresponding next state/shape.
-        current_state = current_state[:-1]
-        current_shape = current_shape[:-1]
-        target_state = target_state[:-1]
-        target_shape = target_shape[:-1]
-        action = action[:-1]
-        terminal = terminal[:-1]
-        
-        # Remove transitions where terminal==True (i.e. where an episode ended)
-        valid_mask = (terminal == False)
-        for i in range(current_state.shape[0]):
-            num_actions_i = num_actions[i].item()
-            next_num_actions_i = next_num_actions[i].item()
-            if valid_mask[i].item() == True:
-                assert next_num_actions_i == num_actions_i + 1, f"num_actions mismatch: {next_num_actions_i} != {num_actions_i + 1}"
-            else:
-                assert next_num_actions_i == 1
-
-        current_state = current_state[valid_mask]
-        current_shape = current_shape[valid_mask]
-        target_state = target_state[valid_mask]
-        target_shape = target_shape[valid_mask]
-        action = action[valid_mask]
-        terminal = terminal[valid_mask]
-
-        current_state = torch.tensor(current_state, dtype=torch.float32).to('cpu')
-        current_shape = torch.tensor(current_shape, dtype=torch.float32).to('cpu')
-        target_state = torch.tensor(target_state, dtype=torch.float32).to('cpu')
-        target_shape = torch.tensor(target_shape, dtype=torch.float32).to('cpu')
-        action = torch.tensor(action, dtype=torch.float32).to('cpu')
-        terminal = torch.tensor(terminal, dtype=torch.bool).to('cpu')
-
-        return current_state, current_shape, target_state, target_shape, action, terminal
-
     def process_states(self, state):
+        """ Copied from original for completeness """
         current_state = state[:, :, :, 0]
         target_state = state[:, :, :, 1]
         target_state = target_state.reshape(-1, 900)
         return current_state, target_state
     
     def process_shapes(self, shape):
+        """ Copied from original for completeness """
         current_shape = shape[:, 0, :]
         target_shape = shape[:, 1, :]
-        
         return current_shape, target_shape
+        
+    def process_data_for_world_model(self, data):
+        """ Copied from original for completeness """
+        state = torch.stack(data['state']).to(DEVICE) + 1 # add 1 to get values between 0 and 10
+        shape = torch.stack(data['shape']).to(DEVICE) - 1 # subtract 1 to get values between 0 and 29
+
+        # assert all values are between 0 and 10
+        assert torch.all(state >= 0) and torch.all(state <= 10), "State values out of bounds"
+        assert torch.all(shape >= 0) and torch.all(shape <= 29), "Shape values out of bounds"
+        action = torch.stack(data['action']).to(DEVICE)
+        terminal = torch.tensor(data['terminal'], dtype=torch.bool).to(DEVICE)
+        num_actions = torch.tensor(data['num_actions'], dtype=torch.float).to(DEVICE) # Changed dtype to float
+
+        # Process the states into current and target states
+        current_state, target_state = self.process_states(state)
+        current_shape, target_shape = self.process_shapes(shape)
+        
+        # Create next_state and next_shape by shifting the arrays one element ahead.
+        # Note: Original code references next_num_actions but doesn't seem to use it
+        # beyond an assertion. If needed for filtering, ensure it's handled correctly.
+        # Let's calculate it for the assertion:
+        next_num_actions = torch.cat((num_actions[1:], torch.tensor([0.0]).to(DEVICE))) # Add dummy value for last element shift
+
+        # Remove the last row from current data since it has no corresponding next state/shape.
+        current_state_proc = current_state[:-1]
+        current_shape_proc = current_shape[:-1]
+        target_state_proc = target_state[:-1]
+        target_shape_proc = target_shape[:-1]
+        action_proc = action[:-1]
+        terminal_proc = terminal[:-1]
+        num_actions_proc = num_actions[:-1] # Use num_actions for the *current* step of the transition
+        next_num_actions_proc = next_num_actions[:-1] # Use shifted for the *next* step comparison
+
+        # Remove transitions where terminal==True (i.e. where an episode ended)
+        valid_mask = ~terminal_proc # Use ~ for boolean tensor negation
+
+        # Assertion logic from original code
+        for i in range(current_state_proc.shape[0]):
+            num_actions_i = num_actions_proc[i].item()
+            next_num_actions_i = next_num_actions_proc[i].item()
+            if valid_mask[i].item() == True:
+                # Adding a small tolerance for float comparison if necessary
+                assert abs(next_num_actions_i - (num_actions_i + 1)) < 1e-6 , \
+                       f"num_actions mismatch: {next_num_actions_i} != {num_actions_i + 1} at index {i}"
+            else:
+                # If terminal is True, the *next* step's num_actions should reset to 1 (or start value)
+                 assert abs(next_num_actions_i - 1.0) < 1e-6, \
+                       f"Expected next_num_actions to be 1 after terminal, got {next_num_actions_i} at index {i}"
+
+
+        current_state_final = current_state_proc[valid_mask]
+        current_shape_final = current_shape_proc[valid_mask]
+        target_state_final = target_state_proc[valid_mask]
+        target_shape_final = target_shape_proc[valid_mask]
+        action_final = action_proc[valid_mask]
+        terminal_final = terminal_proc[valid_mask] # Keep terminal state for potential future use? Original returned it.
+
+        # Ensure tensors are contiguous before converting to numpy if needed, or directly use torch tensors
+        # Convert to CPU tensors as requested in the original save function
+        current_state_final = current_state_final.contiguous().to('cpu', dtype=torch.float32)
+        current_shape_final = current_shape_final.contiguous().to('cpu', dtype=torch.float32)
+        target_state_final = target_state_final.contiguous().to('cpu', dtype=torch.float32)
+        target_shape_final = target_shape_final.contiguous().to('cpu', dtype=torch.float32)
+        action_final = action_final.contiguous().to('cpu', dtype=torch.float32)
+        terminal_final = terminal_final.contiguous().to('cpu', dtype=torch.bool)
+
+
+        return current_state_final, current_shape_final, target_state_final, target_shape_final, action_final, terminal_final
+    # --- End of assumed methods ---
+
+
+    # --- New Function: save_memory_for_world_model_chunk ---
+    def save_memory_for_world_model_chunk(self, directory):
+        """
+        Efficiently save the *entire* current memory content as a numbered chunk
+        for world model training. Increments the chunk counter.
+        """
+        if self.nb_entries == 0:
+            print("Warning: Attempted to save an empty memory chunk. Skipping.")
+            return
+            
+        os.makedirs(directory, exist_ok=True)
+        # Use self.chunk_count in the filename
+        file_path = os.path.join(directory, f"sequential_memory_chunk_{self.chunk_count}.pt.xz")
+
+        # Gather data from the entire buffer *up to current length*
+        # Important: Access RingBuffer correctly using indices from 0 to len-1
+        current_length = len(self.observations)
+        data = {
+            'state': [self.observations[i] for i in range(current_length)],
+            'shape': [self.shapes[i] for i in range(current_length)],
+            'action': [self.actions[i] for i in range(current_length)],
+            'terminal': [self.terminals[i] for i in range(current_length)],
+            'num_actions': [self.num_actions[i] for i in range(current_length)]
+        }
+        
+        # Check if enough data exists to form at least one transition
+        if len(data['state']) < 2:
+             print(f"Warning: Not enough data ({len(data['state'])} entries) "
+                   f"in memory to process transitions for chunk {self.chunk_count}. Skipping save.")
+             # Don't increment chunk_count if nothing is saved
+             return
+
+        # Process the gathered data exactly like the original function
+        try:
+            processed_data = self.process_data_for_world_model(data)
+            # Ensure process_data_for_world_model returns the expected 6 tensors
+            if len(processed_data) != 6:
+                raise ValueError(f"process_data_for_world_model returned {len(processed_data)} items, expected 6.")
+                
+            # Check if processing resulted in empty tensors (e.g., all transitions were terminal)
+            if processed_data[0].shape[0] == 0:
+                print(f"Warning: Processing resulted in zero valid transitions for chunk {self.chunk_count}. Skipping save.")
+                # Don't increment chunk_count if nothing is saved
+                return
+                
+        except Exception as e:
+            print(f"Error processing data for chunk {self.chunk_count}: {e}")
+            # Don't increment chunk_count if processing fails
+            return
+
+        keys = ['current_state', 'current_shape', 'target_state', 'target_shape', 'action', 'terminal']
+        save_dict = dict(zip(keys, processed_data))
+
+        try:
+            with lzma.open(file_path, "wb") as f:
+                torch.save(save_dict, f)
+            
+            print(f"Memory chunk {self.chunk_count} saved (compressed) to {file_path} "
+                  f"({processed_data[0].shape[0]} transitions)")
+            # Increment chunk count *only after successful save*
+            self.chunk_count += 1
+        except Exception as e:
+             print(f"Error saving memory chunk {self.chunk_count} to {file_path}: {e}")
+
+
