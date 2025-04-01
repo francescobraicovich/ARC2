@@ -1,13 +1,16 @@
 import torch
 import torch.nn as nn
-
-# go up one directory to import utils
-from utils.util import set_device
-from world_model.transformer import TransformerLayer
+import torch.nn.functional as F
 import os
+import sys
+from world_model.transformer import TransformerLayer
 
-# Determine the device: CUDA -> MPS -> CPU
-DEVICE = set_device('action_space_embed.py')
+
+# Go up one directory to import utils
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from utils.util import set_device
+
+DEVICE = set_device('transformer.py')
 
 class EncoderTransformer(nn.Module):
     def __init__(self, config):
@@ -30,7 +33,7 @@ class EncoderTransformer(nn.Module):
         """
         super(EncoderTransformer, self).__init__()
         self.config = config
-        self.target_state = torch.tensor([0, 0, 0, 0, 0, 0, 0, 0, 0, 0], dtype=torch.long).to(DEVICE) # dummy tensor that gets updated
+        self.target_state = torch.tensor([0, 0, 0, 0, 0, 0, 0, 0, 0, 0], dtype=torch.long).to(DEVICE)  # dummy tensor that gets updated
 
         # Position embeddings.
         if config.scaled_position_embeddings:
@@ -47,11 +50,17 @@ class EncoderTransformer(nn.Module):
         self.grid_shapes_row_embed = nn.Embedding(config.max_rows, config.emb_dim).to(DEVICE)
         self.grid_shapes_col_embed = nn.Embedding(config.max_cols, config.emb_dim).to(DEVICE)
 
+        # Optionally, normalize grid shape embeddings.
+        self.grid_shape_norm = nn.LayerNorm(config.emb_dim, elementwise_affine=True).to(DEVICE)
+
         # CLS token embedding.
         self.cls_token = nn.Embedding(1, config.emb_dim).to(DEVICE)
 
         # Dropout for embedding.
         self.embed_dropout = nn.Dropout(config.dropout_rate)
+
+        # An extra normalization applied to the entire embedding sequence.
+        self.input_layer_norm = nn.LayerNorm(config.emb_dim, elementwise_affine=True).to(DEVICE)
 
         # Transformer layers.
         self.transformer_layers = nn.ModuleList([
@@ -76,7 +85,7 @@ class EncoderTransformer(nn.Module):
         else:
             self.latent_logvar = None
 
-        # Bring self to the right device
+        # Bring self to the right device
         self.to(DEVICE)
 
     def forward(self, state, shape, dropout_eval):
@@ -89,22 +98,24 @@ class EncoderTransformer(nn.Module):
             latent_mu: Tensor of shape (B, latent_dim)
             latent_logvar: Tensor of shape (B, latent_dim) or None.
         """
-        # assert that all state values are between 0 and vocab_size
+        # Ensure that state values are valid.
         assert torch.all(state >= 0) and torch.all(state < self.config.vocab_size), \
             f"Input colors should be between 0 and {self.config.vocab_size - 1}, got {state.min()} and {state.max()}"
-        # assert that all shape values are between 0 and max_rows/max_cols
+        # Ensure that grid shape values are valid.
         assert torch.all(shape[:, 0] >= 0) and torch.all(shape[:, 0] < self.config.max_rows), \
-            f"Input rows should be between 0 and {self.config.max_rows - 1}, got {shape[:, 0].min()} and {shape[:, 0].max()}"
-        # assert that all shape values are between 0 and max_rows/max_cols
+            f"Input rows should be between 0 and {self.config.max_rows - 1}"
         assert torch.all(shape[:, 1] >= 0) and torch.all(shape[:, 1] < self.config.max_cols), \
-            f"Input cols should be between 0 and {self.config.max_cols - 1}, got {shape[:, 1].min()} and {shape[:, 1].max()}"
+            f"Input cols should be between 0 and {self.config.max_cols - 1}"
 
+        # Build embeddings.
         x = self.embed_grids(state, shape, dropout_eval)
+        # Apply an extra normalization on the whole embedding.
+        x = self.input_layer_norm(x)
 
         pad_mask = self.make_pad_mask(shape)
         for layer in self.transformer_layers:
             x = layer(embeddings=x, dropout_eval=dropout_eval, pad_mask=pad_mask)
-            # TODO: Check the pad mask is used correctly in the layer (not inverted).
+            # Check that the pad mask is used correctly in the layer.
         # Extract the CLS token (first token).
         cls_embed = x[:, 0, :]
         cls_embed = self.cls_layer_norm(cls_embed)
@@ -121,7 +132,6 @@ class EncoderTransformer(nn.Module):
         Build embeddings from the input tokens and grid shape tokens.
         """
         config = self.config
-        device = DEVICE
 
         # Position embedding block.
         if config.scaled_position_embeddings:
@@ -134,55 +144,40 @@ class EncoderTransformer(nn.Module):
             pos_col_factors = torch.arange(1, config.max_cols + 1, device=DEVICE).unsqueeze(1).type_as(pos_col_embed)
             pos_col_embeds = pos_col_factors * pos_col_embed  # (max_cols, emb_dim)
             # Resulting pos_embed: shape (max_rows, max_cols, emb_dim)
-            pos_embed = pos_row_embeds.unsqueeze(1)+ pos_col_embeds.unsqueeze(0)
+            pos_embed = pos_row_embeds.unsqueeze(1) + pos_col_embeds.unsqueeze(0)
         else:
             pos_row_indices = torch.arange(config.max_rows, dtype=torch.long, device=DEVICE)
-            assert torch.all(pos_row_indices < config.max_rows), \
-                f"Position indices should be between 0 and {config.max_rows - 1}, got {pos_row_indices.min()} and {pos_row_indices.max()}"
-            assert torch.all(pos_row_indices >= 0), \
-                f"Position indices should be between 0 and {config.max_rows - 1}, got {pos_row_indices.min()} and {pos_row_indices.max()}"
             pos_row_embed = self.pos_row_embed(pos_row_indices)  # (max_rows, emb_dim)
             pos_col_indices = torch.arange(config.max_cols, dtype=torch.long, device=DEVICE)
-            assert torch.all(pos_col_indices < config.max_cols), \
-                f"Position indices should be between 0 and {config.max_cols - 1}, got {pos_col_indices.min()} and {pos_col_indices.max()}"
-            assert torch.all(pos_col_indices >= 0), \
-                f"Position indices should be between 0 and {config.max_cols - 1}, got {pos_col_indices.min()} and {pos_col_indices.max()}"
             pos_col_embed = self.pos_col_embed(pos_col_indices)  # (max_cols, emb_dim)
             pos_embed = pos_row_embed.unsqueeze(1) + pos_col_embed.unsqueeze(0)
 
         # Colors embedding block.
-        # pairs: (B, R, C) -> colors_embed: (B, R, C, emb_dim)
-        colors_embed = self.colors_embed(state)
+        colors_embed = self.colors_embed(state)  # (B, R, C, emb_dim)
 
-        # Combine all embeddings.
-        # Broadcasting: pos_embed (max_rows, max_cols, 1, emb_dim) will broadcast to (R, C, 2, emb_dim) if R==max_rows and C==max_cols.
+        # Combine color tokens with positional embeddings.
         x = colors_embed + pos_embed  # (B, R, C, emb_dim)
 
-        # Flatten the spatial and channel dimensions.
+        # Flatten the spatial dimensions.
         B = x.shape[0]
         x = x.view(B, -1, x.shape[-1])  # (B, R*C, emb_dim)
 
         # Embed grid shape tokens.
-        # grid_shapes: (B, 2, 2)
         grid_shapes_row = shape[:, 0].long()  # (B)
-        assert torch.all(grid_shapes_row >= 0) and torch.all(grid_shapes_row < config.max_rows), \
-            f"Grid shape row indices should be between 0 and {config.max_rows - 1}, got {grid_shapes_row.min()} and {grid_shapes_row.max()}"
         grid_shapes_row_embed = self.grid_shapes_row_embed(grid_shapes_row)  # (B, emb_dim)
-        grid_shapes_row_embed = grid_shapes_row_embed.unsqueeze(1)  # (B, 1, emb_dim)
+        grid_shapes_row_embed = self.grid_shape_norm(grid_shapes_row_embed).unsqueeze(1)  # Normalize and expand: (B, 1, emb_dim)
 
         grid_shapes_col = shape[:, 1].long()  # (B)
         grid_shapes_col_embed = self.grid_shapes_col_embed(grid_shapes_col)  # (B, emb_dim)
-        assert torch.all(grid_shapes_col >= 0) and torch.all(grid_shapes_col < config.max_cols), \
-            f"Grid shape column indices should be between 0 and {config.max_cols - 1}, got {grid_shapes_col.min()} and {grid_shapes_col.max()}"
-        grid_shapes_col_embed = grid_shapes_col_embed.unsqueeze(1)  # (B, 1, emb_dim) 
+        grid_shapes_col_embed = self.grid_shape_norm(grid_shapes_col_embed).unsqueeze(1)  # (B, 1, emb_dim)
 
-        # Concatenate row and column grid tokens.
+        # Concatenate grid shape tokens.
         grid_shapes_embed = torch.cat([grid_shapes_row_embed, grid_shapes_col_embed], dim=1)  # (B, 2, emb_dim)
         x = torch.cat([grid_shapes_embed, x], dim=1)  # (B, 2 + R*C, emb_dim)
 
         # Add the CLS token.
         cls_token = self.cls_token(torch.zeros(x.shape[0], 1, dtype=torch.long, device=DEVICE))  # (B, 1, emb_dim)
-        x = torch.cat([cls_token, x], dim=1)  # (B, 1 + 2 + 2*R*C, emb_dim)
+        x = torch.cat([cls_token, x], dim=1)  # (B, 1 + 2 + R*C, emb_dim)
 
         expected_seq_len = 1 + 2 + config.max_len
         assert x.shape[1] == expected_seq_len, f"Expected sequence length {expected_seq_len}, got {x.shape[1]}"
@@ -200,32 +195,27 @@ class EncoderTransformer(nn.Module):
             A boolean mask of shape (B, 1, T, T) where T = 1+2+max_rows*max_cols.
         """
         B = shape.shape[0]
-        # Create a row mask of shape (B, max_rows)
-        row_arange = torch.arange(self.config.max_rows, device=DEVICE).view(1, self.config.max_rows) # (1, max_rows)
-        row_mask = row_arange < shape[:, 0].view(B, 1)  # (B, max_rows)
+        row_arange = torch.arange(self.config.max_rows, device=DEVICE).view(1, self.config.max_rows)
+        row_mask = row_arange < shape[:, 0].view(B, 1)
 
-        # Create a column mask of shape (B, max_cols)
-        col_arange = torch.arange(self.config.max_cols, device=DEVICE).view(1, self.config.max_cols)  # (1, max_cols)
-        col_mask = col_arange < shape[:, 1].view(B, 1)  # (B, max_cols)
-        # Combine to get a spatial mask.
-        row_mask = row_mask.unsqueeze(2)  # (B, max_rows, 1)
-        col_mask = col_mask.unsqueeze(1)  # (B, 1, max_cols)
+        col_arange = torch.arange(self.config.max_cols, device=DEVICE).view(1, self.config.max_cols)
+        col_mask = col_arange < shape[:, 1].view(B, 1)
+
+        row_mask = row_mask.unsqueeze(2)
+        col_mask = col_mask.unsqueeze(1)
         pad_mask = row_mask & col_mask  # (B, max_rows, max_cols)
         pad_mask = pad_mask.view(B, 1, -1)  # (B, 1, max_rows*max_cols)
 
-        # Prepend ones for the CLS token and grid shape tokens (1+4 tokens).
         ones_mask = torch.ones(B, 1, 1 + 2, dtype=torch.bool, device=DEVICE)
         pad_mask = torch.cat([ones_mask, pad_mask], dim=-1)  # (B, 1, 1+2+max_rows*max_cols)
-
-        # Outer product to build a full attention mask.
         pad_mask = pad_mask.unsqueeze(2) & pad_mask.unsqueeze(3)  # (B, 1, T, T)
         return pad_mask
-    
+
     def encode(self, state, shape, new_episode=False):
-        current_state = state[:, :, 1] + 1 # ensure values are between 0 and 10 (padding tokens go from -1 to 0)
-        target_state = state[:, :, 0] + 1 # ensure values are between 0 and 10 (padding tokens go from -1 to 0)
-        current_shape = shape[0, :] - 1 # ensure values are between 0 and 29 (1 to 30 would break the embedding)
-        target_shape = shape[1, :] - 1 # ensure values are between 0 and 29 (1 to 30 would break the embedding)
+        current_state = state[:, :, 1] + 1  # ensure values are between 0 and 10 (padding tokens go from -1 to 0)
+        target_state = state[:, :, 0] + 1  # ensure values are between 0 and 10
+        current_shape = shape[0, :] - 1     # adjust grid shape indices
+        target_shape = shape[1, :] - 1
 
         # unsqueeze to add batch dimension
         current_state = current_state.unsqueeze(0)
@@ -249,28 +239,18 @@ class EncoderTransformer(nn.Module):
             x = torch.cat([current_state_embed, self.target_state_embed], dim=1)
             x = x.squeeze(0)        
         return x
-    
+
     def save_weights(self, path: str):
         """
         Save the embedding weights to a file.
-        
-        Args:
-            path (str): Path to save the weights.
         """
-        # append the 'encoder.pt' to the path
-        path = path + '/encoder.pt'
-        torch.save(self.state_dict(), path)
+        torch.save(self.state_dict(), os.path.join(path, 'encoder.pt'))
 
     def load_weights(self, path: str):
         """
         Load the embedding weights from a file.
-        
-        Args:
-            path (str): Path to load the weights from.
         """
-        # append the 'encoder.pt' to the path
-        path = path + '/encoder.pt'
-        self.load_state_dict(torch.load(path))
+        self.load_state_dict(torch.load(os.path.join(path, 'encoder.pt')))
 
     @property
     def num_parameters(self):
