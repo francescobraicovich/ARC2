@@ -351,7 +351,6 @@ class WolpertingerAgent(DDPG):
             self.actor_optim.zero_grad()
             proto_embedded_action_batch = self.actor(x_t_batch)
             q_actor = self.critic1(x_t_batch, proto_embedded_action_batch)
-            print(f"q_actor: {q_actor}")
             # Compute the policy loss as the negative Q-value
             policy_loss = - q_actor.mean()
             policy_loss.backward()
