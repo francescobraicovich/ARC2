@@ -104,13 +104,14 @@ def train(
             )
 
             # wandb logging
-            wandb.log({
-                "train/episode": episode,
-                "train/episode_reward": episode_reward,
-                "train/episode_steps": episode_steps,
-                "train/positive_rewards": episode_positive_rewards,
-                "train/epsilon": agent.epsilon
-            })
+            if wandb.run is not None:
+                wandb.log({
+                    "train/episode": episode,
+                    "train/episode_reward": episode_reward,
+                    "train/episode_steps": episode_steps,
+                    "train/positive_rewards": episode_positive_rewards,
+                    "train/epsilon": agent.epsilon
+                })
 
             # Reset for next episode
             s_t, shape = None, None
@@ -138,10 +139,8 @@ def train(
             agent.save_model(save_model_dir)
             logger.info(f"### Model saved to {save_model_dir} at episode {episode} ###")
 
-        if step == save_memory_at_steps:
+        if step % agent.memory_size == 0:
             agent.save_memory_for_world_model()
-            assert False
-
 
 def evaluate(
     agent,
@@ -211,11 +210,11 @@ def evaluate(
 
     avg_eval_reward = np.mean(total_rewards)
     logger.info(f"[Eval] Average Reward over {episodes} episodes: {avg_eval_reward:.2f}")
-
-    wandb.log({
-        "eval/episodes": episodes,
-        "eval/average_reward": avg_eval_reward
-    })
+    if wandb.run is not None:
+        wandb.log({
+            "eval/episodes": episodes,
+            "eval/average_reward": avg_eval_reward
+        })
 
     agent.is_training = True
     agent.epsilon = saved_epsilon
