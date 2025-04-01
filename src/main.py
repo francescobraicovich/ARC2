@@ -21,7 +21,7 @@ from train_test import train, evaluate
 
 from world_model.transformer import EncoderTransformerConfig
 from world_model.action_embed import ActionEmbedding
-from world_model.state_encode import EncoderTransformer
+from world_model.state_encode import EncoderTransformer, DummyEncoder
 from world_model.transition_decode import ContextTransformer2D
 from world_model.train_world_model import world_model_train
 
@@ -44,7 +44,7 @@ def main():
     args.save_model_dir = get_output_folder('../output', args.env)
 
     # 5. Initialize wandb (only if training)
-    if args.mode == 'train' and wandb.run is None:
+    if args.wandb_log and not wandb.run:
         wandb.init(project="arc-v1", config=vars(args), mode="online")
 
     # 12. Set up logger
@@ -73,7 +73,11 @@ def main():
         num_layers=args.state_encoder_num_layers,
         dropout_rate=args.state_encoder_dropout
     )
-    state_encoder = EncoderTransformer(encoder_config)
+    if not args.generate_world_model_data:
+        state_encoder = EncoderTransformer(encoder_config)
+    else:
+        state_encoder = DummyEncoder(emb_dim=args.state_encoded_dim)
+
     action_embedding = ActionEmbedding(
         num_actions=num_filtered_actions,
         embed_dim=args.action_emb_dim,
@@ -99,6 +103,7 @@ def main():
         'lr': args.world_model_pre_train_lr,
         'batch_size': args.world_model_pre_train_batch_size,
         'max_iter': 20000,
+        'load_memory_dir': args.load_memory_dir,
     }
 
     if args.world_model_pre_train:
@@ -144,7 +149,7 @@ def main():
         'nb_actions': num_filtered_actions,
         'args': args,
         'k': args.k_neighbors,
-        'action_space': action_space
+        'action_space': action_space,
     }
     agent = WolpertingerAgent(**agent_args)
 
