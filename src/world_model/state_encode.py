@@ -258,3 +258,14 @@ class EncoderTransformer(nn.Module):
         Returns the number of trainable parameters in the model.
         """
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
+
+
+class DummyEncoder():
+    """"
+    Dummy encoder to create memory fast."
+    """
+    def __init__(self, emb_dim):
+        self.returning_tensor = torch.zeros(1, emb_dim).to(DEVICE)
+
+    def encode(self, state, shaep, dropout_eval = None):
+        return self.returning_tensor
