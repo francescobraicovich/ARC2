@@ -76,7 +76,7 @@ def world_model_train(
     batch_size = world_model_args.get('batch_size', 32)
     max_iter = world_model_args.get('max_iter', None)
     # Early stopping parameters
-    patience = world_model_args.get('early_stopping_patience', 3)
+    patience = world_model_args.get('early_stopping_patience', 7)
     best_eval_non_padded_loss = float('inf')
     patience_counter = 0
 
