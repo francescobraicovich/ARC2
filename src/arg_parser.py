@@ -13,6 +13,7 @@ def check_presets(PRESETS):
     world_model_preset['max_actions'] = world_model_preset['save_memory_at_steps'] + 1
     world_model_preset['max_episode'] = world_model_preset['save_memory_at_steps'] + 1
     world_model_preset['eval_interval'] = world_model_preset['save_memory_at_steps'] + 1
+    world_model_preset['save_per_epochs'] = world_model_preset['save_memory_at_steps'] + 1
     world_model_preset['warmup'] = world_model_preset['save_memory_at_steps'] + 1
     world_model_preset['eval_episodes'] = 0
     world_model_preset['world_model_pre_train'] = False
@@ -24,6 +25,12 @@ def check_presets(PRESETS):
     world_model_preset['state_encoder_num_heads'] = 1
     world_model_preset['state_encoder_num_layers'] = 1
     world_model_preset['state_encoder_dropout'] = 0
+
+    # set the actor-critic architecture to low values
+    world_model_preset['h1_dim_actor'] = 2
+    world_model_preset['h2_dim_actor'] = 2
+    world_model_preset['h1_dim_critic'] = 2
+    world_model_preset['h2_dim_critic'] = 2
 
     # assert the save_memory_at_steps is divisible by 50
     assert world_model_preset['save_memory_at_steps'] % 50 == 0, f"save_memory_at_steps should be divisible by 50, but got {world_model_preset['save_memory_at_steps']}"
