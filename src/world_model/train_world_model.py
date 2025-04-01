@@ -5,11 +5,13 @@ from torch.utils.data import DataLoader
 import torch.nn as nn
 from tqdm import tqdm
 import numpy as np
+import os
+import torch
 
 from utils.util import set_device
 from world_model.memory_data_load import WorldModelDataset
 
-from dsl.utilities.plot import save_grid, to_numpy
+from dsl.utilities.plot import save_grids, to_numpy
 
 # Determine the device: CUDA -> MPS -> CPU
 DEVICE = set_device('world_model/train_world_model.py')
@@ -96,6 +98,9 @@ def world_model_train(
     train_set, test_set = dataset.train_test_split(test_ratio=0.2)
     train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
     test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=False)
+
+    test_length = len(test_loader.dataset)
+    random_indices = np.random.choice(test_length, size=5, replace=False)
 
     action_embedding_num_params = action_embedder.num_parameters
     state_encoder_num_params = state_encoder.num_parameters
@@ -213,7 +218,14 @@ def world_model_train(
 
         # Plot the results at specified intervals
         if (epoch+1) % plot_interval == 0:
-            plot_world_model(state_encoder, action_embedder, transition_model, test_loader, DEVICE, world_model_args, epoch, save_model_dir)
+            plot_world_model(state_encoder = state_encoder,
+                             action_embedder = action_embedder,
+                             transition_model = transition_model,
+                             test_loader = test_loader,
+                             device = DEVICE,
+                             epoch = epoch+1,
+                             selected_indices=random_indices,
+                             save_dir=save_model_dir)
             logger.info(f"Plotting results for epoch {epoch+1}")
         
         # Exit early if global_step reached max_iter
@@ -292,7 +304,6 @@ def evaluate_world_model(state_encoder, action_embedder, transition_model, test_
     avg_non_padded_loss = total_non_padded_loss / count if count > 0 else 0.0
     return avg_loss, avg_shape_loss, avg_state_loss, avg_non_padded_loss
 
-
 """
             # Optionally perform evaluation at given intervals
             if e % eval_interval == 0:
@@ -313,87 +324,80 @@ def evaluate_world_model(state_encoder, action_embedder, transition_model, test_
     return state_encoder, action_embedder, transition_model"""
 
 def plot_world_model(state_encoder, action_embedder, transition_model,
-                     test_loader, device, world_model_args, epoch, save_dir=None):
+                     test_loader, device, epoch, selected_indices, save_dir=None):
     """
-    Plot the results of the world model training, saving the plots to a 'plots' folder
-    within 'save_dir' if provided.
+    Plot the world model predictions versus the actual states for specified indices.
+    
+    This function:
+      - Constructs a sub-batch directly from test_loader.dataset using the provided numpy array of selected indices.
+      - Generates predictions for this sub-batch.
+      - For each sample in the sub-batch, it uses the 'save_grids' function to create a combined plot 
+        that shows both the actual full and predicted full state images.
+      - The title and file path for each plot include the epoch and the corresponding sample index for clarity.
+      - Saves the plots in a 'plots' subdirectory within save_dir (if provided).
+    
+    Parameters:
+      state_encoder: The model that encodes the current state.
+      action_embedder: The model that embeds the action.
+      transition_model: The model that generates the next state.
+      test_loader: A DataLoader whose dataset supports indexing (e.g., a dict-style dataset with keys such as 
+                   'current_state', 'current_shape', 'target_state', 'target_shape', and 'action').
+      device: The device (CPU or GPU) to perform computations.
+      world_model_args: A dict containing world model settings (e.g. batch_size).
+      epoch: Current training epoch (used for naming plots).
+      selected_indices: A numpy array of indices to extract from the dataset.
+      save_dir: Optional base directory to save plots. If provided, plots will be saved under a 'plots' subdirectory.
     """
-    import os
-    import torch
 
-    # 1) Create a 'plots' subdirectory in save_dir
+    # Create 'plots' subdirectory if a save directory is provided
     plots_dir = None
     if save_dir is not None:
         plots_dir = os.path.join(save_dir, "plots")
-        os.makedirs(plots_dir, exist_ok=True)  # Make sure it exists
+        os.makedirs(plots_dir, exist_ok=True)
 
+    # Set models to evaluation mode
     state_encoder.eval()
     action_embedder.eval()
     transition_model.eval()
 
-    batch_size = world_model_args.get('batch_size', 32)
+    # Construct a batch from the dataset using the selected indices
+    dataset = test_loader.dataset
+    # Assuming the dataset returns a dictionary for each sample
+    batch = {}
+    sample_keys = dataset[0].keys()
+    for key in sample_keys:
+        # Gather the tensors for each selected index and stack them along the batch dimension
+        batch[key] = torch.stack([dataset[i][key] for i in selected_indices], dim=0).to(device)
+
+    # Extract the relevant tensors from the batch
+    current_state      = batch['current_state']
+    current_shape      = batch['current_shape']
+    next_current_state = batch['target_state']
+    next_current_shape = batch['target_shape']
+    action             = batch['action']
 
     with torch.no_grad():
-        for batch in test_loader:
-            # Suppose shapes: (batch_size, 900), (batch_size, 2)
-            current_state = batch['current_state'].to(device)
-            current_shape = batch['current_shape'].to(device)
-            next_current_state = batch['target_state'].to(device)
-            next_current_shape = batch['target_shape'].to(device)
-            action = batch['action'].to(device)
+        # Generate model outputs
+        state_encoded  = state_encoder(current_state, current_shape, dropout_eval=True)
+        action_encoded = action_embedder(action)
+        next_shape, next_state = transition_model.generate(state_encoded, action_encoded)
 
-            # Model outputs
-            state_encoded = state_encoder(current_state, current_shape, dropout_eval=True)
-            action_encoded = action_embedder(action)
-            next_shape, next_state = transition_model.generate(state_encoded, action_encoded)
+        # Reshape to obtain full grid images (assume each is of size 30x30)
+        predicted_full = next_state.view(-1, 30, 30)
+        actual_full    = next_current_state.view(-1, 30, 30)
 
-            # Reshape
-            grid_30x30_predicted = next_state.view(batch_size, 30, 30)
-            grid_30x30_actual    = next_current_state.view(batch_size, 30, 30)
+        # For each sample in the sub-batch, plot and save the actual and predicted grids
+        for i, sample_index in enumerate(selected_indices):
+            # Convert the tensors to numpy arrays for the current sample
+            pred = predicted_full[i].cpu().numpy()
+            act  = actual_full[i].cpu().numpy()
 
-            # Pick 5 samples to plot
-            random_indices = torch.randperm(batch_size)[:5]
+            # Build a descriptive file name and title
+            if plots_dir is not None:
+                plot_filename = os.path.join(plots_dir, f'epoch_{epoch}_sample_{sample_index}.png')
+            else:
+                plot_filename = None
+            title = f"Epoch {epoch} - Sample {sample_index}: Actual vs Predicted"
 
-            # Collect and plot data
-            for i in random_indices:
-                i_int = i.item()
-                rows_pred, cols_pred = next_shape[i]         # shape predicted
-                rows_act, cols_act = next_current_shape[i]   # shape actual
-
-                # Convert to numpy
-                predicted_full   = grid_30x30_predicted[i].cpu().numpy()
-                predicted_cropped= predicted_full[:rows_pred, :cols_pred]
-                actual_full      = grid_30x30_actual[i].cpu().numpy()
-                actual_cropped   = actual_full[:rows_act, :cols_act]
-
-                # 2) Build a filename in the 'plots' directory
-                # e.g. "plots/predicted_full_idx42.png"
-                # You can incorporate epoch, global_step, or i_int in the name
-                if plots_dir is not None:
-                    predicted_full_path    = os.path.join(plots_dir, f'e{epoch}_{i_int}_predicted_full.png')
-                    predicted_cropped_path = os.path.join(plots_dir, f'e{epoch}_{i_int}_predicted_cropped.png')
-                    actual_full_path       = os.path.join(plots_dir, f'e{epoch}_{i_int}_actual_full.png')
-                    actual_cropped_path    = os.path.join(plots_dir, f'e{epoch}_{i_int}_actual_cropped.png')
-                else:
-                    # If no save_dir was provided, we don't save
-                    predicted_full_path    = None
-                    predicted_cropped_path = None
-                    actual_full_path       = None
-                    actual_cropped_path    = None
-
-                # 3) Plot and save each image
-                save_grid(predicted_full,
-                          title=f'Predicted Full - idx={i_int}',
-                          save_path=predicted_full_path)
-                save_grid(predicted_cropped,
-                          title=f'Predicted Cropped - idx={i_int}',
-                          save_path=predicted_cropped_path)
-                save_grid(actual_full,
-                          title=f'Actual Full - idx={i_int}',
-                          save_path=actual_full_path)
-                save_grid(actual_cropped,
-                          title=f'Actual Cropped - idx={i_int}',
-                          save_path=actual_cropped_path)
-
-            # Exit after plotting one batch to avoid huge spam
-            break
+            # Call the save_grids function which takes grid1 (actual), grid2 (predicted), title, and save_path
+            save_grids(act, pred, title=title, save_path=plot_filename)
