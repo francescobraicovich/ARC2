@@ -12,6 +12,49 @@ from world_model.memory_data_load import WorldModelDataset
 # Determine the device: CUDA -> MPS -> CPU
 DEVICE = set_device('world_model/train_world_model.py')
 
+def loss_fn(state_logits, shape_logits, state, shape):
+    """
+    Custom loss function for the world model.
+    
+    Args:
+        state_logits (torch.Tensor): Predicted state logits (shape: [batch, seq_len, num_classes]).
+        shape_logits (torch.Tensor): Predicted shape logits (shape: [batch, seq_len, num_classes]).
+        state (torch.Tensor): Actual state (shape: [batch, seq_len]).
+        shape (torch.Tensor): Actual shape (shape: [batch, seq_len]).
+
+    Returns:
+        torch.Tensor: Computed loss value.
+    """
+    # Resize the logits to match the shape expected by nn.CrossEntropyLoss.
+    # Expected input shape: [batch, num_classes, seq_len]
+    state_logits = state_logits.permute(0, 2, 1)
+    shape_logits = shape_logits.permute(0, 2, 1)
+    
+    # Standard cross entropy losses for state and shape predictions.
+    criterion = nn.CrossEntropyLoss()
+    state_loss = criterion(state_logits, state)
+    shape_loss = criterion(shape_logits, shape)
+    
+    # Create a mask that is 1 for elements where state is not 0, 0 otherwise.
+    mask = (state != 0).float()
+
+    # Compute additional cross entropy loss only for cells where state != 0.
+    # We use reduction="none" to get elementwise loss values.
+    criterion_none = nn.CrossEntropyLoss(reduction="none")
+    # The output from criterion_none has shape [batch, seq_len].
+    masked_loss = criterion_none(state_logits, state)
+    # Apply the mask
+    masked_loss = masked_loss * mask
+    # Average over non-zero positions. Avoid division by zero.
+    if mask.sum() > 0:
+        non_padded_loss = masked_loss.sum() / mask.sum()
+    else:
+        non_padded_loss = torch.tensor(0.0, device=state.device)
+    
+    # Combine the losses
+    total_loss = state_loss + shape_loss + non_padded_loss
+    return total_loss, state_loss, shape_loss, non_padded_loss
+
 def world_model_train(
     state_encoder,
     action_embedder,
@@ -81,11 +124,15 @@ def world_model_train(
         total_losses = []
         shape_losses = []
         state_losses = []
+        non_padded_losses = []
         for batch in progress_bar:
             # Transfer data to the device
             current_state = batch['current_state'].to(DEVICE)
             current_shape = batch['current_shape'].to(DEVICE)
             next_current_state = batch['target_state'].to(DEVICE)
+            # assert all the next state is between 0 and 10
+            assert (next_current_state >= 0).all() and (next_current_state <= 10).all(), f"Next state out of bounds: {next_current_state}"
+
             next_current_shape = batch['target_shape'].to(DEVICE)
             action = batch['action'].to(DEVICE)
 
@@ -96,19 +143,15 @@ def world_model_train(
             action_encoded = action_embedder(action)
             next_shape_logits, next_state_logits = transition_model(state_encoded, action_encoded)
 
-            shape_logits = next_shape_logits.permute(0, 2, 1)
-            state_logits = next_state_logits.permute(0, 2, 1)
-
-            # Compute individual losses.
-            shape_loss = criterion(shape_logits, next_current_shape)
-            state_loss = criterion(state_logits, next_current_state)
-
-            # Compute the total loss with weighting.
-            total_loss = shape_loss + state_loss
+            # calculate the losses
+            total_loss, state_loss, shape_loss, non_padded_loss = loss_fn(
+                next_state_logits, next_shape_logits, next_current_state, next_current_shape
+            )
 
             shape_losses.append(shape_loss.item())
             state_losses.append(state_loss.item())
             total_losses.append(total_loss.item())
+            non_padded_losses.append(non_padded_loss.item())
 
             # Backward pass and optimization step
             total_loss.backward()
@@ -130,13 +173,15 @@ def world_model_train(
         avg_loss = np.mean(total_losses)
         avg_shape_loss = np.mean(shape_losses)
         avg_state_loss = np.mean(state_losses)
-        logger.info(f"Epoch {epoch+1}/{epochs} - Loss: {avg_loss:.4f}, Shape Loss: {avg_shape_loss:.4f}, State Loss: {avg_state_loss:.4f}")
+        avg_non_padded_loss = np.mean(non_padded_losses)
+        logger.info(f"Epoch {epoch+1}/{epochs} - Loss: {avg_loss:.4f}, Shape Loss: {avg_shape_loss:.4f}, State Loss: {avg_state_loss:.4f}, Non-Padded Loss: {avg_non_padded_loss:.4f}")
         wandb.log({
             "train_loss": avg_loss,
             "train_shape_loss": avg_shape_loss,
             "train_state_loss": avg_state_loss,
+            "train_non_padded_loss": avg_non_padded_loss,
         })
-    
+
         # Save checkpoint every save_per_epochs epochs
         if (epoch + 1) % save_per_epochs == 0:
             checkpoint_path = os.path.join(save_model_dir, f'checkpoint_epoch_{epoch+1}.pt')
@@ -150,14 +195,15 @@ def world_model_train(
 
         # Evaluate the model at specified intervals
         if (epoch + 1) % eval_interval == 0:
-            eval_loss, eval_shape_loss, eval_state_loss = evaluate_world_model(
+            eval_loss, eval_shape_loss, eval_state_loss, eval_non_padded_loss = evaluate_world_model(
                 state_encoder, action_embedder, transition_model, test_loader, DEVICE
             )
-            logger.info(f"Evaluation - Loss: {eval_loss:.4f}, Shape Loss: {eval_shape_loss:.4f}, State Loss: {eval_state_loss:.4f}")
+            logger.info(f"Evaluation - Loss: {eval_loss:.4f}, Shape Loss: {eval_shape_loss:.4f}, State Loss: {eval_state_loss:.4f}. Non-Padded Loss: {eval_non_padded_loss:.4f}")
             wandb.log({
                 "eval_loss": eval_loss,
                 "eval_shape_loss": eval_shape_loss,
                 "eval_state_loss": eval_state_loss,
+                "eval_non_padded_loss": eval_non_padded_loss,
             })
 
         # Exit early if global_step reached max_iter
@@ -188,10 +234,11 @@ def evaluate_world_model(state_encoder, action_embedder, transition_model, test_
     total_loss = 0.0
     total_shape_loss = 0.0
     total_state_loss = 0.0
+    total_non_padded_loss = 0.0
     count = 0
 
     with torch.no_grad():
-        for batch in test_loader:
+        for i, batch in enumerate(test_loader):
             current_state = batch['current_state'].to(device)
             current_shape = batch['current_shape'].to(device)
             next_current_state = batch['target_state'].to(device)
@@ -201,24 +248,37 @@ def evaluate_world_model(state_encoder, action_embedder, transition_model, test_
             state_encoded = state_encoder(current_state, current_shape, dropout_eval=True)
             action_encoded = action_embedder(action)
             next_shape_logits, next_state_logits = transition_model(state_encoded, action_encoded)
+            next_shape_predicted, next_state_predicted = transition_model.generate(state_encoded, action_encoded)
 
-            shape_logits = next_shape_logits.permute(0, 2, 1)
-            state_logits = next_state_logits.permute(0, 2, 1)
+            if i == 0:
+                for j in range(2):
+                    next_state_j = next_current_state[j]
+                    next_shape_j = next_current_shape[j]
+                    next_state_predicted_j = next_state_predicted[j]
+                    next_shape_predicted_j = next_shape_predicted[j]
+                    #print('next shape:', next_shape_j)
+                    #print('next shape predicted:', next_shape_predicted_j)
+                    #print('next state:', next_state_j.reshape(-1, 30, 30))
+                    #print('next state predicted:', next_state_predicted_j.reshape(-1, 30, 30))
+                    #print('overlap:', (next_state_j == next_state_predicted_j).sum())
+                    #print('-' * 50)
 
-            shape_loss = criterion(shape_logits, next_current_shape)
-            state_loss = criterion(state_logits, next_current_state)
-            batch_loss = shape_loss + state_loss
-
-
+            # Calculate the loss
+            total_loss, state_loss, shape_loss, non_padded_loss = loss_fn(
+                next_state_logits, next_shape_logits, next_current_state, next_current_shape
+            )
+            
             total_shape_loss += shape_loss.item()
             total_state_loss += state_loss.item()
-            total_loss += batch_loss.item()
+            total_loss += total_loss.item()
+            total_non_padded_loss += non_padded_loss.item()
             count += 1
 
     avg_loss = total_loss / count if count > 0 else 0.0
     avg_shape_loss = total_shape_loss / count if count > 0 else 0.0
     avg_state_loss = total_state_loss / count if count > 0 else 0.0
-    return avg_loss, avg_shape_loss, avg_state_loss
+    avg_non_padded_loss = total_non_padded_loss / count if count > 0 else 0.0
+    return avg_loss, avg_shape_loss, avg_state_loss, avg_non_padded_loss
 
 
 """
