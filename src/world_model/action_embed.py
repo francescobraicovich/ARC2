@@ -4,9 +4,8 @@ import torch.nn.functional as F
 
 from utils.util import set_device
 DEVICE = set_device('world_model/action_embed.py')
-
 class ActionEmbedding(nn.Module):
-    def __init__(self, num_actions: int, embed_dim: int, normalize: bool = False, dropout: float = 0.0):
+    def __init__(self, num_actions: int, embed_dim: int, normalize: bool = True, dropout: float = 0.0):
         """
         Args:
             num_actions (int): Total number of discrete actions (e.g., 50,000).
@@ -16,11 +15,13 @@ class ActionEmbedding(nn.Module):
         """
         super().__init__()
         self.embedding = nn.Embedding(num_actions, embed_dim).to(DEVICE)
+        
+        # SOTA weight initialization: truncated normal initialization with std=0.02
+        # This is widely used in state-of-the-art transformer models (e.g., BERT, GPT)
+        nn.init.trunc_normal_(self.embedding.weight, std=0.02)
+        
         self.normalize = normalize
         self.dropout = nn.Dropout(dropout) if dropout > 0.0 else nn.Identity()
-
-        # Optional: initialize with better weight strategy
-        nn.init.normal_(self.embedding.weight, mean=0.0, std=0.02)
 
     def forward(self, action):
         """
