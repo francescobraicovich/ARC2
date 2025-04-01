@@ -62,7 +62,8 @@ class WolpertingerAgent(DDPG):
         self.experiment = args.id
         self.action_space = action_space
         self.k_nearest_neighbors = k
-        self.loss = F.mse_loss
+        self.loss = F.smooth_l1_loss
+        self.policy_delay = 2
         self.MAX_GRAD_NORM = 5.0
         print(f"[WolpertingerAgent] Using {self.k_nearest_neighbors} nearest neighbors.")
 
@@ -313,6 +314,7 @@ class WolpertingerAgent(DDPG):
 
             # Build the target Q-value
             target_q = reward_batch + self.gamma * (1 - terminal_batch.float()) * next_q
+            #print(f"target_q: {target_q}")
 
         # ---------------------------------------------------------
         # 2) Update both critics
@@ -322,6 +324,7 @@ class WolpertingerAgent(DDPG):
         action_embedded_batch = action_embedded_batch.unsqueeze(1) # B, 1, embedding_dim for the k-nearest neighbors dimension
         self.critic1_optim.zero_grad()
         current_q1 = self.critic1(x_t_batch, action_embedded_batch)
+        #print(f"current_q1: {current_q1}")
         current_q1 = current_q1.squeeze(1) # B
         loss_q1 = self.loss(current_q1, target_q)
         loss_q1.backward()
@@ -348,7 +351,9 @@ class WolpertingerAgent(DDPG):
             self.actor_optim.zero_grad()
             proto_embedded_action_batch = self.actor(x_t_batch)
             q_actor = self.critic1(x_t_batch, proto_embedded_action_batch)
-            policy_loss = -q_actor.mean()
+            print(f"q_actor: {q_actor}")
+            # Compute the policy loss as the negative Q-value
+            policy_loss = - q_actor.mean()
             policy_loss.backward()
             actor_grad_norm = get_grad_norm(self.actor.parameters())
             torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.MAX_GRAD_NORM)
@@ -360,8 +365,12 @@ class WolpertingerAgent(DDPG):
             policy_loss = torch.tensor(0.)  # no actor update this step
             actor_grad_norm = 0.
 
+
         soft_update(self.critic1_target, self.critic1, self.tau_update)
         soft_update(self.critic2_target, self.critic2, self.tau_update)
+
+        #if step == 200:
+            #assert False, "Debugging step"
 
         # ---------------------------------------------------------
         # 4) Logging with wandb (optional)
