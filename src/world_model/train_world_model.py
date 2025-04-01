@@ -70,24 +70,15 @@ def world_model_train(
 ):
     """
     Train the world model using state encoding, action embedding, and a transition model.
-    
-    Args:
-        state_encoder (nn.Module): Encoder network for the state.
-        action_embedder (nn.Module): Embedder network for the action.
-        transition_model (nn.Module): Transition model predicting next state and shape.
-        world_model_args (dict): Dictionary with training hyperparameters (epochs, lr, batch_size, max_iter).
-        save_model_dir (str): Directory path to save model checkpoints.
-        logger: (optional) Logger object with a log() method.
-        save_per_epochs (int): Save model checkpoint every N epochs.
-        eval_interval (int): Evaluate the model every N epochs.
-    
-    Returns:
-        Tuple of trained (state_encoder, action_embedder, transition_model).
     """
     epochs = world_model_args.get('epochs', 10)
     lr = world_model_args.get('lr', 1e-3)
     batch_size = world_model_args.get('batch_size', 32)
     max_iter = world_model_args.get('max_iter', None)
+    # Early stopping parameters
+    patience = world_model_args.get('early_stopping_patience', 3)
+    best_eval_non_padded_loss = float('inf')
+    patience_counter = 0
 
     # Create optimizer for all network parameters
     optimizer = torch.optim.Adam(
@@ -146,7 +137,7 @@ def world_model_train(
             action_encoded = action_embedder(action)
             next_shape_logits, next_state_logits = transition_model(state_encoded, action_encoded)
 
-            # calculate the losses
+            # Calculate the losses
             total_loss, state_loss, shape_loss, non_padded_loss = loss_fn(
                 next_state_logits, next_shape_logits, next_current_state, next_current_shape
             )
@@ -172,17 +163,17 @@ def world_model_train(
         transition_model.save_weights(save_model_dir)
         logger.info(f'Saved model weights to {save_model_dir}')
     
-        # print the average loss
+        # Print the average loss for the epoch
         avg_loss = np.mean(total_losses)
         avg_shape_loss = np.mean(shape_losses)
         avg_state_loss = np.mean(state_losses)
         avg_non_padded_loss = np.mean(non_padded_losses)
         logger.info(f"Epoch {epoch+1}/{epochs} - Loss: {avg_loss:.4f}, Shape Loss: {avg_shape_loss:.4f}, State Loss: {avg_state_loss:.4f}, Non-Padded Loss: {avg_non_padded_loss:.4f}")
         wandb.log({
-            "train_loss": avg_loss,
-            "train_shape_loss": avg_shape_loss,
-            "train_state_loss": avg_state_loss,
-            "train_non_padded_loss": avg_non_padded_loss,
+            "world_model/train_loss": avg_loss,
+            "world_model/train_shape_loss": avg_shape_loss,
+            "world_model/train_state_loss": avg_state_loss,
+            "world_model/train_non_padded_loss": avg_non_padded_loss,
         })
 
         # Save checkpoint every save_per_epochs epochs
@@ -203,21 +194,34 @@ def world_model_train(
             )
             logger.info(f"Evaluation - Loss: {eval_loss:.4f}, Shape Loss: {eval_shape_loss:.4f}, State Loss: {eval_state_loss:.4f}. Non-Padded Loss: {eval_non_padded_loss:.4f}")
             wandb.log({
-                "eval_loss": eval_loss,
-                "eval_shape_loss": eval_shape_loss,
-                "eval_state_loss": eval_state_loss,
-                "eval_non_padded_loss": eval_non_padded_loss,
+                "world_model/eval_loss": eval_loss,
+                "world_model/eval_shape_loss": eval_shape_loss,
+                "world_model/eval_state_loss": eval_state_loss,
+                "world_model/eval_non_padded_loss": eval_non_padded_loss,
             })
 
-        # Plot what is going on
+            # Early stopping check based on evaluation non_padded_loss
+            if eval_non_padded_loss < best_eval_non_padded_loss:
+                best_eval_non_padded_loss = eval_non_padded_loss
+                patience_counter = 0  # Reset the counter if improvement is observed
+            else:
+                patience_counter += 1
+                logger.info(f"No improvement in non_padded_loss for {patience_counter} consecutive epoch(s).")
+                if patience_counter >= patience:
+                    logger.info(f"Early stopping triggered at epoch {epoch+1} due to overfitting.")
+                    break
+
+        # Plot the results at specified intervals
         if (epoch+1) % plot_interval == 0:
             plot_world_model(state_encoder, action_embedder, transition_model, test_loader, DEVICE, world_model_args, epoch, save_model_dir)
             logger.info(f"Plotting results for epoch {epoch+1}")
+        
         # Exit early if global_step reached max_iter
         if max_iter is not None and global_step >= max_iter:
             break
 
     return state_encoder, action_embedder, transition_model
+
 
 def evaluate_world_model(state_encoder, action_embedder, transition_model, test_loader, device):
     """
