@@ -31,8 +31,14 @@ class WorldModelDataset(Dataset):
 
         self.current_state = torch.tensor(self.current_state, dtype=torch.float32).to(DEVICE).long()
         self.current_shape = torch.tensor(self.current_shape, dtype=torch.float32).to(DEVICE).long()
+        assert torch.all(self.current_state >= 0) and torch.all(self.current_state <= 10), "State values out of bounds"
+        assert torch.all(self.current_shape >= 0) and torch.all(self.current_shape <= 29), "Shape values out of bounds"
+
         self.target_state = torch.tensor(self.target_state, dtype=torch.float32).to(DEVICE).long()
         self.target_shape = torch.tensor(self.target_shape, dtype=torch.float32).to(DEVICE).long()
+        assert torch.all(self.target_state >= 0) and torch.all(self.target_state <= 10), "State values out of bounds"
+        assert torch.all(self.target_shape >= 0) and torch.all(self.target_shape <= 29), "Shape values out of bounds"
+
         self.action = torch.tensor(self.action, dtype=torch.float32).to(DEVICE).long()
         self.terminal = torch.tensor(self.terminal, dtype=torch.bool).to(DEVICE).long()
         print('Data loaded successfully.')
