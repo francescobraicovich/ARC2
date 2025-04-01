@@ -30,6 +30,7 @@ class Actor(nn.Module):
             if isinstance(m, nn.Linear):
                 nn.init.xavier_uniform_(m.weight)
                 nn.init.zeros_(m.bias)
+                
     def forward(self, x_t):
         """
         Forward pass of the Actor network.
@@ -37,7 +38,10 @@ class Actor(nn.Module):
         x = self.gelu(self.concat_fc(x_t))  # [batch, h1_dim]
         x = self.gelu(self.fc1(x))  # [batch, h2_dim]
         out = self.fc2(x)  # [batch, action_emb_dim]
-        return out
+        
+        # Normalize the output to ensure the vector has L2 norm of 1
+        normalized_out = F.normalize(out, p=2, dim=-1)
+        return normalized_out
 
 # Critic Network
 class Critic(nn.Module):
