@@ -134,7 +134,6 @@ def main():
 
     # 8. Define state and action dimensions
     nb_states = 1805
-    continuous = False
 
     # 9. Create the agent
     agent_args = {
@@ -154,7 +153,6 @@ def main():
     if args.mode == 'train':
         logger.info('Starting Training...')
         train(
-            continuous=continuous,
             train_env=train_env,
             eval_env=eval_env,
             state_encoder=state_encoder,
