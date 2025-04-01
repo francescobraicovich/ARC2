@@ -9,7 +9,6 @@ from utils.util import to_tensor
 from dsl.utilities.plot import plot_step
 
 def train(
-    continuous,
     train_env,
     eval_env,
     state_encoder,
@@ -25,23 +24,6 @@ def train(
     eval_interval,
     eval_episodes
 ):
-    """
-    Train loop that also periodically evaluates on 'eval_env'.
-
-    :param continuous: Whether the action space is continuous (bool)
-    :param train_env: Training environment instance
-    :param eval_env: Evaluation environment instance
-    :param agent: The WolpertingerAgent
-    :param max_episode: Max number of training episodes
-    :param max_actions: Global maximum number of environment actions
-    :param warmup: Steps to fill the buffer with random actions
-    :param save_model_dir: Directory to save the model weights
-    :param max_episode_length: Max steps per episode
-    :param logger: Logger instance
-    :param save_per_epochs: Frequency (in episodes) for saving model
-    :param eval_interval: Evaluate every N training episodes
-    :param eval_episodes: Number of episodes to run in evaluation
-    """
     agent.is_training = True
 
     step = 0
@@ -144,6 +126,7 @@ def train(
                 evaluate(
                     agent=agent,
                     eval_env=eval_env,
+                    state_encoder=state_encoder,
                     episodes=eval_episodes,
                     max_episode_length=max_episode_length,
                     logger=logger
@@ -163,6 +146,7 @@ def train(
 def evaluate(
     agent,
     eval_env,
+    state_encoder,
     episodes,
     max_episode_length,
     logger
@@ -173,13 +157,14 @@ def evaluate(
 
     :param agent: WolpertingerAgent
     :param eval_env: ARC_Env_Eval environment
+    :param state_encoder: State encoder to encode environment states
     :param episodes: Number of episodes to run for evaluation
     :param max_episode_length: Max steps in an eval episode
     :param logger: Logger
     """
     agent.is_training = False
-    saved_epsilon = agent.epsilon # Save epsilon value for restoration after evaluation
-    agent.epsilon = 0.0 # Set epsilon to 0 for evaluation so that no exploration is performed
+    saved_epsilon = agent.epsilon  # Save epsilon value for restoration after evaluation
+    agent.epsilon = 0.0  # Set epsilon to 0 for evaluation so that no exploration is performed
     agent.eval()
 
     total_rewards = []
@@ -188,7 +173,8 @@ def evaluate(
         state, shape = eval_env.reset()
         state = to_tensor(state, device=agent.device, requires_grad=False)
         shape = to_tensor(shape, device=agent.device, requires_grad=False)
-        agent.reset(state, shape)
+        x_state = state_encoder.encode(state, shape)
+        agent.reset(x_state)
 
         episode_reward = 0.0
         episode_positive_rewards = 0
@@ -198,11 +184,12 @@ def evaluate(
         steps = 0
 
         while not (done or truncated):
-            action, _ = agent.select_action(state, shape, decay_epsilon=False)
+            action = agent.select_action(x_state)
             (next_state, next_shape), reward, done, truncated, info = eval_env.step(action)
 
             next_state = to_tensor(next_state, device=agent.device, requires_grad=False)
             next_shape = to_tensor(next_shape, device=agent.device, requires_grad=False)
+            x_next = state_encoder.encode(next_state, next_shape)
 
             episode_reward += reward
             if reward > 0:
@@ -211,11 +198,10 @@ def evaluate(
                 num_equal_states += 1
             if done:
                 print("episode solved")
-                print('info: ', info)
+                print("info:", info)
             steps += 1
 
-            state = next_state
-            shape = next_shape
+            x_state = x_next
 
             if max_episode_length and steps >= max_episode_length:
                 truncated = True
@@ -226,15 +212,13 @@ def evaluate(
     avg_eval_reward = np.mean(total_rewards)
     logger.info(f"[Eval] Average Reward over {episodes} episodes: {avg_eval_reward:.2f}")
 
-    # wandb logging
     wandb.log({
         "eval/episodes": episodes,
         "eval/average_reward": avg_eval_reward
     })
 
-    # Switch agent back to training mode
     agent.is_training = True
-    agent.epsilon = saved_epsilon # Restore epsilon value
+    agent.epsilon = saved_epsilon
 
 def Test_1(agent, env, max_episode_length, logger, max_iterations=1000):
     """
