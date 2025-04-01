@@ -324,9 +324,6 @@ class WolpertingerAgent(DDPG):
         action_embedded_batch = action_embedded_batch.unsqueeze(1) # B, 1, embedding_dim for the k-nearest neighbors dimension
         self.critic1_optim.zero_grad()
         current_q1 = self.critic1(x_t_batch, action_embedded_batch)
-        print('')
-        print(f'action_embedded_batch mean: {action_embedded_batch.mean()}')
-        print(f"current_q1 mean: {current_q1.mean()}")
         current_q1 = current_q1.squeeze(1) # B
         loss_q1 = self.loss(current_q1, target_q)
         loss_q1.backward()
@@ -353,13 +350,10 @@ class WolpertingerAgent(DDPG):
             # Actor update
             self.actor_optim.zero_grad()
             proto_embedded_action_batch = self.actor(x_t_batch)
-            print(f"proto_embedded_action_batch mean: {proto_embedded_action_batch.mean()}")
             q_actor = self.critic1(x_t_batch, proto_embedded_action_batch)
-            print(f"q_actor mean: {q_actor.mean()}")
             
             # Compute the policy loss as the negative Q-value
             policy_loss = - q_actor.mean()
-            print(f"policy_loss: {policy_loss}")
             policy_loss.backward()
             actor_grad_norm = get_grad_norm(self.actor.parameters())
             torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.MAX_GRAD_NORM)
