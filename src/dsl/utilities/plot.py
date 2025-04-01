@@ -234,6 +234,16 @@ def save_grid(grid, title=None, save_path=None):
     grid_3d = np.expand_dims(grid, axis=0)
     save_grid_3d(grid_3d, title=title, save_path=save_path)
 
+def save_grids(grid1, grid2, title=None, save_path=None):
+    """
+    Plots two 2D grids side by side.
+    """
+    total_grid = np.zeros((30, 60))
+    total_grid[0:30, 0:30] = grid1
+    total_grid[0:30, 30:60] = grid2
+    grid_3d = np.expand_dims(total_grid, axis=0)
+    save_grid_3d(grid_3d, title=title, save_path=save_path)
+
 def plot_step(state, next_state, shape, next_shape, r_t, info):
     fig, axs = plt.subplots(2, 2, figsize=(8, 8))
 
