@@ -1,14 +1,15 @@
 name: myenv
 channels:
-  - conda-forge
+  - nvidia
+  - pytorch
   - defaults
 dependencies:
-  - python
+  - python=3.10
+  - pytorch
+  - pytorch-cuda=12.1
   - gymnasium
   - scikit-image
   - setproctitle
-  - pytorch
-  - wandb
   - matplotlib
   - scikit-learn
   - tqdm

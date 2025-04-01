@@ -68,7 +68,6 @@ class ContextTransformer2D(nn.Module):
 
     def forward(self, x_t, e_t, tgt_key_padding_mask=None):
         B = x_t.size(0)
-
         # Project context tokens and add learned positional encodings.
         x_proj = self.state_proj(x_t) + self.ctx_pos_emb[0]  # [B, emb_dim]
         e_proj = self.action_proj(e_t) + self.ctx_pos_emb[1]   # [B, emb_dim]
@@ -152,7 +151,7 @@ class ContextTransformer2D(nn.Module):
 
             # Post-process: for grid positions that are padded, force token to -1.
             full_mask_grid = full_mask[:, 2:]  # [B, 900]
-            sampled_rest[full_mask_grid] = -1
+            sampled_rest[full_mask_grid] = 0
 
             return sampled_first, sampled_rest
         
