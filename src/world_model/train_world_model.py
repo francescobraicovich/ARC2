@@ -9,6 +9,8 @@ import numpy as np
 from utils.util import set_device
 from world_model.memory_data_load import WorldModelDataset
 
+from dsl.utilities.plot import save_grid, to_numpy
+
 # Determine the device: CUDA -> MPS -> CPU
 DEVICE = set_device('world_model/train_world_model.py')
 
@@ -21,6 +23,7 @@ def world_model_train(
     logger=None,
     save_per_epochs=1,
     eval_interval=1,
+    plot_interval=1
 ):
     """
     Train the world model using state encoding, action embedding, and a transition model.
@@ -160,6 +163,10 @@ def world_model_train(
                 "eval_state_loss": eval_state_loss,
             })
 
+        # Plot what is going on
+        if (epoch+1) % plot_interval == 0:
+            plot_world_model(state_encoder, action_embedder, transition_model, test_loader, DEVICE, world_model_args, epoch, save_model_dir)
+            logger.info(f"Plotting results for epoch {epoch+1}")
         # Exit early if global_step reached max_iter
         if max_iter is not None and global_step >= max_iter:
             break
@@ -239,3 +246,89 @@ def evaluate_world_model(state_encoder, action_embedder, transition_model, test_
         transition_model.save_model(save_model_dir)
 
     return state_encoder, action_embedder, transition_model"""
+
+def plot_world_model(state_encoder, action_embedder, transition_model,
+                     test_loader, device, world_model_args, epoch, save_dir=None):
+    """
+    Plot the results of the world model training, saving the plots to a 'plots' folder
+    within 'save_dir' if provided.
+    """
+    import os
+    import torch
+
+    # 1) Create a 'plots' subdirectory in save_dir
+    plots_dir = None
+    if save_dir is not None:
+        plots_dir = os.path.join(save_dir, "plots")
+        os.makedirs(plots_dir, exist_ok=True)  # Make sure it exists
+
+    state_encoder.eval()
+    action_embedder.eval()
+    transition_model.eval()
+
+    batch_size = world_model_args.get('batch_size', 32)
+
+    with torch.no_grad():
+        for batch in test_loader:
+            # Suppose shapes: (batch_size, 900), (batch_size, 2)
+            current_state = batch['current_state'].to(device)
+            current_shape = batch['current_shape'].to(device)
+            next_current_state = batch['target_state'].to(device)
+            next_current_shape = batch['target_shape'].to(device)
+            action = batch['action'].to(device)
+
+            # Model outputs
+            state_encoded = state_encoder(current_state, current_shape, dropout_eval=True)
+            action_encoded = action_embedder(action)
+            next_shape, next_state = transition_model.generate(state_encoded, action_encoded)
+
+            # Reshape
+            grid_30x30_predicted = next_state.view(batch_size, 30, 30)
+            grid_30x30_actual    = next_current_state.view(batch_size, 30, 30)
+
+            # Pick 5 samples to plot
+            random_indices = torch.randperm(batch_size)[:5]
+
+            # Collect and plot data
+            for i in random_indices:
+                i_int = i.item()
+                rows_pred, cols_pred = next_shape[i]         # shape predicted
+                rows_act, cols_act = next_current_shape[i]   # shape actual
+
+                # Convert to numpy
+                predicted_full   = grid_30x30_predicted[i].cpu().numpy()
+                predicted_cropped= predicted_full[:rows_pred, :cols_pred]
+                actual_full      = grid_30x30_actual[i].cpu().numpy()
+                actual_cropped   = actual_full[:rows_act, :cols_act]
+
+                # 2) Build a filename in the 'plots' directory
+                # e.g. "plots/predicted_full_idx42.png"
+                # You can incorporate epoch, global_step, or i_int in the name
+                if plots_dir is not None:
+                    predicted_full_path    = os.path.join(plots_dir, f'e{epoch}_{i_int}_predicted_full.png')
+                    predicted_cropped_path = os.path.join(plots_dir, f'e{epoch}_{i_int}_predicted_cropped.png')
+                    actual_full_path       = os.path.join(plots_dir, f'e{epoch}_{i_int}_actual_full.png')
+                    actual_cropped_path    = os.path.join(plots_dir, f'e{epoch}_{i_int}_actual_cropped.png')
+                else:
+                    # If no save_dir was provided, we don't save
+                    predicted_full_path    = None
+                    predicted_cropped_path = None
+                    actual_full_path       = None
+                    actual_cropped_path    = None
+
+                # 3) Plot and save each image
+                save_grid(predicted_full,
+                          title=f'Predicted Full - idx={i_int}',
+                          save_path=predicted_full_path)
+                save_grid(predicted_cropped,
+                          title=f'Predicted Cropped - idx={i_int}',
+                          save_path=predicted_cropped_path)
+                save_grid(actual_full,
+                          title=f'Actual Full - idx={i_int}',
+                          save_path=actual_full_path)
+                save_grid(actual_cropped,
+                          title=f'Actual Cropped - idx={i_int}',
+                          save_path=actual_cropped_path)
+
+            # Exit after plotting one batch to avoid huge spam
+            break
