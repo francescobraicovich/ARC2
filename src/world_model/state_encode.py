@@ -165,12 +165,16 @@ class EncoderTransformer(nn.Module):
 
         # Embed grid shape tokens.
         # grid_shapes: (B, 2, 2)
-        grid_shapes_row = shape[:, 0].long() - 1  # (B)
+        grid_shapes_row = shape[:, 0].long()  # (B)
+        assert torch.all(grid_shapes_row >= 0) and torch.all(grid_shapes_row < config.max_rows), \
+            f"Grid shape row indices should be between 0 and {config.max_rows - 1}, got {grid_shapes_row.min()} and {grid_shapes_row.max()}"
         grid_shapes_row_embed = self.grid_shapes_row_embed(grid_shapes_row)  # (B, emb_dim)
         grid_shapes_row_embed = grid_shapes_row_embed.unsqueeze(1)  # (B, 1, emb_dim)
 
-        grid_shapes_col = shape[:, 1].long() - 1  # (B)
+        grid_shapes_col = shape[:, 1].long()  # (B)
         grid_shapes_col_embed = self.grid_shapes_col_embed(grid_shapes_col)  # (B, emb_dim)
+        assert torch.all(grid_shapes_col >= 0) and torch.all(grid_shapes_col < config.max_cols), \
+            f"Grid shape column indices should be between 0 and {config.max_cols - 1}, got {grid_shapes_col.min()} and {grid_shapes_col.max()}"
         grid_shapes_col_embed = grid_shapes_col_embed.unsqueeze(1)  # (B, 1, emb_dim) 
 
         # Concatenate row and column grid tokens.
