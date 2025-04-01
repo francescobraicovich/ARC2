@@ -97,7 +97,20 @@ class EncoderTransformer(nn.Module):
             latent_mu: Tensor of shape (B, latent_dim)
             latent_logvar: Tensor of shape (B, latent_dim) or None.
         """
+        # assert that all state values are between 0 and vocab_size
+        assert torch.all(state >= 0) and torch.all(state < self.config.vocab_size), \
+            f"Input colors should be between 0 and {self.config.vocab_size - 1}, got {state.min()} and {state.max()}"
+        # assert that all shape values are between 0 and max_rows/max_cols
+        assert torch.all(shape[:, 0] >= 0) and torch.all(shape[:, 0] < self.config.max_rows), \
+            f"Input rows should be between 0 and {self.config.max_rows - 1}, got {shape[:, 0].min()} and {shape[:, 0].max()}"
+        assert torch.all(shape[:, 1] >= 0) and torch.all(shape[:, 1] < self.config.max_cols), \
+            f"Input cols should be between 0 and {self.config.max_cols - 1}, got {shape[:, 1].min()} and {shape[:, 1].max()}"
+
         x = self.embed_grids(state, shape, dropout_eval)
+
+        # assert the input tensor has colors between 0 and vocab_size
+        assert torch.all(state >= 0) and torch.all(state < self.config.vocab_size), \
+            f"Input colors should be between 0 and {self.config.vocab_size - 1}, got {state.min()} and {state.max()}"
 
         pad_mask = self.make_pad_mask(shape)
         for layer in self.transformer_layers:
@@ -208,10 +221,10 @@ class EncoderTransformer(nn.Module):
         return pad_mask
     
     def encode(self, state, shape, new_episode=False):
-        current_state = state[:, :, 1]
-        target_state = state[:, :, 0]
-        current_shape = shape[0, :]
-        target_shape = shape[1, :]
+        current_state = state[:, :, 1] + 1 # ensure values are between 0 and 10 (padding tokens go from -1 to 0)
+        target_state = state[:, :, 0] + 1 # ensure values are between 0 and 10 (padding tokens go from -1 to 0)
+        current_shape = shape[0, :] - 1 # ensure values are between 0 and 29 (1 to 30 would break the embedding)
+        target_shape = shape[1, :] - 1 # ensure values are between 0 and 29 (1 to 30 would break the embedding)
 
         # unsqueeze to add batch dimension
         current_state = current_state.unsqueeze(0)
