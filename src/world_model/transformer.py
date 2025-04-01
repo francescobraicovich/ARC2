@@ -56,7 +56,6 @@ class EncoderTransformerConfig:
         # Derived property: total sequence length (flattened grid)
         self.max_len = max_rows * max_cols
 
-
 class MlpBlock(nn.Module):
     """
     Position-wise feed-forward network used in transformers.
@@ -89,14 +88,15 @@ class MlpBlock(nn.Module):
 
 class TransformerLayer(nn.Module):
     """
-    A single transformer encoder block.
+    A single transformer encoder block with improved layer normalization and residual scaling.
     """
     def __init__(self, config: EncoderTransformerConfig):
         super().__init__()
         self.config = config
 
-        self.ln1 = nn.LayerNorm(config.emb_dim, elementwise_affine=False)
-        self.ln2 = nn.LayerNorm(config.emb_dim, elementwise_affine=False)
+        # Use learnable layer norms (elementwise_affine=True)
+        self.ln1 = nn.LayerNorm(config.emb_dim, elementwise_affine=True)
+        self.ln2 = nn.LayerNorm(config.emb_dim, elementwise_affine=True)
 
         self.mha = nn.MultiheadAttention(
             embed_dim=config.emb_dim,
@@ -108,6 +108,10 @@ class TransformerLayer(nn.Module):
 
         self.mlp_block = MlpBlock(config)
         self.resid_dropout = nn.Dropout(p=config.dropout_rate)
+
+        # Learnable scaling factors for the residual connections
+        self.res_scale_attn = nn.Parameter(torch.ones(1))
+        self.res_scale_mlp = nn.Parameter(torch.ones(1))
 
     def forward(
         self,
@@ -124,9 +128,10 @@ class TransformerLayer(nn.Module):
             elif pad_mask.dim() == 2:
                 key_padding_mask = pad_mask
 
-        x = self.ln1(embeddings)
+        # Pre-normalization before attention
+        normed_embeddings = self.ln1(embeddings)
         attn_output, _ = self.mha(
-            x, x, x,
+            normed_embeddings, normed_embeddings, normed_embeddings,
             attn_mask=attn_mask,
             key_padding_mask=key_padding_mask,
             need_weights=False,
@@ -134,11 +139,14 @@ class TransformerLayer(nn.Module):
 
         dropout_p = 0.0 if dropout_eval else self.config.dropout_rate
         attn_output = F.dropout(attn_output, p=dropout_p, training=not dropout_eval)
-        embeddings = embeddings + attn_output
+        # Residual connection with learnable scaling
+        embeddings = embeddings + self.res_scale_attn * attn_output
 
-        x = self.ln2(embeddings)
-        mlp_out = self.mlp_block(x, dropout_eval=dropout_eval)
+        # Pre-normalization before MLP
+        normed_embeddings = self.ln2(embeddings)
+        mlp_out = self.mlp_block(normed_embeddings, dropout_eval=dropout_eval)
         mlp_out = F.dropout(mlp_out, p=dropout_p, training=not dropout_eval)
-        embeddings = embeddings + mlp_out
+        # Residual connection with learnable scaling
+        embeddings = embeddings + self.res_scale_mlp * mlp_out
 
         return embeddings
