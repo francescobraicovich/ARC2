@@ -49,7 +49,7 @@ def init_parser(alg):
         parser.add_argument('--mode', default='train', type=str, help='Mode: train/test')
         parser.add_argument('--id', default='0', type=str, help='Experiment ID')
         parser.add_argument('--load', default=False, metavar='L', help='Load a trained model')
-        parser.add_argument('--load-model-dir', default='ARC-run4', metavar='LMD', help='Folder to load trained models from')
+        parser.add_argument('--load-model-dir', default='ARC-run24', metavar='LMD', help='Folder to load trained models from')
         parser.add_argument('--eval-interval', default=200, type=int, help='Evaluate model every X episodes')
         parser.add_argument('--eval-episodes', default=25, type=int, help='Number of episodes to evaluate')
 
@@ -79,8 +79,8 @@ def init_parser(alg):
         parser.add_argument('--h2_dim_critic', default=512, type=int, help='Hidden units in the second fully connected layer')
 
         # World Model Embedding
-        parser.add_argument('--world_model_pre_train', default=True, type=bool, help='Pre-train world model before the RL loop')
-        parser.add_argument('--load_world_model_weights', default=False, type=bool, help='Load pre-trained world model from load-model-dir folder')
+        parser.add_argument('--world_model_pre_train', default=False, type=bool, help='Pre-train world model before the RL loop')
+        parser.add_argument('--load_world_model_weights', default=True, type=bool, help='Load pre-trained world model from load-model-dir folder')
         parser.add_argument('--world_model_pre_train_epochs', default=30, type=int, help='Number of epochs for pre-training world model')
         parser.add_argument('--world_model_pre_train_batch_size', default=32, type=int, help='Batch size for pre-training world model')
         parser.add_argument('--world_model_pre_train_lr', default=1e-3, type=float, help='Learning rate for pre-training world model')
