@@ -1,9 +1,10 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
+import os
 from utils.util import set_device
-DEVICE = set_device('world_model/transition_decode.py')
+# Assume DEVICE is defined somewhere, for example:
+DEVICE = set_device('transition_decode.py')
 
 class ContextTransformer2D(nn.Module):
     def __init__(
@@ -36,10 +37,10 @@ class ContextTransformer2D(nn.Module):
         # For the first two tokens, we use a learned 1D positional embedding.
         self.pos_emb = nn.Parameter(torch.randn(2, emb_dim)).to(DEVICE)
         self.shape_token_transform = nn.Sequential(
-                        nn.Linear(emb_dim, emb_dim),
-                        nn.LayerNorm(emb_dim),
-                        nn.GELU()
-                    ).to(DEVICE)
+            nn.Linear(emb_dim, emb_dim),
+            nn.LayerNorm(emb_dim),
+            nn.GELU()
+        ).to(DEVICE)
 
         # For grid tokens (900 tokens), we use 2D positional embeddings.
         # Create separate embeddings for row and column positions.
@@ -48,6 +49,11 @@ class ContextTransformer2D(nn.Module):
 
         # Positional encodings for the 2 context tokens.
         self.ctx_pos_emb = nn.Parameter(torch.randn(2, emb_dim)).to(DEVICE)
+
+        # Additional normalization layers for a SOTA approach:
+        self.input_layer_norm_tgt = nn.LayerNorm(emb_dim, elementwise_affine=True).to(DEVICE)
+        self.memory_layer_norm = nn.LayerNorm(emb_dim, elementwise_affine=True).to(DEVICE)
+        self.decoder_output_norm = nn.LayerNorm(emb_dim, elementwise_affine=True).to(DEVICE)
 
         # Transformer Decoder layers.
         decoder_layer = nn.TransformerDecoderLayer(
@@ -71,33 +77,36 @@ class ContextTransformer2D(nn.Module):
         # Project context tokens and add learned positional encodings.
         x_proj = self.state_proj(x_t) + self.ctx_pos_emb[0]  # [B, emb_dim]
         e_proj = self.action_proj(e_t) + self.ctx_pos_emb[1]   # [B, emb_dim]
-
-        # Stack the two context tokens to form the memory for the decoder.
+        # Normalize memory tokens.
         memory = torch.stack([x_proj, e_proj], dim=1)          # [B, 2, emb_dim]
+        memory = self.memory_layer_norm(memory)
 
         # Prepare target (tgt) tokens.
         # For the first two tokens, add 1D positional embeddings.
-        # In forward, modify first_two tokens:
-        first_two = self.query_emb[:2] + self.pos_emb  # [2, emb_dim]
-        first_two = self.shape_token_transform(first_two)  # Enhance representation
+        first_two = self.query_emb[:2] + self.pos_emb         # [2, emb_dim]
+        first_two = self.shape_token_transform(first_two)       # Enhance representation
 
         # For the grid tokens, add 2D positional embeddings.
-        grid_tokens = self.query_emb[2:]  # [900, emb_dim]
+        grid_tokens = self.query_emb[2:]                        # [900, emb_dim]
         # Create grid positions (row-major order).
         rows = torch.arange(self.grid_size, device=x_t.device).unsqueeze(1).repeat(1, self.grid_size).flatten()  # [900]
         cols = torch.arange(self.grid_size, device=x_t.device).unsqueeze(0).repeat(self.grid_size, 1).flatten()  # [900]
-        grid_pos = self.row_emb[rows] + self.col_emb[cols]  # [900, emb_dim]
+        grid_pos = self.row_emb[rows] + self.col_emb[cols]      # [900, emb_dim]
         grid_tokens = grid_tokens + grid_pos
 
         # Concatenate first two tokens and grid tokens.
-        tgt = torch.cat([first_two, grid_tokens], dim=0)  # [902, emb_dim]
-        tgt = tgt.unsqueeze(0).expand(B, -1, -1)           # [B, 902, emb_dim]
+        tgt = torch.cat([first_two, grid_tokens], dim=0)        # [902, emb_dim]
+        # Normalize the target tokens before decoding.
+        tgt = self.input_layer_norm_tgt(tgt)
+        tgt = tgt.unsqueeze(0).expand(B, -1, -1)                # [B, 902, emb_dim]
 
         # Create a standard causal mask for autoregressive decoding.
         causal_mask = torch.triu(torch.ones(self.seq_len, self.seq_len, device=x_t.device), diagonal=1).bool()
 
         # Pass the optional key padding mask into the decoder (if provided).
         output = self.decoder(tgt, memory, tgt_mask=causal_mask, tgt_key_padding_mask=tgt_key_padding_mask)
+        # Normalize the decoder output.
+        output = self.decoder_output_norm(output)
 
         # Split outputs for the two segments.
         logits_first = self.head_first(output[:, :2])   # [B, 2, vocab_size_first]
@@ -124,58 +133,39 @@ class ContextTransformer2D(nn.Module):
             ).view(x_t.size(0), 2)
 
             # === Stage 2: Compute key padding mask for grid tokens based on grid shape ===
-            # Assume the first token indicates the number of valid rows,
-            # and the second token indicates the number of valid columns.
             B = x_t.size(0)
             grid_mask = torch.zeros((B, self.grid_size, self.grid_size), dtype=torch.bool, device=x_t.device)
             for b in range(B):
                 valid_rows = int(sampled_first[b, 0].item())
                 valid_cols = int(sampled_first[b, 1].item())
-                # Mark positions beyond the valid region as padded.
                 grid_mask[b, valid_rows:, :] = True
                 grid_mask[b, :, valid_cols:] = True
-            # Flatten the grid mask: shape [B, 900]
             grid_mask_flat = grid_mask.view(B, -1)
-            # Full key padding mask: first two tokens (grid shape) are always valid.
             full_mask = torch.cat([torch.zeros(B, 2, dtype=torch.bool, device=x_t.device),
                                     grid_mask_flat], dim=1)
 
             # === Stage 3: Second pass using the dynamic key padding mask ===
             logits_first_masked, logits_rest_masked = self.forward(x_t, e_t, tgt_key_padding_mask=full_mask)
             # For safety, re-use the first tokens from Stage 1.
-            # Now sample grid tokens.
             probs_rest = F.softmax(logits_rest_masked / temperature, dim=-1)
             sampled_rest = torch.multinomial(
                 probs_rest.view(-1, self.head_rest.out_features), 1
             ).view(B, 900)
-
-            # Post-process: for grid positions that are padded, force token to -1.
-            full_mask_grid = full_mask[:, 2:]  # [B, 900]
+            full_mask_grid = full_mask[:, 2:]
             sampled_rest[full_mask_grid] = 0
-
             return sampled_first, sampled_rest
-        
+
     def save_weights(self, path: str):
         """
         Save the model weights to a file.
-        
-        Args:
-            path (str): Path to save the weights.
         """
-        # append 'decoder.pt' to the path
-        path = path + '/decoder.pt'
-        torch.save(self.state_dict(), path)
+        torch.save(self.state_dict(), os.path.join(path, 'decoder.pt'))
 
     def load_weights(self, path: str):
         """
         Load the model weights from a file.
-        
-        Args:
-            path (str): Path to load the weights from.
         """
-        # append 'decoder.pt' to the path
-        path = path + '/decoder.pt'
-        self.load_state_dict(torch.load(path))
+        self.load_state_dict(torch.load(os.path.join(path, 'decoder.pt')))
 
     @property
     def num_parameters(self):
@@ -183,27 +173,3 @@ class ContextTransformer2D(nn.Module):
         Returns the number of parameters in the model.
         """
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
-"""
-# === Testing the Model with Debug Print Statements ===
-if __name__ == "__main__":
-    # Dummy inputs.
-    batch_size = 2
-    state_encoded_dim = 128
-    action_emb_dim = 64
-
-    x_t = torch.randn(batch_size, state_encoded_dim)
-    e_t = torch.randn(batch_size, action_emb_dim)
-
-    # Instantiate the model.
-    model = ContextTransformer2D(state_encoded_dim, action_emb_dim, emb_dim=256, num_layers=4, num_heads=8)
-    
-    print("\n=== Forward Pass (without dynamic mask) ===")
-    logits_first, logits_rest = model(x_t, e_t)
-    
-    print("\n=== Generation (with dynamic masking) ===")
-    sampled_first, sampled_rest = model.generate(x_t, e_t, temperature=0.8)
-    print("Sampled first tokens (grid shape):", sampled_first)
-    print("Sampled grid tokens shape:", sampled_rest.shape)
-    # Optionally, reshape grid tokens to [B, grid_size, grid_size] for visualization.
-    sampled_grid = sampled_rest.view(batch_size, model.grid_size, model.grid_size)
-    print("Sampled grid tokens (reshaped):", sampled_grid)"""
