@@ -4,6 +4,8 @@ import torch.nn as nn
 # go up one directory to import utils
 from utils.util import set_device
 from world_model.transformer import TransformerLayer
+import os
+os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 
 # Determine the device: CUDA -> MPS -> CPU
 DEVICE = set_device('action_space_embed.py')
