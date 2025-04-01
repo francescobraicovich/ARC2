@@ -77,6 +77,7 @@ def main():
     action_embedding = ActionEmbedding(
         num_actions=num_filtered_actions,
         embed_dim=args.action_emb_dim,
+        normalize=True,
     )
     transition_decoder = ContextTransformer2D(
         state_encoded_dim=args.state_encoded_dim,
@@ -110,7 +111,8 @@ def main():
             logger = logger,
             save_per_epochs=10,
         )
-
+    
+    action_embedding.eval()
     action_embedding = action_embedding.export_weights()
     action_space.load_action_embeddings(action_embedding)
     action_space.create_nearest_neighbors()
