@@ -374,15 +374,16 @@ class WolpertingerAgent(DDPG):
         # ---------------------------------------------------------
         # 4) Logging with wandb (optional)
         # ---------------------------------------------------------
-        wandb.log({
-            "train/loss/critic1_loss": loss_q1.item(),
-            "train/loss/critic2_loss": loss_q2.item() if self.double_critic else 0,
-            "train/loss/actor_loss": policy_loss.item(),
-            "train/grad/grad_norm_actor": actor_grad_norm,
-            "train/grad/grad_norm_critic1": critic1_grad_norm,
-            "train/grad/grad_norm_critic2": critic2_grad_norm if self.double_critic else 0,
-            "train/diff/actor_diff": actor_diff,
-            "train/diff/critic1_diff": critic1_diff,
-            "train/diff/critic2_diff": critic2_diff if self.double_critic else 0,
-            "train/diff/critics_diff": critics_diff
-        })
+        if wandb.run is not None:
+            wandb.log({
+                "train/loss/critic1_loss": loss_q1.item(),
+                "train/loss/critic2_loss": loss_q2.item() if self.double_critic else 0,
+                "train/loss/actor_loss": policy_loss.item(),
+                "train/grad/grad_norm_actor": actor_grad_norm,
+                "train/grad/grad_norm_critic1": critic1_grad_norm,
+                "train/grad/grad_norm_critic2": critic2_grad_norm if self.double_critic else 0,
+                "train/diff/actor_diff": actor_diff,
+                "train/diff/critic1_diff": critic1_diff,
+                "train/diff/critic2_diff": critic2_diff if self.double_critic else 0,
+                "train/diff/critics_diff": critics_diff
+            })
