@@ -2,15 +2,14 @@ import argparse
 
 PRESETS = {
     'generate_world_model_data': {
-        'save_memory_at_steps': 5*int(1e4), # 200k
-        'max_episode_length': 60,
+        'save_memory_at_steps': 2*int(1e6),
+        'max_episode_length': 75,
     },
     # Add more presets here
 }
 def check_presets(PRESETS):
     world_model_preset = PRESETS['generate_world_model_data']
 
-    world_model_preset['rmsize'] = world_model_preset['save_memory_at_steps'] + 1
     world_model_preset['max_actions'] = world_model_preset['save_memory_at_steps'] + 1
     world_model_preset['max_episode'] = world_model_preset['save_memory_at_steps'] + 1
     world_model_preset['eval_interval'] = world_model_preset['save_memory_at_steps'] + 1
@@ -25,6 +24,28 @@ def check_presets(PRESETS):
     world_model_preset['state_encoder_num_heads'] = 1
     world_model_preset['state_encoder_num_layers'] = 1
     world_model_preset['state_encoder_dropout'] = 0
+
+    # assert the save_memory_at_steps is divisible by 50
+    assert world_model_preset['save_memory_at_steps'] % 50 == 0, f"save_memory_at_steps should be divisible by 50, but got {world_model_preset['save_memory_at_steps']}"
+    if world_model_preset['save_memory_at_steps'] < 2501:
+            world_model_preset['rmsize'] = world_model_preset['save_memory_at_steps'] + 1
+    elif world_model_preset['save_memory_at_steps'] < 10001:
+         # assert is divisible by 500 for the interval
+        assert world_model_preset['save_memory_at_steps'] % 500 == 0, f"save_memory_at_steps should be divisible by 500 in the interval (2500, 10000), but got {world_model_preset['save_memory_at_steps']}"
+        world_model_preset['rmsize'] = 2500
+    elif world_model_preset['save_memory_at_steps'] < 50001:
+         # assert is divisible by 5000 for the interval
+        assert world_model_preset['save_memory_at_steps'] % 5000 == 0, f"save_memory_at_steps should be divisible by 5000 in the interval (10000, 50000), but got {world_model_preset['save_memory_at_steps']}"
+        world_model_preset['rmsize'] = 5000
+    elif world_model_preset['save_memory_at_steps'] < 100001:
+            # assert is divisible by 10000 for the interval
+            assert world_model_preset['save_memory_at_steps'] % 10000 == 0, f"save_memory_at_steps should be divisible by 10000 in the interval (50000, 100000), but got {world_model_preset['save_memory_at_steps']}"
+            world_model_preset['rmsize'] = 10000
+    else:
+        # assert is divisible by 20000 for the interval
+        assert world_model_preset['save_memory_at_steps'] % 20000 == 0, f"save_memory_at_steps should be divisible by 20000 in the interval (100000, inf), but got {world_model_preset['save_memory_at_steps']}"
+        world_model_preset['rmsize'] = 20000
+
 
     print('World model preset:', world_model_preset)
 
@@ -42,14 +63,14 @@ def init_parser(alg):
         parser = argparse.ArgumentParser(description='WOLP_DDPG')
 
         # PRESETS
-        parser.add_argument('--generate_world_model_data', default=False, type=bool, help='Generate world model data, overwrites some parameters')
+        parser.add_argument('--generate_world_model_data', default=True, type=bool, help='Generate world model data, overwrites some parameters')
 
         # Environment & Training Mode
         parser.add_argument('--env', default='ARC', metavar='ENV', help='Environment to train on')
         parser.add_argument('--mode', default='train', type=str, help='Mode: train/test')
         parser.add_argument('--id', default='0', type=str, help='Experiment ID')
         parser.add_argument('--load', default=False, metavar='L', help='Load a trained model')
-        parser.add_argument('--load-model-dir', default='ARC-run24', metavar='LMD', help='Folder to load trained models from')
+        parser.add_argument('--load-model-dir', default='ARC-run19', metavar='LMD', help='Folder to load trained models from')
         parser.add_argument('--eval-interval', default=200, type=int, help='Evaluate model every X episodes')
         parser.add_argument('--eval-episodes', default=25, type=int, help='Number of episodes to evaluate')
         parser.add_argument('--plot_interval', default=5,type=int, help='Plot every X epochs')
@@ -81,18 +102,19 @@ def init_parser(alg):
 
         # World Model Embedding
         parser.add_argument('--world_model_pre_train', default=True, type=bool, help='Pre-train world model before the RL loop')
+        parser.add_argument('--load-memory-dir', default='ARC-run19', metavar='LMD', help='Folder to load memory from')
         parser.add_argument('--load_world_model_weights', default=False, type=bool, help='Load pre-trained world model from load-model-dir folder')
         parser.add_argument('--world_model_pre_train_epochs', default=100, type=int, help='Number of epochs for pre-training world model')
         parser.add_argument('--world_model_pre_train_batch_size', default=32, type=int, help='Batch size for pre-training world model')
         parser.add_argument('--world_model_pre_train_lr', default=1e-4, type=float, help='Learning rate for pre-training world model')
     
-        parser.add_argument('--state_encoded_dim', default=256, type=int, help='State latent (encoded) dimension')
-        parser.add_argument('--action_emb_dim', default=128, type=int, help='Action embedding dimension')
-        parser.add_argument('--state_emb_dim', default=96, type=int, help='Embedding dimension for state representation in attention')
+        parser.add_argument('--state_encoded_dim', default=32, type=int, help='State latent (encoded) dimension')
+        parser.add_argument('--action_emb_dim', default=32, type=int, help='Action embedding dimension')
+        parser.add_argument('--state_emb_dim', default=32, type=int, help='Embedding dimension for state representation in attention')
         parser.add_argument('--state_encoder_num_heads', default=4, type=int, help='Number of attention heads in state encoder')
         parser.add_argument('--state_encoder_num_layers', default=3, type=int, help='Number of transformer layers in state encoder')
         parser.add_argument('--state_encoder_dropout', default=0, type=float, help='Dropout rate in state encoder')
-        parser.add_argument('--decoder_emb_dim', default=96, type=int, help='Embedding dimension for decoder')
+        parser.add_argument('--decoder_emb_dim', default=32, type=int, help='Embedding dimension for decoder')
         parser.add_argument('--decoder_num_heads', default=4, type=int, help='Number of attention heads in decoder')
         parser.add_argument('--decoder_num_layers', default=2, type=int, help='Number of transformer layers in decoder')
 
@@ -116,8 +138,10 @@ def init_parser(alg):
         parser.add_argument('--init_w', default=0.003, type=float, help='Initial weight')
         parser.add_argument('--seed', default=-1, type=int, help='Random seed')
         parser.add_argument('--save_per_epochs', default=200, type=int, help='Save model every X epochs')
-        parser.add_argument('--save_memory_at_steps', default=2000000, type=int, help='Save memory every X epochs')
+        parser.add_argument('--save_memory_at_steps', default=False, type=int, help='Save memory every X epochs')
+        parser.add_argument('--memory_chunk_size', default=False, type=int, help='Chunk size for memory')
         parser.add_argument('--k_neighbors', default=75, type=int, help='Number of neighbors to consider')
+        parser.add_argument('--wandb_log', default=False, type=bool, help='Log to wandb')
         
         # Apply preset defaults if provided
         if parser.parse_args().generate_world_model_data:
