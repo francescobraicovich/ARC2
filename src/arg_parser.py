@@ -2,7 +2,7 @@ import argparse
 
 PRESETS = {
     'generate_world_model_data': {
-        'save_memory_at_steps': int(1e5), # 200k
+        'save_memory_at_steps': 2*int(1e4), # 200k
         'max_episode_length': 60,
     },
     # Add more presets here
@@ -14,7 +14,7 @@ def check_presets(PRESETS):
     world_model_preset['max_actions'] = world_model_preset['save_memory_at_steps'] + 1
     world_model_preset['max_episode'] = world_model_preset['save_memory_at_steps'] + 1
     world_model_preset['eval_interval'] = world_model_preset['save_memory_at_steps'] + 1
-    world_model_preset['warmpup'] = world_model_preset['save_memory_at_steps'] + 1
+    world_model_preset['warmup'] = world_model_preset['save_memory_at_steps'] + 1
     world_model_preset['eval_episodes'] = 0
     world_model_preset['world_model_pre_train'] = False
     world_model_preset['load_world_model_weights'] = False
@@ -25,6 +25,8 @@ def check_presets(PRESETS):
     world_model_preset['state_encoder_num_heads'] = 1
     world_model_preset['state_encoder_num_layers'] = 1
     world_model_preset['state_encoder_dropout'] = 0
+
+    print('World model preset:', world_model_preset)
 
     # assert the embedding dimension is divisible by the number of heads
     assert world_model_preset['state_emb_dim'] % world_model_preset['state_encoder_num_heads'] == 0
@@ -40,7 +42,7 @@ def init_parser(alg):
         parser = argparse.ArgumentParser(description='WOLP_DDPG')
 
         # PRESETS
-        parser.add_argument('--generate_world_model_data', default=False, type=bool, help='Generate world model data, overwrites some parameters')
+        parser.add_argument('--generate_world_model_data', default=True, type=bool, help='Generate world model data, overwrites some parameters')
 
         # Environment & Training Mode
         parser.add_argument('--env', default='ARC', metavar='ENV', help='Environment to train on')
@@ -56,12 +58,12 @@ def init_parser(alg):
         parser.add_argument('--max-episode', type=int, default=500000, help='Maximum number of episodes')
         parser.add_argument('--max-actions', default=1e9, type=int, help='# max actions')
         parser.add_argument('--test-episode', type=int, default=20, help='Maximum testing episodes')
-        parser.add_argument('--warmup', default=500, type=int, help='Time without training but only filling the replay memory')
+        parser.add_argument('--warmup', default=190, type=int, help='Time without training but only filling the replay memory')
         parser.add_argument('--bsize', default=32, type=int, help='Minibatch size')
         parser.add_argument('--rmsize', default=100000, type=int, help='Replay memory size')
 
         # Policy Update Settings
-        parser.add_argument('--gamma', type=float, default=0.99, metavar='G', help='Discount factor for rewards (default: 0.99)')
+        parser.add_argument('--gamma', type=float, default=0.2, metavar='G', help='Discount factor for rewards (default: 0.99)')
         parser.add_argument('--policy-noise', default=0, type=float, help='Noise added to target policy during critic update')
         parser.add_argument('--noise-clip', default=0.25, type=float, help='Range to clip target policy noise')
         parser.add_argument('--policy-delay', default=2, type=int, help='Delay policy updates')
@@ -79,7 +81,7 @@ def init_parser(alg):
         # World Model Embedding
         parser.add_argument('--world_model_pre_train', default=True, type=bool, help='Pre-train world model before the RL loop')
         parser.add_argument('--load_world_model_weights', default=False, type=bool, help='Load pre-trained world model from load-model-dir folder')
-        parser.add_argument('--world_model_pre_train_epochs', default=20, type=int, help='Number of epochs for pre-training world model')
+        parser.add_argument('--world_model_pre_train_epochs', default=1, type=int, help='Number of epochs for pre-training world model')
         parser.add_argument('--world_model_pre_train_batch_size', default=32, type=int, help='Batch size for pre-training world model')
         parser.add_argument('--world_model_pre_train_lr', default=1e-3, type=float, help='Learning rate for pre-training world model')
     
@@ -94,7 +96,7 @@ def init_parser(alg):
         parser.add_argument('--decoder_num_layers', default=2, type=int, help='Number of transformer layers in decoder')
 
         # Exploration & Noise
-        parser.add_argument('--epsilon', default=50000, type=int, help='Linear decay of exploration policy')
+        parser.add_argument('--epsilon', default=10000, type=int, help='Linear decay of exploration policy')
         parser.add_argument('--epsilon_start', default=1.0, type=float, help='Starting epsilon value for resuming training')
         parser.add_argument('--ou_theta', default=0.5, type=float, help='Ornstein-Uhlenbeck noise theta')
         parser.add_argument('--ou_sigma', default=0.2, type=float, help='Ornstein-Uhlenbeck noise sigma')
