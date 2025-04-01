@@ -120,8 +120,10 @@ def main():
     # 6. Create training and evaluation environments
     train_env = ARC_Env(
         path_to_challenges='data/RAW_DATA_DIR/arc-prize-2024/arc-agi_training_challenges.json',
+        #path_to_challenges='data/RAW_DATA_DIR/arc-prize-2024/arc-agi_evaluation_challenges.json',
         action_space=action_space
     )
+
     eval_env = ARC_Env(
         path_to_challenges='data/RAW_DATA_DIR/arc-prize-2024/arc-agi_evaluation_challenges.json',
         action_space=action_space
