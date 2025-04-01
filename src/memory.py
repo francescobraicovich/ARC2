@@ -276,10 +276,12 @@ class SequentialMemory(Memory):
 
     def process_data_for_world_model(self, data):
         
-        state = torch.stack(data['state']).to(DEVICE) + 1
+        state = torch.stack(data['state']).to(DEVICE) + 1 # add 1 to get values between 0 and 10
+        shape = torch.stack(data['shape']).to(DEVICE) - 1 # subtract 1 to get values between 0 and 29
+
         # assert all values are between 0 and 10
         assert torch.all(state >= 0) and torch.all(state <= 10), "State values out of bounds"
-        shape = torch.stack(data['shape']).to(DEVICE)
+        assert torch.all(shape >= 0) and torch.all(shape <= 29), "Shape values out of bounds"
         action = torch.stack(data['action']).to(DEVICE)
         terminal = torch.tensor(data['terminal'], dtype=torch.bool).to(DEVICE)
         num_actions = torch.tensor(data['num_actions'], dtype=torch.float).to(DEVICE)
@@ -316,27 +318,23 @@ class SequentialMemory(Memory):
         action = action[valid_mask]
         terminal = terminal[valid_mask]
 
-        current_state = torch.tensor(current_state, dtype=torch.float32).to('cpu').long()
-        current_shape = torch.tensor(current_shape, dtype=torch.float32).to('cpu').long()
-        target_state = torch.tensor(target_state, dtype=torch.float32).to('cpu').long()
-        target_shape = torch.tensor(target_shape, dtype=torch.float32).to('cpu').long()
-        action = torch.tensor(action, dtype=torch.float32).to('cpu').long()
-        terminal = torch.tensor(terminal, dtype=torch.bool).to('cpu').long()
+        current_state = torch.tensor(current_state, dtype=torch.float32).to('cpu')
+        current_shape = torch.tensor(current_shape, dtype=torch.float32).to('cpu')
+        target_state = torch.tensor(target_state, dtype=torch.float32).to('cpu')
+        target_shape = torch.tensor(target_shape, dtype=torch.float32).to('cpu')
+        action = torch.tensor(action, dtype=torch.float32).to('cpu')
+        terminal = torch.tensor(terminal, dtype=torch.bool).to('cpu')
 
         return current_state, current_shape, target_state, target_shape, action, terminal
 
     def process_states(self, state):
         current_state = state[:, :, :, 0]
         target_state = state[:, :, :, 1]
-        target_state = target_state.reshape(-1, 900) + 1
+        target_state = target_state.reshape(-1, 900)
         return current_state, target_state
     
     def process_shapes(self, shape):
         current_shape = shape[:, 0, :]
         target_shape = shape[:, 1, :]
-
-        for i in range(current_shape.shape[0]):
-            current_shape[i] = current_shape[i]
-            target_shape[i] = target_shape[i]
         
         return current_shape, target_shape
