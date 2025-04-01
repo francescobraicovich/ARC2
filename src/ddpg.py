@@ -28,6 +28,7 @@ class DDPG(object):
 
         # Determine the appropriate device
         self.device = DEVICE
+        self.save_model_dir = args.save_model_dir
 
         # Set the random seed for reproducibility
         if args.seed > 0:
@@ -102,6 +103,7 @@ class DDPG(object):
 
         # Initialize replay buffer for experience replay
         self.memory = SequentialMemory(limit=args.rmsize)
+        self.memory_size = args.rmsize
 
         # Initialize Ornstein-Uhlenbeck process for action exploration noise
         self.random_process = OrnsteinUhlenbeckProcess(
@@ -380,5 +382,7 @@ class DDPG(object):
         """
         Save the replay memory to a file.
         """
-        self.memory.save_memory_for_world_model(directory="../output/memory")
+        print('Saving memory for world model...')
+        print('Save model dir: ', self.save_model_dir)
+        self.memory.save_memory_for_world_model_chunk(directory=f"{self.save_model_dir}/memory_chunks")
 
