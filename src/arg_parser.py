@@ -2,8 +2,8 @@ import argparse
 
 PRESETS = {
     'generate_world_model_data': {
-        'save_memory_at_steps': 2 * int(1e4), # 200k
-        'max_episode_length': 50,
+        'save_memory_at_steps': int(1e4), # 200k
+        'max_episode_length': 60,
     },
     # Add more presets here
 }
@@ -48,7 +48,7 @@ def init_parser(alg):
         parser.add_argument('--id', default='0', type=str, help='Experiment ID')
         parser.add_argument('--load', default=False, metavar='L', help='Load a trained model')
         parser.add_argument('--load-model-dir', default='ARC-run4', metavar='LMD', help='Folder to load trained models from')
-        parser.add_argument('--eval-interval', default=10000, type=int, help='Evaluate model every X episodes')
+        parser.add_argument('--eval-interval', default=200, type=int, help='Evaluate model every X episodes')
         parser.add_argument('--eval-episodes', default=25, type=int, help='Number of episodes to evaluate')
 
         # Episode & Training Settings
@@ -56,7 +56,7 @@ def init_parser(alg):
         parser.add_argument('--max-episode', type=int, default=500000, help='Maximum number of episodes')
         parser.add_argument('--max-actions', default=1e9, type=int, help='# max actions')
         parser.add_argument('--test-episode', type=int, default=20, help='Maximum testing episodes')
-        parser.add_argument('--warmup', default=200000, type=int, help='Time without training but only filling the replay memory')
+        parser.add_argument('--warmup', default=500, type=int, help='Time without training but only filling the replay memory')
         parser.add_argument('--bsize', default=32, type=int, help='Minibatch size')
         parser.add_argument('--rmsize', default=100000, type=int, help='Replay memory size')
 
@@ -71,10 +71,10 @@ def init_parser(alg):
         parser.add_argument('--weight-decay', default=1e-4, type=float, help='L2 Regularization loss weight decay')
                             
         # Actor-Critic Architecture
-        parser.add_argument('--h1_dim_actor', default=128, type=int, help='Hidden units in the first fully connected layer')
-        parser.add_argument('--h2_dim_actor', default=128, type=int, help='Hidden units in the second fully connected layer')
-        parser.add_argument('--h1_dim_critic', default=128, type=int, help='Hidden units in the first fully connected layer')
-        parser.add_argument('--h2_dim_critic', default=128, type=int, help='Hidden units in the second fully connected layer')
+        parser.add_argument('--h1_dim_actor', default=1024, type=int, help='Hidden units in the first fully connected layer')
+        parser.add_argument('--h2_dim_actor', default=512, type=int, help='Hidden units in the second fully connected layer')
+        parser.add_argument('--h1_dim_critic', default=1024, type=int, help='Hidden units in the first fully connected layer')
+        parser.add_argument('--h2_dim_critic', default=512, type=int, help='Hidden units in the second fully connected layer')
 
         # World Model Embedding
         parser.add_argument('--world_model_pre_train', default=True, type=bool, help='Pre-train world model before the RL loop')
@@ -94,7 +94,7 @@ def init_parser(alg):
         parser.add_argument('--decoder_num_layers', default=2, type=int, help='Number of transformer layers in decoder')
 
         # Exploration & Noise
-        parser.add_argument('--epsilon', default=3000, type=int, help='Linear decay of exploration policy')
+        parser.add_argument('--epsilon', default=50000, type=int, help='Linear decay of exploration policy')
         parser.add_argument('--epsilon_start', default=1.0, type=float, help='Starting epsilon value for resuming training')
         parser.add_argument('--ou_theta', default=0.5, type=float, help='Ornstein-Uhlenbeck noise theta')
         parser.add_argument('--ou_sigma', default=0.2, type=float, help='Ornstein-Uhlenbeck noise sigma')
@@ -113,7 +113,7 @@ def init_parser(alg):
         parser.add_argument('--init_w', default=0.003, type=float, help='Initial weight')
         parser.add_argument('--seed', default=-1, type=int, help='Random seed')
         parser.add_argument('--save_per_epochs', default=200, type=int, help='Save model every X epochs')
-        parser.add_argument('--save_memory_at_steps', default=20000, type=int, help='Save memory every X epochs')
+        parser.add_argument('--save_memory_at_steps', default=2000000, type=int, help='Save memory every X epochs')
         parser.add_argument('--k_neighbors', default=75, type=int, help='Number of neighbors to consider')
 
         # Apply preset defaults if provided
