@@ -42,7 +42,7 @@ def init_parser(alg):
         parser = argparse.ArgumentParser(description='WOLP_DDPG')
 
         # PRESETS
-        parser.add_argument('--generate_world_model_data', default=False, type=bool, help='Generate world model data, overwrites some parameters')
+        #parser.add_argument('--generate_world_model_data', default=True, type=bool, help='Generate world model data, overwrites some parameters')
 
         # Environment & Training Mode
         parser.add_argument('--env', default='ARC', metavar='ENV', help='Environment to train on')
@@ -52,6 +52,7 @@ def init_parser(alg):
         parser.add_argument('--load-model-dir', default='ARC-run24', metavar='LMD', help='Folder to load trained models from')
         parser.add_argument('--eval-interval', default=200, type=int, help='Evaluate model every X episodes')
         parser.add_argument('--eval-episodes', default=25, type=int, help='Number of episodes to evaluate')
+        parser.add_argument('--plot_interval', default=5,type=int, help='Plot every X epochs')
 
         # Episode & Training Settings
         parser.add_argument('--max-episode-length', type=int, default=30, metavar='M', help='Max episode length (default: 50)')
@@ -117,13 +118,13 @@ def init_parser(alg):
         parser.add_argument('--save_per_epochs', default=200, type=int, help='Save model every X epochs')
         parser.add_argument('--save_memory_at_steps', default=2000000, type=int, help='Save memory every X epochs')
         parser.add_argument('--k_neighbors', default=75, type=int, help='Number of neighbors to consider')
-
+        
         # Apply preset defaults if provided
         if parser.parse_args().generate_world_model_data:
             print('Generating world model data, overwriting some parameters')
             parser.set_defaults(**PRESETS['generate_world_model_data'])
+        
         return parser
-
     else:
         raise RuntimeError(f'Undefined algorithm {alg}')
 
