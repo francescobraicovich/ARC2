@@ -10,15 +10,6 @@ os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 # Determine the device: CUDA -> MPS -> CPU
 DEVICE = set_device('action_space_embed.py')
 
-if torch.cuda.is_available():
-    print(f"CUDA is available: {torch.cuda.is_available()}")
-    print(f"Number of CUDA devices: {torch.cuda.device_count()}")
-    print(f"Current CUDA device index: {torch.cuda.current_device()}")
-    print(f"CUDA device name: {torch.cuda.get_device_name(0)}")
-    print(f"CUDA version (reported by torch): {torch.version.cuda}")
-else:
-    print("CUDA is not available.")
-
 class EncoderTransformer(nn.Module):
     def __init__(self, config):
         """
@@ -40,7 +31,7 @@ class EncoderTransformer(nn.Module):
         """
         super(EncoderTransformer, self).__init__()
         self.config = config
-        self.target_state = torch.tensor([0, 0, 0, 0, 0, 0, 0, 0, 0, 0], dtype=torch.long).to(DEVICE)
+        self.target_state = torch.tensor([0, 0, 0, 0, 0, 0, 0, 0, 0, 0], dtype=torch.long).to(DEVICE) # dummy tensor that gets updated
 
         # Position embeddings.
         if config.scaled_position_embeddings:
@@ -105,14 +96,11 @@ class EncoderTransformer(nn.Module):
         # assert that all shape values are between 0 and max_rows/max_cols
         assert torch.all(shape[:, 0] >= 0) and torch.all(shape[:, 0] < self.config.max_rows), \
             f"Input rows should be between 0 and {self.config.max_rows - 1}, got {shape[:, 0].min()} and {shape[:, 0].max()}"
+        # assert that all shape values are between 0 and max_rows/max_cols
         assert torch.all(shape[:, 1] >= 0) and torch.all(shape[:, 1] < self.config.max_cols), \
             f"Input cols should be between 0 and {self.config.max_cols - 1}, got {shape[:, 1].min()} and {shape[:, 1].max()}"
 
         x = self.embed_grids(state, shape, dropout_eval)
-
-        # assert the input tensor has colors between 0 and vocab_size
-        assert torch.all(state >= 0) and torch.all(state < self.config.vocab_size), \
-            f"Input colors should be between 0 and {self.config.vocab_size - 1}, got {state.min()} and {state.max()}"
 
         pad_mask = self.make_pad_mask(shape)
         for layer in self.transformer_layers:
@@ -150,8 +138,16 @@ class EncoderTransformer(nn.Module):
             pos_embed = pos_row_embeds.unsqueeze(1)+ pos_col_embeds.unsqueeze(0)
         else:
             pos_row_indices = torch.arange(config.max_rows, dtype=torch.long, device=DEVICE)
+            assert torch.all(pos_row_indices < config.max_rows), \
+                f"Position indices should be between 0 and {config.max_rows - 1}, got {pos_row_indices.min()} and {pos_row_indices.max()}"
+            assert torch.all(pos_row_indices >= 0), \
+                f"Position indices should be between 0 and {config.max_rows - 1}, got {pos_row_indices.min()} and {pos_row_indices.max()}"
             pos_row_embed = self.pos_row_embed(pos_row_indices)  # (max_rows, emb_dim)
             pos_col_indices = torch.arange(config.max_cols, dtype=torch.long, device=DEVICE)
+            assert torch.all(pos_col_indices < config.max_cols), \
+                f"Position indices should be between 0 and {config.max_cols - 1}, got {pos_col_indices.min()} and {pos_col_indices.max()}"
+            assert torch.all(pos_col_indices >= 0), \
+                f"Position indices should be between 0 and {config.max_cols - 1}, got {pos_col_indices.min()} and {pos_col_indices.max()}"
             pos_col_embed = self.pos_col_embed(pos_col_indices)  # (max_cols, emb_dim)
             pos_embed = pos_row_embed.unsqueeze(1) + pos_col_embed.unsqueeze(0)
 
