@@ -117,13 +117,13 @@ def init_parser(alg):
     
         parser.add_argument('--state_encoded_dim', default=512, type=int, help='State latent (encoded) dimension')
         parser.add_argument('--action_emb_dim', default=256, type=int, help='Action embedding dimension')
-        parser.add_argument('--state_emb_dim', default=172, type=int, help='Embedding dimension for state representation in attention')
+        parser.add_argument('--state_emb_dim', default=196, type=int, help='Embedding dimension for state representation in attention')
         parser.add_argument('--state_encoder_num_heads', default=4, type=int, help='Number of attention heads in state encoder')
         parser.add_argument('--state_encoder_num_layers', default=3, type=int, help='Number of transformer layers in state encoder')
         parser.add_argument('--state_encoder_dropout', default=0.1, type=float, help='Dropout rate in state encoder')
         parser.add_argument('--decoder_emb_dim', default=128, type=int, help='Embedding dimension for decoder')
         parser.add_argument('--decoder_num_heads', default=4, type=int, help='Number of attention heads in decoder')
-        parser.add_argument('--decoder_num_layers', default=2, type=int, help='Number of transformer layers in decoder')
+        parser.add_argument('--decoder_num_layers', default=3, type=int, help='Number of transformer layers in decoder')
 
         # Exploration & Noise
         parser.add_argument('--epsilon', default=50000, type=int, help='Linear decay of exploration policy')
