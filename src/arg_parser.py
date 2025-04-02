@@ -70,7 +70,7 @@ def init_parser(alg):
         parser = argparse.ArgumentParser(description='WOLP_DDPG')
 
         # PRESETS
-        parser.add_argument('--generate_world_model_data', default=True, type=bool, help='Generate world model data, overwrites some parameters')
+        parser.add_argument('--generate_world_model_data', default=False, type=bool, help='Generate world model data, overwrites some parameters')
 
         # Environment & Training Mode
         parser.add_argument('--env', default='ARC', metavar='ENV', help='Environment to train on')
@@ -109,19 +109,19 @@ def init_parser(alg):
 
         # World Model Embedding
         parser.add_argument('--world_model_pre_train', default=True, type=bool, help='Pre-train world model before the RL loop')
-        parser.add_argument('--load-memory-dir', default='ARC-run19', metavar='LMD', help='Folder to load memory from')
+        parser.add_argument('--load-memory-dir', default='ARC-run5', metavar='LMD', help='Folder to load memory from')
         parser.add_argument('--load_world_model_weights', default=False, type=bool, help='Load pre-trained world model from load-model-dir folder')
         parser.add_argument('--world_model_pre_train_epochs', default=100, type=int, help='Number of epochs for pre-training world model')
         parser.add_argument('--world_model_pre_train_batch_size', default=32, type=int, help='Batch size for pre-training world model')
         parser.add_argument('--world_model_pre_train_lr', default=1e-4, type=float, help='Learning rate for pre-training world model')
     
-        parser.add_argument('--state_encoded_dim', default=32, type=int, help='State latent (encoded) dimension')
-        parser.add_argument('--action_emb_dim', default=32, type=int, help='Action embedding dimension')
-        parser.add_argument('--state_emb_dim', default=32, type=int, help='Embedding dimension for state representation in attention')
+        parser.add_argument('--state_encoded_dim', default=512, type=int, help='State latent (encoded) dimension')
+        parser.add_argument('--action_emb_dim', default=256, type=int, help='Action embedding dimension')
+        parser.add_argument('--state_emb_dim', default=172, type=int, help='Embedding dimension for state representation in attention')
         parser.add_argument('--state_encoder_num_heads', default=4, type=int, help='Number of attention heads in state encoder')
         parser.add_argument('--state_encoder_num_layers', default=3, type=int, help='Number of transformer layers in state encoder')
-        parser.add_argument('--state_encoder_dropout', default=0, type=float, help='Dropout rate in state encoder')
-        parser.add_argument('--decoder_emb_dim', default=32, type=int, help='Embedding dimension for decoder')
+        parser.add_argument('--state_encoder_dropout', default=0.1, type=float, help='Dropout rate in state encoder')
+        parser.add_argument('--decoder_emb_dim', default=128, type=int, help='Embedding dimension for decoder')
         parser.add_argument('--decoder_num_heads', default=4, type=int, help='Number of attention heads in decoder')
         parser.add_argument('--decoder_num_layers', default=2, type=int, help='Number of transformer layers in decoder')
 
