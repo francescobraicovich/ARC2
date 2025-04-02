@@ -102,7 +102,7 @@ def main():
         'epochs': args.world_model_pre_train_epochs,
         'lr': args.world_model_pre_train_lr,
         'batch_size': args.world_model_pre_train_batch_size,
-        'max_iter': 20000,
+        'max_iter': None,
         'load_memory_dir': args.load_memory_dir,
     }
 
