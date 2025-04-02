@@ -134,7 +134,7 @@ def world_model_train(
              print("Warning: Evaluation dataset is empty.")
              random_indices = []
         else:
-             plot_sample_size = min(5, test_length) # Ensure we don't request more samples than available
+             plot_sample_size = min(15, test_length) # Ensure we don't request more samples than available
              random_indices = np.random.choice(test_length, size=plot_sample_size, replace=False)
     except TypeError:
         # Should not happen if test_set is _MapStyleEvaluationDataset, but defensive check
