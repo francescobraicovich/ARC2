@@ -70,7 +70,7 @@ def init_parser(alg):
         parser = argparse.ArgumentParser(description='WOLP_DDPG')
 
         # PRESETS
-        parser.add_argument('--generate_world_model_data', default=True, type=bool, help='Generate world model data, overwrites some parameters')
+        parser.add_argument('--generate_world_model_data', default=False, type=bool, help='Generate world model data, overwrites some parameters')
 
         # Environment & Training Mode
         parser.add_argument('--env', default='ARC', metavar='ENV', help='Environment to train on')
@@ -109,7 +109,7 @@ def init_parser(alg):
 
         # World Model Embedding
         parser.add_argument('--world_model_pre_train', default=True, type=bool, help='Pre-train world model before the RL loop')
-        parser.add_argument('--load-memory-dir', default='ARC-run5', metavar='LMD', help='Folder to load memory from')
+        parser.add_argument('--load-memory-dir', default='ARC-run7', metavar='LMD', help='Folder to load memory from')
         parser.add_argument('--load_world_model_weights', default=False, type=bool, help='Load pre-trained world model from load-model-dir folder')
         parser.add_argument('--world_model_pre_train_epochs', default=100, type=int, help='Number of epochs for pre-training world model')
         parser.add_argument('--world_model_pre_train_batch_size', default=32, type=int, help='Batch size for pre-training world model')
