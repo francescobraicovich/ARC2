@@ -147,8 +147,8 @@ def init_parser(alg):
         parser.add_argument('--save_per_epochs', default=200, type=int, help='Save model every X epochs')
         parser.add_argument('--save_memory_at_steps', default=False, type=int, help='Save memory every X epochs')
         parser.add_argument('--memory_chunk_size', default=False, type=int, help='Chunk size for memory')
-        parser.add_argument('--k_neighbors', default=75, type=int, help='Number of neighbors to consider')
-        parser.add_argument('--wandb_log', default=False, type=bool, help='Log to wandb')
+        parser.add_argument('--k_neighbors', default=150, type=int, help='Number of neighbors to consider')
+        parser.add_argument('--wandb_log', default=True, type=bool, help='Log to wandb')
         
         # Apply preset defaults if provided
         if parser.parse_args().generate_world_model_data:
