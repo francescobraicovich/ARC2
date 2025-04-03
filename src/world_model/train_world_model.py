@@ -528,7 +528,7 @@ def plot_world_model(state_encoder, action_embedder, transition_model,
                 plot_filename = os.path.join(plots_dir, f'epoch_{epoch}_sample_{sample_index}.png')
             else:
                 plot_filename = None
-            title = f"Epoch {epoch} - Sample {sample_index}: Actual vs Predicted"
+            title = f"Sample {sample_index} - Epoch {epoch}: Actual vs Predicted"
 
             # Call the save_grids function which takes grid1 (actual), grid2 (predicted), title, and save_path
             save_grids(act, pred, title=title, save_path=plot_filename)
