@@ -145,7 +145,7 @@ def init_parser(alg):
         # Miscellaneous
         parser.add_argument('--init_w', default=0.003, type=float, help='Initial weight')
         parser.add_argument('--seed', default=-1, type=int, help='Random seed')
-        parser.add_argument('--save_per_epochs', default=200, type=int, help='Save model every X epochs')
+        parser.add_argument('--save_per_epochs', default=15, type=int, help='Save model every X epochs')
         parser.add_argument('--save_memory_at_steps', default=False, type=int, help='Save memory every X epochs')
         parser.add_argument('--memory_chunk_size', default=False, type=int, help='Chunk size for memory')
         parser.add_argument('--k_neighbors', default=150, type=int, help='Number of neighbors to consider')
