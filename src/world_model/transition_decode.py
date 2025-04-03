@@ -679,97 +679,403 @@ class ContextTransformer2D_v2(nn.Module):
         """
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
 
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import os
+from typing import Optional, Any, Union, Callable
+from torch import Tensor
 
-# Example Usage (Optional)
-if __name__ == '__main__':
-    print(f"Running example usage on device: {DEVICE}")
-    
-    # Hyperparameters (match original or adjust as needed)
-    state_dim = 512
-    action_dim = 64
-    embed_dim = 256
-    n_layers = 4 # Reduced for faster example
-    n_heads = 4  # Reduced for faster example
-    seq_len = 902
-    grid_sz = 30
-    vocab_first = 30 # Should ideally be grid_sz
-    vocab_rest = 11
-    batch_size = 4
+# Assume utils.util.set_device is defined elsewhere and sets the correct device
+# from utils.util import set_device
+# DEVICE = set_device('transition_decode.py')
+# Placeholder for DEVICE if set_device is not available:
 
-    # Instantiate the new model
-    model = ContextTransformer2D_v2(
-        state_encoded_dim=state_dim,
-        action_emb_dim=action_dim,
-        emb_dim=embed_dim,
-        num_layers=n_layers,
-        num_heads=n_heads,
-        seq_len=seq_len,
-        grid_size=grid_sz,
-        vocab_size_first=vocab_first,
-        vocab_size_rest=vocab_rest
-    ).to(DEVICE)
+# Custom Transformer Decoder Layer with Inverted Attention Order and Pre-LN
+class CustomTransformerDecoderLayer(nn.Module):
+    """
+    Custom Transformer Decoder Layer implementing the specified modifications:
+    1. Inverted Attention Order: Cross-Attention -> Self-Attention -> FFN
+    2. Pre-Layer Normalization (norm_first=True)
+    3. No Causal Masking in Self-Attention by default.
+    """
+    __constants__ = ['batch_first', 'norm_first']
 
-    # Create dummy input data
-    dummy_state = torch.randn(batch_size, state_dim).to(DEVICE)
-    dummy_action = torch.randn(batch_size, action_dim).to(DEVICE)
+    def __init__(self, d_model: int, nhead: int, dim_feedforward: int = 2048, dropout: float = 0.1,
+                 activation: Union[str, Callable[[Tensor], Tensor]] = F.relu,
+                 layer_norm_eps: float = 1e-5, batch_first: bool = True, norm_first: bool = True, # Set norm_first=True
+                 device=None, dtype=None) -> None:
+        factory_kwargs = {'device': device, 'dtype': dtype}
+        super().__init__()
+        if not batch_first:
+            raise ValueError("This custom layer currently only supports batch_first=True")
+        if not norm_first:
+             # Ensure Pre-LN as required
+            raise ValueError("This custom layer requires norm_first=True")
 
-    # Test forward pass
-    print("\nTesting forward pass...")
-    try:
-        logits_f, logits_r = model(dummy_state, dummy_action)
-        print("Forward pass successful.")
-        print("Logits First Shape:", logits_f.shape) # Expected: [B, 2, vocab_size_first]
-        print("Logits Rest Shape:", logits_r.shape)   # Expected: [B, 900, vocab_size_rest]
-    except Exception as e:
-        print(f"Forward pass failed: {e}")
-        raise e
+        self.norm_first = norm_first
 
-    # Test generation pass
-    print("\nTesting generation pass...")
-    try:
-        sampled_f, sampled_r = model.generate(dummy_state, dummy_action)
-        print("Generation pass successful.")
-        print("Sampled First Shape:", sampled_f.shape) # Expected: [B, 2]
-        print("Sampled Rest Shape:", sampled_r.shape)   # Expected: [B, 900]
-        # Check if masking worked (some values should be 0)
-        print("Sampled Rest (first batch item, first 20 values):", sampled_r[0, :20])
-        print("Sampled Rest (first batch item, last 20 values):", sampled_r[0, -20:])
-        # Verify shape tokens are within expected range (depends on vocab_size_first)
-        print("Sampled First Tokens (first batch item):", sampled_f[0])
+        # --- Inverted Order ---
+        # 1. Cross-Attention Block (attends to memory)
+        self.norm1 = nn.LayerNorm(d_model, eps=layer_norm_eps, **factory_kwargs)
+        self.cross_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout, batch_first=batch_first,
+                                                **factory_kwargs)
+        self.dropout1 = nn.Dropout(dropout)
 
-    except Exception as e:
-        print(f"Generation pass failed: {e}")
-        raise e
+        # 2. Self-Attention Block (attends to target)
+        self.norm2 = nn.LayerNorm(d_model, eps=layer_norm_eps, **factory_kwargs)
+        self.self_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout, batch_first=batch_first,
+                                               **factory_kwargs)
+        self.dropout2 = nn.Dropout(dropout)
 
-    # Test save/load weights
-    print("\nTesting weight save/load...")
-    try:
-        save_dir = "./temp_model_weights"
-        model.save_weights(save_dir)
-        
-        # Create a new instance and load weights
-        model_new = ContextTransformer2D_v2(
-            state_encoded_dim=state_dim,
-            action_emb_dim=action_dim,
-            emb_dim=embed_dim,
-            num_layers=n_layers,
-            num_heads=n_heads,
-            seq_len=seq_len,
-            grid_size=grid_sz,
-            vocab_size_first=vocab_first,
-            vocab_size_rest=vocab_rest
+        # 3. Feed-Forward Block
+        self.norm3 = nn.LayerNorm(d_model, eps=layer_norm_eps, **factory_kwargs)
+        self.linear1 = nn.Linear(d_model, dim_feedforward, **factory_kwargs)
+        self.activation = activation if isinstance(activation, str) is False else self._get_activation_fn(activation)
+        self.dropout = nn.Dropout(dropout)
+        self.linear2 = nn.Linear(dim_feedforward, d_model, **factory_kwargs)
+        self.dropout3 = nn.Dropout(dropout)
+
+
+    def forward(
+        self,
+        tgt: Tensor,
+        memory: Tensor,
+        tgt_mask: Optional[Tensor] = None, # No causal mask used here in self-attn
+        memory_mask: Optional[Tensor] = None,
+        tgt_key_padding_mask: Optional[Tensor] = None,
+        memory_key_padding_mask: Optional[Tensor] = None,
+        tgt_is_causal: bool = False, # Ensure causal is False for self-attn
+        memory_is_causal: bool = False,
+    ) -> Tensor:
+
+        if tgt_mask is not None:
+             # Should not receive a causal mask based on requirements
+             print("Warning: tgt_mask provided but will not be used for causal masking in CustomTransformerDecoderLayer self-attention.")
+             # We ignore tgt_mask for self-attn's causal behavior, but MHA still accepts it (e.g., for other purposes).
+             # However, the requirement was *no causal masking*, so we ensure tgt_is_causal=False below.
+
+        if tgt_is_causal:
+            raise ValueError("Causal self-attention is explicitly disabled for this layer.")
+
+        x = tgt # Start with the target tensor
+
+        # --- 1. Cross-Attention (Pre-LN) ---
+        # Attention block: norm -> MHA -> dropout -> residual
+        residual1 = x
+        x_norm1 = self.norm1(x)
+        # Query: target, Key/Value: memory
+        attn_output1, _ = self.cross_attn(query=x_norm1, key=memory, value=memory,
+                                          key_padding_mask=memory_key_padding_mask,
+                                          attn_mask=memory_mask,
+                                          is_causal=memory_is_causal) # memory is usually not causal
+        x = residual1 + self.dropout1(attn_output1)
+
+        # --- 2. Self-Attention (Pre-LN) ---
+        # Attention block: norm -> MHA -> dropout -> residual
+        residual2 = x
+        x_norm2 = self.norm2(x)
+         # Query/Key/Value: target (from previous step)
+         # NO causal mask (is_causal=False, tgt_mask=None implicitly or ignored for causal)
+        attn_output2, _ = self.self_attn(query=x_norm2, key=x_norm2, value=x_norm2,
+                                         key_padding_mask=tgt_key_padding_mask, # Apply padding mask if provided
+                                         attn_mask=None, # Explicitly no attention mask for causal behavior
+                                         is_causal=False) # Explicitly disable causal mask
+        x = residual2 + self.dropout2(attn_output2)
+
+        # --- 3. Feed-Forward (Pre-LN) ---
+        # FFN block: norm -> linear1 -> activation -> dropout -> linear2 -> dropout -> residual
+        residual3 = x
+        x_norm3 = self.norm3(x)
+        x_ffn = self.linear2(self.dropout(self.activation(self.linear1(x_norm3))))
+        x = residual3 + self.dropout3(x_ffn)
+
+        return x
+
+    # Helper to resolve activation function name
+    def _get_activation_fn(self, activation):
+        if activation == "relu":
+            return F.relu
+        elif activation == "gelu":
+            return F.gelu
+        raise RuntimeError("activation should be relu/gelu, not {}".format(activation))
+
+
+class ContextTransformer2D(nn.Module):
+    def __init__(
+        self,
+        state_encoded_dim,
+        action_emb_dim,
+        emb_dim=256,
+        num_layers=6,
+        num_heads=8,
+        dropout=0.1,
+        seq_len=902,      # Total output tokens: 2 (grid-shape) + 900 grid cells
+        grid_size=30,     # Grid is 30x30 (900 tokens)
+        vocab_size_first=30,
+        vocab_size_rest=11,
+    ):
+        super().__init__()
+        self.seq_len = seq_len
+        self.emb_dim = emb_dim
+        self.grid_size = grid_size
+        self.vocab_size_first = vocab_size_first
+        self.vocab_size_rest = vocab_size_rest
+
+        # === Input Projections ===
+        # Project context inputs (x_t and e_t) into shared emb_dim space.
+        self.state_proj = nn.Linear(state_encoded_dim, emb_dim).to(DEVICE)
+        self.action_proj = nn.Linear(action_emb_dim, emb_dim).to(DEVICE)
+        # Positional encodings for the 2 context tokens.
+        self.ctx_pos_emb = nn.Parameter(torch.randn(2, emb_dim)).to(DEVICE)
+
+        # === Bilateral Memory Self-Attention ===
+        # LayerNorm before memory self-attention
+        self.memory_input_norm = nn.LayerNorm(emb_dim, elementwise_affine=True).to(DEVICE)
+        # Use a standard Transformer *Encoder* Layer for self-attention on memory
+        # Use norm_first=True (Pre-LN) for consistency
+        self.memory_self_attn_layer = nn.TransformerEncoderLayer(
+            d_model=emb_dim,
+            nhead=num_heads,
+            dim_feedforward=emb_dim * 4, # Standard FFN size
+            dropout=dropout,
+            activation="gelu", # Consistent activation
+            batch_first=True,
+            norm_first=True, # Pre-LN
+            device=DEVICE
+        )
+        # Optional: Norm after memory self-attention (can sometimes help)
+        # self.memory_output_norm = nn.LayerNorm(emb_dim, elementwise_affine=True).to(DEVICE)
+
+        # === Target Sequence Preparation ===
+        # Learned query embeddings for all 902 tokens.
+        self.query_emb = nn.Parameter(torch.randn(seq_len, emb_dim)).to(DEVICE)
+        # 1D positional embedding for the first two tokens (shape).
+        self.pos_emb = nn.Parameter(torch.randn(2, emb_dim)).to(DEVICE)
+        # Optional transformation for shape tokens
+        self.shape_token_transform = nn.Sequential(
+            nn.Linear(emb_dim, emb_dim),
+            nn.LayerNorm(emb_dim), # Added LN here too
+            nn.GELU()
         ).to(DEVICE)
-        model_new.load_weights(save_dir)
-        
-        # Simple check: compare parameter count or a specific parameter value
-        assert model.num_parameters == model_new.num_parameters
-        print("Weight save/load test successful.")
-        # Clean up dummy weights
-        import shutil
-        #shutil.rmtree(save_dir)
+        # 2D positional embeddings for grid tokens (900 tokens).
+        self.row_emb = nn.Parameter(torch.randn(grid_size, emb_dim // 2)).to(DEVICE) # Split emb for row/col
+        self.col_emb = nn.Parameter(torch.randn(grid_size, emb_dim // 2)).to(DEVICE)
+        # LayerNorm after target input projection/embedding construction
+        self.tgt_input_norm = nn.LayerNorm(emb_dim, elementwise_affine=True).to(DEVICE)
 
-    except Exception as e:
-        print(f"Weight save/load test failed: {e}")
-        raise e
 
-    print("\nAll tests completed.")
+        # === Custom Transformer Decoder ===
+        # Create a ModuleList of our custom decoder layers
+        self.decoder_layers = nn.ModuleList([
+            CustomTransformerDecoderLayer(
+                d_model=emb_dim,
+                nhead=num_heads,
+                dim_feedforward=emb_dim * 4,
+                dropout=dropout,
+                activation="gelu",
+                batch_first=True,
+                norm_first=True, # Crucial: Pre-LN enabled
+                device=DEVICE
+            ) for _ in range(num_layers)
+        ])
+
+        # === Output Processing ===
+        # LayerNorm before the final output heads
+        self.decoder_output_norm = nn.LayerNorm(emb_dim, elementwise_affine=True).to(DEVICE)
+        # Output heads
+        self.head_first = nn.Linear(emb_dim, vocab_size_first).to(DEVICE)
+        self.head_rest = nn.Linear(emb_dim, vocab_size_rest).to(DEVICE)
+
+        # Weight Initialization: Relying on default PyTorch initializations which are generally good.
+
+    def _prepare_memory(self, x_t: Tensor, e_t: Tensor) -> Tensor:
+        """ Project state/action, add pos enc, apply norm and self-attention."""
+        B = x_t.size(0)
+        # Project context tokens and add learned positional encodings.
+        x_proj = self.state_proj(x_t) + self.ctx_pos_emb[0]  # [B, emb_dim]
+        e_proj = self.action_proj(e_t) + self.ctx_pos_emb[1]   # [B, emb_dim]
+
+        # Combine memory sources
+        memory = torch.stack([x_proj, e_proj], dim=1)          # [B, 2, emb_dim]
+
+        # --- Apply Bilateral Self-Attention to Memory ---
+        # 1. Normalize memory *before* self-attention (consistent with Pre-LN)
+        memory_norm = self.memory_input_norm(memory)
+        # 2. Apply self-attention (using TransformerEncoderLayer)
+        # No mask needed as memory sequence length (2) is fixed and non-causal
+        memory_processed = self.memory_self_attn_layer(src=memory_norm, src_mask=None, src_key_padding_mask=None)
+        # 3. Optional: Normalize memory *after* self-attention
+        # memory_processed = self.memory_output_norm(memory_processed)
+
+        return memory_processed # Return the memory after self-interaction
+
+    def _prepare_target(self, B: int, device: torch.device) -> Tensor:
+        """ Prepare the target sequence with query embeddings and positional info. """
+        # For the first two tokens, add 1D positional embeddings.
+        first_two = self.query_emb[:2] + self.pos_emb         # [2, emb_dim]
+        first_two = self.shape_token_transform(first_two)       # Enhance representation
+
+        # For the grid tokens, add 2D positional embeddings.
+        grid_queries = self.query_emb[2:]                        # [900, emb_dim]
+        # Create grid positions (row-major order).
+        rows_idx = torch.arange(self.grid_size, device=device).unsqueeze(1).repeat(1, self.grid_size).flatten()  # [900]
+        cols_idx = torch.arange(self.grid_size, device=device).unsqueeze(0).repeat(self.grid_size, 1).flatten()  # [900]
+        # Get embeddings and concatenate row/col embeddings
+        row_pos = self.row_emb[rows_idx] # [900, emb_dim/2]
+        col_pos = self.col_emb[cols_idx] # [900, emb_dim/2]
+        grid_pos = torch.cat([row_pos, col_pos], dim=-1) # [900, emb_dim]
+
+        # Combine grid queries and positional info
+        grid_tokens = grid_queries + grid_pos # [900, emb_dim]
+
+        # Concatenate first two tokens and grid tokens.
+        tgt = torch.cat([first_two, grid_tokens], dim=0)        # [902, emb_dim]
+
+        # Expand target for batch and apply final input normalization
+        tgt = tgt.unsqueeze(0).expand(B, -1, -1)                # [B, 902, emb_dim]
+        tgt = self.tgt_input_norm(tgt)                          # Apply LN AFTER projection/pos embedding
+
+        return tgt
+
+
+    def forward(self, x_t: Tensor, e_t: Tensor, tgt_key_padding_mask: Optional[Tensor] = None) -> tuple[Tensor, Tensor]:
+        """
+        Main forward pass using the modified architecture.
+
+        Args:
+            x_t: Encoded state tensor [B, state_encoded_dim]
+            e_t: Embedded action tensor [B, action_emb_dim]
+            tgt_key_padding_mask: Optional mask [B, seq_len] indicating padded tokens in the target.
+
+        Returns:
+            Tuple of (logits_first, logits_rest)
+        """
+        B = x_t.size(0)
+        current_device = x_t.device # Use device of input tensors
+
+        # 1. Prepare Memory: Project, add pos enc, normalize, apply self-attention
+        memory = self._prepare_memory(x_t, e_t) # [B, 2, emb_dim]
+
+        # 2. Prepare Target: Create target sequence queries + pos encodings, normalize
+        tgt = self._prepare_target(B, current_device) # [B, 902, emb_dim]
+
+        # 3. Pass through Custom Decoder Layers
+        output = tgt # Initialize output with the prepared target
+        for layer in self.decoder_layers:
+            output = layer(
+                tgt=output,
+                memory=memory,
+                tgt_mask=None,                  # *** NO CAUSAL MASK ***
+                memory_mask=None,               # Standard memory mask (optional)
+                tgt_key_padding_mask=tgt_key_padding_mask, # From input (for self-attn)
+                memory_key_padding_mask=None,   # Memory is never padded (size 2)
+                tgt_is_causal=False             # *** Ensure self-attn is NOT causal ***
+            )
+
+        # 4. Final Output Normalization (before heads)
+        output = self.decoder_output_norm(output) # [B, 902, emb_dim]
+
+        # 5. Split outputs and apply final linear heads
+        logits_first = self.head_first(output[:, :2])   # [B, 2, vocab_size_first]
+        logits_rest  = self.head_rest(output[:, 2:])      # [B, 900, vocab_size_rest]
+
+        return logits_first, logits_rest
+
+
+    # --- generate, save_weights, load_weights, num_parameters remain the same ---
+    # --- as their logic depends on the forward pass signature and state_dict ---
+    # --- which have been maintained. ---
+
+    def generate(self, x_t, e_t, temperature=1.0):
+        """
+        Two-stage autoregressive generation:
+          1. First pass to predict the grid shape tokens.
+          2. Compute a key padding mask for grid tokens based on those tokens.
+          3. Second pass with dynamic attention that masks padded grid tokens.
+        The grid tokens outside the valid region are post-processed to be 0.
+        (Note: Original docstring mentioned -1, but code uses 0)
+
+        This method remains compatible as it calls the modified `forward` pass.
+        The `tgt_key_padding_mask` generated here will be correctly used by the
+        `CustomTransformerDecoderLayer`'s self-attention.
+        """
+        self.eval()
+        with torch.no_grad():
+            # === Stage 1: Generate the first two tokens (grid shape indicators) ===
+            # No padding mask needed for the first pass
+            logits_first, _ = self.forward(x_t, e_t, tgt_key_padding_mask=None)
+            # Sample first two tokens.
+            probs_first = F.softmax(logits_first / temperature, dim=-1) # [B, 2, V_first]
+            sampled_first = torch.multinomial(
+                probs_first.view(-1, self.head_first.out_features), num_samples=1
+            ).view(x_t.size(0), 2) # [B, 2]
+
+            # === Stage 2: Compute key padding mask for grid tokens based on grid shape ===
+            B = x_t.size(0)
+            # Create a mask for the *target sequence* where True means "ignore"
+            # Initialize with False (don't ignore)
+            full_mask = torch.zeros(B, self.seq_len, dtype=torch.bool, device=x_t.device)
+
+            for b in range(B):
+                # +1 because sampled values are likely 0-indexed counts (e.g., 0..29)
+                # If shape is (5, 10), rows 0-4 and cols 0-9 are valid.
+                # We need to mask rows >= 5 and cols >= 10.
+                valid_rows = sampled_first[b, 0].item() + 1
+                valid_cols = sampled_first[b, 1].item() + 1
+
+                # Iterate through the 900 grid positions (tokens 2 to 901)
+                for idx in range(self.grid_size * self.grid_size):
+                    row_idx = idx // self.grid_size
+                    col_idx = idx % self.grid_size
+                    # If the position is outside the valid area, mask it (set True)
+                    if row_idx >= valid_rows or col_idx >= valid_cols:
+                         # +2 offset because grid tokens start at index 2
+                        full_mask[b, idx + 2] = True
+
+            # === Stage 3: Second pass using the dynamic target key padding mask ===
+            # Pass the computed mask to the forward function
+            _, logits_rest_masked = self.forward(x_t, e_t, tgt_key_padding_mask=full_mask)
+
+            # Sample the remaining grid tokens using the masked logits
+            probs_rest = F.softmax(logits_rest_masked / temperature, dim=-1) # [B, 900, V_rest]
+            sampled_rest = torch.multinomial(
+                probs_rest.view(-1, self.head_rest.out_features), num_samples=1
+            ).view(B, self.grid_size * self.grid_size) # [B, 900]
+
+            # Apply the mask to the final sampled grid tokens: set masked tokens to 0
+            # Extract the grid part of the mask
+            grid_mask_flat = full_mask[:, 2:] # [B, 900]
+            sampled_rest[grid_mask_flat] = 0 # Set value for padded/invalid tokens
+
+            # Return the sampled shape tokens and the masked grid tokens
+            return sampled_first, sampled_rest
+
+
+    def save_weights(self, path: str):
+        """
+        Save the model weights to a file.
+        """
+        # Ensure directory exists
+        os.makedirs(path, exist_ok=True)
+        torch.save(self.state_dict(), os.path.join(path, 'decoder.pt'))
+        print(f"Decoder weights saved to {os.path.join(path, 'decoder.pt')}")
+
+    def load_weights(self, path: str):
+        """
+        Load the model weights from a file.
+        """
+        weight_path = os.path.join(path, 'decoder.pt')
+        if os.path.exists(weight_path):
+            self.load_state_dict(torch.load(weight_path, map_location=DEVICE))
+            print(f"Decoder weights loaded from {weight_path}")
+        else:
+            print(f"Warning: Decoder weight file not found at {weight_path}")
+
+
+    @property
+    def num_parameters(self):
+        """
+        Returns the number of trainable parameters in the model.
+        """
+        return sum(p.numel() for p in self.parameters() if p.requires_grad)
