@@ -16,8 +16,8 @@ def check_presets(PRESETS):
     world_model_preset['save_per_epochs'] = world_model_preset['save_memory_at_steps'] + 1
     world_model_preset['warmup'] = world_model_preset['save_memory_at_steps'] + 1
     world_model_preset['eval_episodes'] = 0
-    world_model_preset['world_model_pre_train'] = True
-    world_model_preset['load_world_model_weights'] = True
+    world_model_preset['world_model_pre_train'] = False
+    world_model_preset['load_world_model_weights'] = False
 
     world_model_preset['state_encoded_dim'] = 2
     world_model_preset['action_emb_dim'] = 2
@@ -70,7 +70,7 @@ def init_parser(alg):
         parser = argparse.ArgumentParser(description='WOLP_DDPG')
 
         # PRESETS
-        parser.add_argument('--generate_world_model_data', default=False, type=bool, help='Generate world model data, overwrites some parameters')
+        parser.add_argument('--generate_world_model_data', default=True, type=bool, help='Generate world model data, overwrites some parameters')
 
         # Environment & Training Mode
         parser.add_argument('--env', default='ARC', metavar='ENV', help='Environment to train on')
