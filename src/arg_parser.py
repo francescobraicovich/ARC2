@@ -70,7 +70,7 @@ def init_parser(alg):
         parser = argparse.ArgumentParser(description='WOLP_DDPG')
 
         # PRESETS
-        parser.add_argument('--generate_world_model_data', default=True, type=bool, help='Generate world model data, overwrites some parameters')
+        parser.add_argument('--generate_world_model_data', default=False, type=bool, help='Generate world model data, overwrites some parameters')
 
         # Environment & Training Mode
         parser.add_argument('--env', default='ARC', metavar='ENV', help='Environment to train on')
@@ -125,9 +125,8 @@ def init_parser(alg):
         parser.add_argument('--decoder_num_heads', default=8, type=int, help='Number of attention heads in decoder')
         parser.add_argument('--decoder_num_layers', default=4, type=int, help='Number of transformer layers in decoder')
 
-
         # Exploration & Noise
-        parser.add_argument('--epsilon', default=50000, type=int, help='Linear decay of exploration policy')
+        parser.add_argument('--epsilon', default=500000, type=int, help='Linear decay of exploration policy')
         parser.add_argument('--epsilon_start', default=1.0, type=float, help='Starting epsilon value for resuming training')
         parser.add_argument('--ou_theta', default=0.5, type=float, help='Ornstein-Uhlenbeck noise theta')
         parser.add_argument('--ou_sigma', default=0.2, type=float, help='Ornstein-Uhlenbeck noise sigma')

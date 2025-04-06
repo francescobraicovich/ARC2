@@ -81,8 +81,10 @@ def main():
     action_embedding = ActionEmbedding(
         num_actions=num_filtered_actions,
         embed_dim=args.action_emb_dim,
+        dropout=0.1,
         normalize=True,
     )
+
     transition_decoder = ContextTransformer2D(
         state_encoded_dim=args.state_encoded_dim,
         action_emb_dim=args.action_emb_dim,
