@@ -525,7 +525,8 @@ def plot_world_model(state_encoder, action_embedder, transition_model,
 
             # Build a descriptive file name and title
             if plots_dir is not None:
-                plot_filename = os.path.join(plots_dir, f'epoch_{epoch}_sample_{sample_index}.png')
+
+                plot_filename = os.path.join(plots_dir, f'sample_{sample_index}_epoch_{epoch}.png')
             else:
                 plot_filename = None
             title = f"Sample {sample_index} - Epoch {epoch}: Actual vs Predicted"

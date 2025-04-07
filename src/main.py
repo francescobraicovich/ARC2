@@ -22,7 +22,7 @@ from train_test import train, evaluate
 from world_model.transformer import EncoderTransformerConfig
 from world_model.action_embed import ActionEmbedding
 from world_model.state_encode import EncoderTransformer, DummyEncoder
-from world_model.transition_decode import ContextDecoder2D
+from world_model.transition_decode import ContextTransformer2D
 from world_model.train_world_model import world_model_train
 
 def main():
@@ -81,9 +81,11 @@ def main():
     action_embedding = ActionEmbedding(
         num_actions=num_filtered_actions,
         embed_dim=args.action_emb_dim,
+        dropout=0.1,
         normalize=True,
     )
-    transition_decoder = ContextDecoder2D(
+
+    transition_decoder = ContextTransformer2D(
         state_encoded_dim=args.state_encoded_dim,
         action_emb_dim=args.action_emb_dim,
         num_layers=args.decoder_num_layers,

@@ -801,7 +801,7 @@ class CustomTransformerDecoderLayer(nn.Module):
         raise RuntimeError("activation should be relu/gelu, not {}".format(activation))
 
 
-class ContextTransformer2D(nn.Module):
+class ContextTransformer2D_v3(nn.Module):
     def __init__(
         self,
         state_encoded_dim,
