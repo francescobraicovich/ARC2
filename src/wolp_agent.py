@@ -122,18 +122,24 @@ class WolpertingerAgent(DDPG):
             q2_values = self.critic2((s_t_tiled, shape_tiled), embedded_actions_tiled)
             q_values = torch.min(q1_values, q2_values)
 
+        temperature = 0.1
+        q_values = q_values / temperature
+        q_probabilities = torch.softmax(q_values, dim=0)
+
         # 5) Find index of the candidate with maximum Q
         #    If batch_size=1, it's a simple argmax over dimension=0;
         #    Otherwise, we do argmax over dimension=1 if the shape is (k, B, ...)
         if batch_size == 1:
-            max_q_indices = torch.argmax(q_values)
+            max_q_indices = torch.argmax(q_values, 0)
+            stochastic_index = torch.multinomial(q_probabilities, 1)
         else:
             max_q_indices = torch.argmax(q_values, 1)
+            stochastic_index = torch.multinomial(q_probabilities, 1)
 
         if batch_size == 1:
             # Single state: Just pick the best index
-            selected_action = actions[max_q_indices, :]
-            selected_embedded_action = embedded_actions[max_q_indices, :]
+            selected_action = actions[stochastic_index, :]
+            selected_embedded_action = embedded_actions[stochastic_index, :]
         else:
             # If we have a batch, we need to pick the best action for each item in the batch
             reshaped_actions = np.reshape(actions, (self.k_nearest_neighbors, batch_size, -1))
@@ -143,9 +149,8 @@ class WolpertingerAgent(DDPG):
             np_arange = self.np_aranges[batch_size]
 
             # Convert max_q_indices to a NumPy array for indexing the numpy reshaped_actions
-            max_q_indices_np = max_q_indices.cpu().numpy()
-            
-            selected_action = reshaped_actions[max_q_indices_np, np_arange, :]
+            stochastic_index_np = max_q_indices.cpu().numpy()
+            selected_action = reshaped_actions[stochastic_index_np, np_arange, :]
             selected_embedded_action = reshaped_embedded_actions[max_q_indices, self.torch_aranges[batch_size], :]
 
         return selected_action, selected_embedded_action
