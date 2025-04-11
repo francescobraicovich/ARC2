@@ -165,8 +165,6 @@ class WolpertingerAgent(DDPG):
             # This returns a tensor of shape (batch_size, num_actions).
             index = torch.topk(q_probabilities, k=num_actions, dim=1).indices
 
-        
-
         # Convert the 'actions' array to a tensor for consistent indexing.
         actions_tensor = to_tensor(actions, device=self.device, dtype=torch.int64)
 
@@ -340,6 +338,14 @@ class WolpertingerAgent(DDPG):
                 next_q = next_q1
             next_q = next_q.squeeze(1) # B
 
+            # if there is at least a terminal state
+            """
+            if terminal_batch.sum() > 0:
+                print(f'Average reward: {reward_batch.mean()}')
+                print(f'Average reward terminal: {reward_batch[terminal_batch].mean()}')
+                print(f'Average reward non-terminal: {reward_batch[~terminal_batch].mean()}')
+                print('')
+            """
             # Build the target Q-value
             target_q = reward_batch + self.gamma * (1 - terminal_batch.float()) * next_q
             #print(f"target_q: {target_q}")
@@ -378,22 +384,24 @@ class WolpertingerAgent(DDPG):
             # Actor update
             self.actor_optim.zero_grad()
             proto_embedded_action_batch = self.actor(x_t_batch)
-            proto_embedded_action_batch = proto_embedded_action_batch.squeeze(1)
-            x_t_batch = x_t_batch.squeeze(1)
+            q_actor = self.critic1(x_t_batch, proto_embedded_action_batch)
+
+            #proto_embedded_action_batch = proto_embedded_action_batch.squeeze(1)
+            #x_t_batch = x_t_batch.squeeze(1)
             #print('Before wolp action')
             #print(f'proto_embedded_action_batch shape: {proto_embedded_action_batch.shape}')
             #print(f'x_t_batch shape: {x_t_batch.shape}')
             # Get the Q-value for the actor's action
             # Wolpertinger: find best discrete neighbor
-            wolp_action_batch, wolp_embedded_action_batch = self.wolp_action(
-                x_t_batch, proto_embedded_action_batch, num_actions=1
-            )
+            #wolp_action_batch, wolp_embedded_action_batch = self.wolp_action(
+            #    x_t_batch, proto_embedded_action_batch, num_actions=1
+            #)
             #print('Before critic')
-            x_t_batch = x_t_batch.unsqueeze(1) # B, 1, embedding_dim for the k-nearest neighbors dimension
+            #x_t_batch = x_t_batch.unsqueeze(1) # B, 1, embedding_dim for the k-nearest neighbors dimension
             #print(f'wolp_embedded_action_batch shape: {wolp_embedded_action_batch.shape}')
             #print(f'x_t_batch shape: {x_t_batch.shape}')
 
-            q_actor = self.critic1(x_t_batch, wolp_embedded_action_batch)
+            #q_actor = self.critic1(x_t_batch, wolp_embedded_action_batch)
             
             # Compute the policy loss as the negative Q-value
             policy_loss = - q_actor.mean()
