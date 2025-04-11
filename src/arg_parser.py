@@ -92,7 +92,7 @@ def init_parser(alg):
         parser.add_argument('--rmsize', default=100000, type=int, help='Replay memory size')
 
         # Policy Update Settings
-        parser.add_argument('--gamma', type=float, default=0.2, metavar='G', help='Discount factor for rewards (default: 0.99)')
+        parser.add_argument('--gamma', type=float, default=0.7, metavar='G', help='Discount factor for rewards (default: 0.99)')
         parser.add_argument('--policy-noise', default=0, type=float, help='Noise added to target policy during critic update')
         parser.add_argument('--noise-clip', default=0.25, type=float, help='Range to clip target policy noise')
         parser.add_argument('--policy-delay', default=2, type=int, help='Delay policy updates')
