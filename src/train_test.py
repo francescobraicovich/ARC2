@@ -132,7 +132,6 @@ def train(
                     max_episode_length=max_episode_length,
                     logger=logger
                 )
-                assert False
                 # Resumes training from the same agent state (no reloading needed)
 
         # Save model periodically
