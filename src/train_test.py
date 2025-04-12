@@ -59,8 +59,10 @@ def train(
 
         # Step environment
         (next_state, next_shape), r_t, done, truncated, info = train_env.step(action)
+        # assert the reward is not nan
         next_state = to_tensor(next_state, device=agent.device, requires_grad=True)
         next_shape = to_tensor(next_shape, device=agent.device, requires_grad=True)
+        
         next_x_t = state_encoder.encode(next_state, next_shape)
 
         total_actions_taken += 1
@@ -76,6 +78,8 @@ def train(
         # Check if we hit the max steps in an episode
         if max_episode_length and episode_steps >= max_episode_length - 1 or done:
             truncated = True
+
+        #print('Reward:', r_t, ' Truncated:', truncated, ' Done:', done)
 
         # Observe and update policy
         action = torch.tensor(action, device=agent.device, dtype=torch.int64)

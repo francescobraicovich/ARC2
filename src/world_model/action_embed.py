@@ -82,7 +82,10 @@ class ActionEmbedding(nn.Module):
         """
         # append the 'action_embedding.pt' to the path
         path = path + '/action_embedding.pt'
-        self.embedding.weight.data.copy_(torch.load(path))
+        self.embedding.weight.data.copy_(
+        torch.load(path, map_location=torch.device('cpu'))
+        )
+        self.to(DEVICE)
 
     @property
     def num_parameters(self) -> int:

@@ -87,6 +87,15 @@ class WolpertingerAgent(DDPG):
         distances, actions, embedded_actions = self.action_space.search_point(
             proto_action, k=self.k_nearest_neighbors
         )
+        #print('')
+        #print(f'Proto action norm: {proto_action.norm()}')
+        #print(f'Proto action max: {proto_action.max()}')
+        #print(f'Rounded proto action: {proto_action}')
+#
+        #print(f'Maximum value in embedded actions: {embedded_actions.max()}')
+        #print(f'maximum value in all embedded actions: {self.action_space.embedding_gpu.max()}')
+        #print(f'Minimum distance: {distances.min()}')
+        #print(f'Maximum distance: {distances.max()}')
 
         # Convert the embedded actions into a tensor and move to the correct device.
         # 'requires_grad=True' allows gradients to be computed if needed.
@@ -130,10 +139,18 @@ class WolpertingerAgent(DDPG):
             else:
                 # Otherwise, simply use the Q-values from the first critic.
                 q_values = q1_values
-
+        #print('num positive Q-values:', (q_values > 0).sum().item())
         # Apply a softmax function to the Q-values along the k-nearest neighbor dimension.
         # This converts the Q-values into probabilities.
-        q_probabilities = torch.softmax(q_values, dim=1)
+        q_probabilities = torch.softmax(q_values*10, dim=1)
+
+        # log the entropy with wandb
+        if wandb.run is not None:
+            entropy = -torch.sum(q_probabilities * torch.log(q_probabilities + 1e-10), dim=1)
+            #print(f"entropy: {entropy}")
+            wandb.log({
+                "train/entropy": entropy.mean().item(),
+            })
 
         # Depending on the number of actions requested, choose the selection method.
         if type(num_actions) == type(None):
@@ -141,6 +158,8 @@ class WolpertingerAgent(DDPG):
             stochastic_index = torch.multinomial(q_probabilities, 1)
             # Remove the extra dimension to get a proper index tensor.
             stochastic_index = stochastic_index.squeeze(1)
+            #print(f"index: {stochastic_index}")
+            #print(f'Probability of the selected action: {q_probabilities[0, stochastic_index]}')
         else:
             # For multiple actions, select the indices corresponding to the highest probabilities.
             # This returns a tensor of shape (batch_size, num_actions).
@@ -295,11 +314,18 @@ class WolpertingerAgent(DDPG):
             # Wolpertinger: find best discrete neighbor
             #   (proto_embedded_action is a Tensor; if your search_point needs numpy,
             #   convert to numpy, do the search, then come back to Tensor.)
+            #print('\nUpdating policy')
+            #print('Before wolp action')
+            #print(f'next_proto_embedded_action_batch shape: {next_proto_embedded_action_batch.shape}')
+            #print(f'next_x_t_batch shape: {next_x_t_batch.shape}')
             wolp_action_batch, wolp_embedded_action_batch = self.wolp_action(
                 next_x_t_batch, next_proto_embedded_action_batch, num_actions=1
             )
 
             next_x_t_batch = next_x_t_batch.unsqueeze(1) # B, 1, embedding_dim for the k-nearest neighbors dimension
+            #print('Before critic')
+            #print(f'next_x_t_batch shape: {next_x_t_batch.shape}')
+            #print(f'wolp_embedded_action_batch shape: {wolp_embedded_action_batch.shape}')
 
             next_q1 = self.critic1_target(next_x_t_batch, wolp_embedded_action_batch)
             if self.double_critic:
@@ -312,6 +338,14 @@ class WolpertingerAgent(DDPG):
                 next_q = next_q1
             next_q = next_q.squeeze(1) # B
 
+            # if there is at least a terminal state
+            """
+            if terminal_batch.sum() > 0:
+                print(f'Average reward: {reward_batch.mean()}')
+                print(f'Average reward terminal: {reward_batch[terminal_batch].mean()}')
+                print(f'Average reward non-terminal: {reward_batch[~terminal_batch].mean()}')
+                print('')
+            """
             # Build the target Q-value
             target_q = reward_batch + self.gamma * (1 - terminal_batch.float()) * next_q
             #print(f"target_q: {target_q}")
@@ -351,6 +385,23 @@ class WolpertingerAgent(DDPG):
             self.actor_optim.zero_grad()
             proto_embedded_action_batch = self.actor(x_t_batch)
             q_actor = self.critic1(x_t_batch, proto_embedded_action_batch)
+
+            #proto_embedded_action_batch = proto_embedded_action_batch.squeeze(1)
+            #x_t_batch = x_t_batch.squeeze(1)
+            #print('Before wolp action')
+            #print(f'proto_embedded_action_batch shape: {proto_embedded_action_batch.shape}')
+            #print(f'x_t_batch shape: {x_t_batch.shape}')
+            # Get the Q-value for the actor's action
+            # Wolpertinger: find best discrete neighbor
+            #wolp_action_batch, wolp_embedded_action_batch = self.wolp_action(
+            #    x_t_batch, proto_embedded_action_batch, num_actions=1
+            #)
+            #print('Before critic')
+            #x_t_batch = x_t_batch.unsqueeze(1) # B, 1, embedding_dim for the k-nearest neighbors dimension
+            #print(f'wolp_embedded_action_batch shape: {wolp_embedded_action_batch.shape}')
+            #print(f'x_t_batch shape: {x_t_batch.shape}')
+
+            #q_actor = self.critic1(x_t_batch, wolp_embedded_action_batch)
             
             # Compute the policy loss as the negative Q-value
             policy_loss = - q_actor.mean()

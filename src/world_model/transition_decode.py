@@ -165,7 +165,12 @@ class ContextTransformer2D(nn.Module):
         """
         Load the model weights from a file.
         """
-        self.load_state_dict(torch.load(os.path.join(path, 'decoder.pt')))
+        self.load_state_dict(
+            torch.load(os.path.join(path, 'decoder.pt'), map_location=torch.device('cpu'))
+        )
+
+        # move the model to the correct device
+        self.to(DEVICE)
 
     @property
     def num_parameters(self):
