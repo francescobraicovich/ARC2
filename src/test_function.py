@@ -484,7 +484,7 @@ def test_pruning_strategy(
          - Evaluate Q-value using critic1
          - Combine with cumulative reward
        - Prune to keep top 3 paths
-    4. Apply best path to next example
+    4. Apply all top 3 paths to next example as starting points
     5. Repeat until all examples processed
     """
     # Get challenge data and count training examples
@@ -497,6 +497,7 @@ def test_pruning_strategy(
     current_paths = []  # List of (state, sequence, cumulative_reward) tuples
     best_sequence = None  # Best sequence found so far
     best_reward = float('-inf')  # Best reward achieved
+    top_sequences = []  # List to store top 3 sequences from pruning
     
     # Test on each training example
     for example_idx in range(num_training_examples):
@@ -508,23 +509,45 @@ def test_pruning_strategy(
         shape = to_tensor(shape, device=agent.device, requires_grad=False)
         x_t = state_encoder.encode(state, shape)
         
-        # If we have a best sequence from previous examples, try it first
-        if best_sequence:
-            logger.info(f"Trying best sequence from previous examples: {best_sequence}")
-            test_env.state = state
-            for action in best_sequence:
-                (next_state, next_shape), reward, done, truncated, info = test_env.step(action)
+        # If we have top sequences from previous examples, try each as starting point
+        if top_sequences:
+            logger.info(f"Trying {len(top_sequences)} sequences from previous examples as starting points")
+            starting_points = []
+            
+            for seq in top_sequences:
+                # Reset to initial state for this example
+                test_env.state = state
+                current_state = state
+                current_shape = shape
+                current_x_t = x_t
+                done = False
+                
+                # Apply the sequence
+                for action in seq:
+                    (next_state, next_shape), reward, done, truncated, info = test_env.step(action)
+                    if done:
+                        logger.info("Successfully solved with previous sequence!")
+                        best_sequence = seq
+                        best_reward = sum([r for _, r in info['rewards']])
+                        break
+                    current_state = next_state
+                    current_shape = next_shape
+                    current_x_t = state_encoder.encode(current_state, current_shape)
+                
                 if done:
-                    logger.info("Successfully solved with previous sequence!")
                     break
+                
+                # Add this as a starting point for tree building
+                starting_points.append((current_state, current_shape, current_x_t, seq, sum([r for _, r in info['rewards']])))
+            
             if done:
                 continue
-            # If sequence didn't work, start fresh with current state
-            state = next_state
-            shape = next_shape
-            x_t = state_encoder.encode(state, shape)
-        # Start new tree building
-        current_paths = [(state, shape, x_t, [], 0.0)]  # Start with initial state and empty sequence
+            
+            # Start tree building from each starting point
+            current_paths = starting_points
+        else:
+            # Start with initial state if no previous sequences
+            current_paths = [(state, shape, x_t, [], 0.0)]
         
         # Build tree up to depth n
         for depth in range(n_depth):
@@ -536,7 +559,7 @@ def test_pruning_strategy(
                 if path_reward < negative_reward_threshold:
                     continue
                 
-                # Get top 3 moves (placeholder - TO BE IMPLEMENTED)
+                # Get top 3 moves
                 top_actions, top_embedded_actions = agent.select_top_actions(path_x_t, num_actions=3)
                 
                 # Apply each action to create new branches
@@ -570,41 +593,44 @@ def test_pruning_strategy(
         # After building tree to depth n, evaluate and prune paths
         if not done and current_paths:
             scored_paths = []
-            for path_state, path_sequence, path_reward in current_paths:
+            for path_state, path_shape, path_x_t, path_sequence, path_reward in current_paths:
                 # Get single best action for end state
-                best_action, _ = agent.select_action(path_state, shape, decay_epsilon=False)
+                best_action, _ = agent.select_action(path_state, path_shape, decay_epsilon=False)
                 
                 # Get Q-value for this single best action using critic1
                 path_state_tensor = to_tensor(path_state, device=agent.device, requires_grad=False)
                 with torch.no_grad():
-                    next_q = agent.critic1((path_state_tensor, shape), to_tensor(best_action, device=agent.device, requires_grad=False)).item()
+                    next_q = agent.critic1((path_state_tensor, path_shape), to_tensor(best_action, device=agent.device, requires_grad=False)).item()
                 
                 # Combine cumulative reward with Q-value
                 combined_score = path_reward + 0.7 * next_q
-                scored_paths.append((path_state, path_sequence, path_reward, combined_score))
+                scored_paths.append((path_state, path_shape, path_x_t, path_sequence, path_reward, combined_score))
             
             # Sort paths by combined score and keep top 3
-            scored_paths.sort(key=lambda x: x[3], reverse=True)
-            current_paths = [(state, seq, rew) for state, seq, rew, _ in scored_paths[:3]]
+            scored_paths.sort(key=lambda x: x[5], reverse=True)
+            current_paths = [(state, shape, x_t, seq, rew) for state, shape, x_t, seq, rew, _ in scored_paths[:3]]
+            
+            # Store top 3 sequences for next example
+            top_sequences = [seq for _, _, _, seq, _, _ in scored_paths[:3]]
             
             # Update best sequence if we found a better one
-            if scored_paths and scored_paths[0][3] > best_reward:
-                best_sequence = scored_paths[0][1]
-                best_reward = scored_paths[0][3]
+            if scored_paths and scored_paths[0][5] > best_reward:
+                best_sequence = scored_paths[0][3]
+                best_reward = scored_paths[0][5]
             
-            logger.info(f"Top path scores: {[score for _, _, _, score in scored_paths[:3]]}")
+            logger.info(f"Top path scores: {[score for _, _, _, _, _, score in scored_paths[:3]]}")
         
         # Log results for this example
         logger.info(f"Example {example_idx + 1} results:")
         logger.info(f"Number of paths: {len(current_paths)}")
         if current_paths:
-            logger.info(f"Best path reward: {current_paths[0][2]:.2f}")
+            logger.info(f"Best path reward: {current_paths[0][4]:.2f}")
         
         # Log to wandb
         wandb.log({
             "pruning_test/example": example_idx,
             "pruning_test/num_paths": len(current_paths),
-            "pruning_test/best_reward": current_paths[0][2] if current_paths else float('-inf'),
+            "pruning_test/best_reward": current_paths[0][4] if current_paths else float('-inf'),
             "pruning_test/solved": done,
             "pruning_test/challenge_key": challenge_key
         })
