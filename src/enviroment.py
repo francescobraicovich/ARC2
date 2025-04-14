@@ -8,6 +8,7 @@ from utils.util import *
 import json
 from scipy.signal import correlate2d
 import copy
+import os
 
 def extract_states(previous_state, current_state,  target_state):
     """
@@ -80,7 +81,7 @@ def maximum_overlap_regions(array1, array2):
     return best_overlap1, best_overlap2, overlap_score
 
 class ARC_Env(gym.Env):
-    def __init__(self, path_to_challenges, action_space, dim=30, seed=None):
+    def __init__(self, path_to_challenges,path_to_solution, action_space, dim=30, seed=None, ):
         super(ARC_Env, self).__init__()
         
         # Set the seed
@@ -90,6 +91,8 @@ class ARC_Env(gym.Env):
         self.challenge_dictionary = json.load(
         open(path_to_challenges)
         )
+        
+        self.challenge_solutions = json.load(open(path_to_solution))
 
         self.dictionary_keys = list(self.challenge_dictionary.keys()) # list of keys in the dictionary
         self.num_challenges = len(self.challenge_dictionary) # number of challenges in the dictionary
@@ -321,7 +324,86 @@ class ARC_Env(gym.Env):
 
         return self.state, reward, done, truncated, self.info
 
-
+    def reset_overfit(self, challenge_key, use_test=False, example_index=None):
+        """
+        Resets the environment to a specific challenge.
+        
+        Args:
+            challenge_key: The specific challenge key to use
+            use_test: Whether to use the test example (True) or a training example (False)
+            example_index: If provided, use this specific training example index instead of random
+            challenges_path: Path to the challenges JSON file
+        """
+        
+        
+        
+        if challenge_key not in self.challenge_dictionary:
+            raise ValueError(f"Challenge key {challenge_key} not found in challenges file")
+        
+        # Get the challenge data
+        challenge = self.challenge_dictionary[challenge_key]
+        
+        
+        if use_test:
+            # Use the test example
+            challenge_data = challenge['test'][0]
+           
+        else:
+            # Use training examples
+            challenge_data = challenge['train']
+            if example_index is None:
+                # Get a random training example if no specific index provided
+                example_index = np.random.randint(0, len(challenge_data))
+            challenge_data = challenge_data[example_index]
+        
+        # Get input and output
+        input_grid = np.array(challenge_data['input'])
+        if use_test:
+            output_grid = np.array(self.challenge_solutions[challenge_key][0])
+            
+            
+        else:
+            output_grid = np.array(challenge_data['output'])
+            
+            
+        
+        # Get shapes
+        nrows, ncols = input_grid.shape
+        nrows_target, ncols_target = output_grid.shape
+        shape = np.zeros((2, 2))
+        shape[0, 0], shape[0, 1] = nrows, ncols
+        shape[1, 0], shape[1, 1] = nrows_target, ncols_target
+        
+        
+        # Pad the grids
+        training_grid = np.zeros(self.observation_shape, dtype=np.int16)
+        training_grid[:, :, 0] = pad_grid(input_grid)
+        training_grid[:, :, 1] = pad_grid(output_grid)
+        
+        # Reset environment state
+        self.new_states = deque()
+        self.infos = deque()
+        self.done = False
+        
+        # Create initial state and info
+        initial_state = (training_grid, shape)
+        info = {
+            'key': challenge_key,
+            'actions': [],
+            'action_strings': [],
+            'num_actions': 0,
+            'solved': False,
+            'is_test': use_test,
+            'example_index': example_index if not use_test else None
+        }
+        
+        # Update environment state
+        self.new_states.append(initial_state)
+        self.infos.append(info)
+        self.state = self.new_states.popleft()
+        self.info = self.infos.popleft()
+        
+        return self.state
 
 def shape_reward(self, previous_state_unpadded, current_state_unpadded, target_state):
     """
