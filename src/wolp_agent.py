@@ -178,10 +178,9 @@ class WolpertingerAgent(DDPG):
                 selected_action = torch.gather(actions_tensor, 1, index)
                 # Use the selected actions to retrieve the corresponding embedded actions.
                 selected_embedded_action = self.action_space.embedding_gpu[selected_action]
-        
 
         # Return the selected action indices and their corresponding embedded representations.
-        return selected_action, selected_embedded_action 
+        return selected_action, selected_embedded_action
 
 
     def select_action(self, x_t, decay_epsilon=True):
@@ -210,7 +209,7 @@ class WolpertingerAgent(DDPG):
         self.critic2.train()
         return wolp_action
     
-    def select_top_actions(self, x_t, decay_epsilon=True):
+    def select_top_actions(self, x_t, num_actions=3):
 
         # put networks in eval mode to avoid any training side effects
         self.actor.eval()
@@ -225,7 +224,7 @@ class WolpertingerAgent(DDPG):
         # Evaluate the top-k neighbors in the discrete space
         # TODO: Make this function output also the q-values of the actions
         with torch.no_grad():
-            wolp_actions, wolp_embedded_actions = self.wolp_action(x_t, proto_embedded_action)
+            wolp_actions, wolp_embedded_actions = self.wolp_action(x_t, proto_embedded_action, num_actions)
 
         # Switch back to training mode
         self.actor.train()
