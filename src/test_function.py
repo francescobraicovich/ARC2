@@ -10,14 +10,13 @@ from collections import deque
 
 
 
-def overfit_train(
-    train_env,
+def overfit_evaluate(
+    eval_env,
     agent,
     challenge_key,
     max_episode,
     max_actions,
     warmup,
-    save_model_dir,
     max_episode_length,
     state_encoder,
     logger,
@@ -132,13 +131,11 @@ def overfit_train(
             episode += 1
 
         # Save model periodically
-        if step > warmup and episode > 0 and (episode % save_per_epochs == 0):
-            agent.save_model(save_model_dir)
-            logger.info(f"### Model saved to {save_model_dir} at episode {episode} ###")
+        
 
     logger.info(f"Training completed on challenge {challenge_key}")
 
-def overfit_evaluate(
+def overfit_evaluate2(
     agent,
     eval_env,
     challenge_key,
@@ -560,7 +557,7 @@ def test_pruning_strategy(
                     continue
                 
                 # Get top 3 moves
-                top_actions, top_embedded_actions = agent.select_top_actions(path_x_t, num_actions=3)
+                top_actions, top_embedded_actions, q_values = agent.select_top_actions(path_x_t, num_actions=3)
                 
                 # Apply each action to create new branches
                 for action in top_actions:
@@ -578,6 +575,7 @@ def test_pruning_strategy(
                         next_state,
                         next_shape,
                         next_x_t,
+                        
                         path_sequence + [action],
                         path_reward + reward
                     ))
