@@ -91,7 +91,7 @@ class WolpertingerAgent(DDPG):
         #print(f'Proto action norm: {proto_action.norm()}')
         #print(f'Proto action max: {proto_action.max()}')
         #print(f'Rounded proto action: {proto_action}')
-#
+
         #print(f'Maximum value in embedded actions: {embedded_actions.max()}')
         #print(f'maximum value in all embedded actions: {self.action_space.embedding_gpu.max()}')
         #print(f'Minimum distance: {distances.min()}')
@@ -174,6 +174,7 @@ class WolpertingerAgent(DDPG):
                 # For a single action, convert the index to a Python integer.
                 idx = stochastic_index.item()
                 selected_action = int(actions_tensor[0, idx])
+                selected_q_value = q_values[0, idx]
                 selected_embedded_action = self.action_space.embedding_gpu[selected_action]
             else:
                 # For multiple actions when batch size is 1:
@@ -181,6 +182,7 @@ class WolpertingerAgent(DDPG):
                 idx = index.squeeze(0)
                 # Gather the selected actions from the actions tensor.
                 selected_action = actions_tensor[0, idx]
+                selected_q_value = q_values[0, idx]
                 # Use the selected action indices to retrieve the corresponding embedded actions.
                 selected_embedded_action = self.action_space.embedding_gpu[selected_action]
         else:
@@ -189,17 +191,20 @@ class WolpertingerAgent(DDPG):
                 # For each batch element, use the sampled index to get the corresponding action.
                 batch_indices = torch.arange(batch_size, device=self.device)
                 selected_action = actions_tensor[batch_indices, stochastic_index]
+                selected_q_value = q_values[batch_indices, stochastic_index]
                 # Retrieve the corresponding embedded actions for each selected action.
                 selected_embedded_action = self.action_space.embedding_gpu[selected_action]
             else:
                 # For multiple actions, gather the top actions for each batch element.
                 # 'index' has shape (batch_size, num_actions).
+ 
                 selected_action = torch.gather(actions_tensor, 1, index)
+                selected_q_value = torch.gather(q_values, 1, index)
                 # Use the selected actions to retrieve the corresponding embedded actions.
                 selected_embedded_action = self.action_space.embedding_gpu[selected_action]
 
         # Return the selected action indices and their corresponding embedded representations.
-        return selected_action, selected_embedded_action
+        return selected_action, selected_embedded_action, selected_q_value
 
 
     def select_action(self, x_t, decay_epsilon=True):
@@ -220,7 +225,7 @@ class WolpertingerAgent(DDPG):
 
         # Evaluate the top-k neighbors in the discrete space
         with torch.no_grad():
-            wolp_action, wolp_embedded_action = self.wolp_action(x_t, proto_embedded_action)
+            wolp_action, wolp_embedded_action, q_value = self.wolp_action(x_t, proto_embedded_action)
 
         # Switch back to training mode
         self.actor.train()
@@ -243,13 +248,13 @@ class WolpertingerAgent(DDPG):
         # Evaluate the top-k neighbors in the discrete space
         # TODO: Make this function output also the q-values of the actions
         with torch.no_grad():
-            wolp_actions, wolp_embedded_actions = self.wolp_action(x_t, proto_embedded_action, num_actions)
+            wolp_actions, wolp_embedded_actions, q_values = self.wolp_action(x_t, proto_embedded_action, num_actions)
 
         # Switch back to training mode
         self.actor.train()
         self.critic1.train()
         self.critic2.train()
-        return wolp_actions, wolp_embedded_actions
+        return wolp_actions, wolp_embedded_actions, q_values
 
 
     def random_action(self):
@@ -317,7 +322,7 @@ class WolpertingerAgent(DDPG):
             #print('Before wolp action')
             #print(f'next_proto_embedded_action_batch shape: {next_proto_embedded_action_batch.shape}')
             #print(f'next_x_t_batch shape: {next_x_t_batch.shape}')
-            wolp_action_batch, wolp_embedded_action_batch = self.wolp_action(
+            wolp_action_batch, wolp_embedded_action_batch, _ = self.wolp_action(
                 next_x_t_batch, next_proto_embedded_action_batch, num_actions=1
             )
 
