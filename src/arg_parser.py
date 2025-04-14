@@ -77,8 +77,8 @@ def init_parser(alg):
         parser.add_argument('--mode', default='train', type=str, help='Mode: train/test')
         parser.add_argument('--id', default='0', type=str, help='Experiment ID')
         parser.add_argument('--load', default=False, metavar='L', help='Load a trained model')
-        parser.add_argument('--load-model-dir', default='ARC-run19', metavar='LMD', help='Folder to load trained models from')
-        parser.add_argument('--eval-interval', default=200, type=int, help='Evaluate model every X episodes')
+        parser.add_argument('--load-model-dir', default='ARC-run16', metavar='LMD', help='Folder to load trained models from')
+        parser.add_argument('--eval-interval', default=250, type=int, help='Evaluate model every X episodes')
         parser.add_argument('--eval-episodes', default=25, type=int, help='Number of episodes to evaluate')
         parser.add_argument('--plot_interval', default=5,type=int, help='Plot every X epochs')
 
@@ -87,12 +87,12 @@ def init_parser(alg):
         parser.add_argument('--max-episode', type=int, default=500000, help='Maximum number of episodes')
         parser.add_argument('--max-actions', default=1e9, type=int, help='# max actions')
         parser.add_argument('--test-episode', type=int, default=20, help='Maximum testing episodes')
-        parser.add_argument('--warmup', default=190, type=int, help='Time without training but only filling the replay memory')
+        parser.add_argument('--warmup', default=500, type=int, help='Time without training but only filling the replay memory')
         parser.add_argument('--bsize', default=32, type=int, help='Minibatch size')
         parser.add_argument('--rmsize', default=100000, type=int, help='Replay memory size')
 
         # Policy Update Settings
-        parser.add_argument('--gamma', type=float, default=0.2, metavar='G', help='Discount factor for rewards (default: 0.99)')
+        parser.add_argument('--gamma', type=float, default=0.7, metavar='G', help='Discount factor for rewards (default: 0.99)')
         parser.add_argument('--policy-noise', default=0, type=float, help='Noise added to target policy during critic update')
         parser.add_argument('--noise-clip', default=0.25, type=float, help='Range to clip target policy noise')
         parser.add_argument('--policy-delay', default=2, type=int, help='Delay policy updates')
@@ -108,9 +108,9 @@ def init_parser(alg):
         parser.add_argument('--h2_dim_critic', default=1024, type=int, help='Hidden units in the second fully connected layer')
 
         # World Model Embedding
-        parser.add_argument('--world_model_pre_train', default=True, type=bool, help='Pre-train world model before the RL loop')
+        parser.add_argument('--world_model_pre_train', default=False, type=bool, help='Pre-train world model before the RL loop')
         parser.add_argument('--load-memory-dir', default='ARC-run5', metavar='LMD', help='Folder to load memory from')
-        parser.add_argument('--load_world_model_weights', default=False, type=bool, help='Load pre-trained world model from load-model-dir folder')
+        parser.add_argument('--load_world_model_weights', default=True, type=bool, help='Load pre-trained world model from load-model-dir folder')
         parser.add_argument('--world_model_pre_train_epochs', default=15, type=int, help='Number of epochs for pre-training world model')
         parser.add_argument('--world_model_pre_train_batch_size', default=32, type=int, help='Batch size for pre-training world model')
         parser.add_argument('--world_model_pre_train_lr', default=1e-4, type=float, help='Learning rate for pre-training world model')
@@ -144,11 +144,11 @@ def init_parser(alg):
         # Miscellaneous
         parser.add_argument('--init_w', default=0.003, type=float, help='Initial weight')
         parser.add_argument('--seed', default=-1, type=int, help='Random seed')
-        parser.add_argument('--save_per_epochs', default=15, type=int, help='Save model every X epochs')
+        parser.add_argument('--save_per_epochs', default=200, type=int, help='Save model every X epochs')
         parser.add_argument('--save_memory_at_steps', default=False, type=int, help='Save memory every X epochs')
         parser.add_argument('--memory_chunk_size', default=False, type=int, help='Chunk size for memory')
-        parser.add_argument('--k_neighbors', default=150, type=int, help='Number of neighbors to consider')
-        parser.add_argument('--wandb_log', default=False, type=bool, help='Log to wandb')
+        parser.add_argument('--k_neighbors', default=75, type=int, help='Number of neighbors to consider')
+        parser.add_argument('--wandb_log', default=True, type=bool, help='Log to wandb')
         
         # Apply preset defaults if provided
         if parser.parse_args().generate_world_model_data:

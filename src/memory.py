@@ -178,11 +178,14 @@ class SequentialMemory(Memory):
             # previous step was terminal (that would cross the boundary).
             terminal0 = self.terminals[idx - 1] if (idx >= 1) else False
 
+            
+            """
             while terminal0:
                 # Resample a new index
                 idx = sample_batch_indexes(1, self.nb_entries, 1)[0]
                 terminal0 = self.terminals[idx - 1] if (idx >= 1) else False
-
+            """
+            
             # Now gather transition info
             state0   = self.observations[idx - 1]
             shape0   = self.shapes[idx - 1]
@@ -197,7 +200,7 @@ class SequentialMemory(Memory):
             x_t1 = self.embedded_observations[idx]
 
             exp = Experience(state0=state0,  state_embedded_0=x_t0, action=action, reward=reward,
-                             state1=state1, state_embedded_1=x_t1, terminal1=terminal1,
+                             state1=state1, state_embedded_1=x_t1, terminal1=terminal0,
                              shape0=shape0, shape1=shape1)
             experiences.append(exp)
 

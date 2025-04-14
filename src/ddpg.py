@@ -164,6 +164,16 @@ class DDPG(object):
         assert type(action) == torch.Tensor, "Action should be a torch tensor, got {}".format(type(action))
         assert type(r_t) == np.float64, "Reward should be a float, got {}".format(type(r_t))
 
+        # assert there are no NaN in all the tensors
+        assert torch.all(torch.isfinite(state)), "State contains NaN values"
+        assert torch.all(torch.isfinite(shape)), "Shape contains NaN values"
+        assert torch.all(torch.isfinite(x_t)), "x_t contains NaN values"
+        assert torch.all(torch.isfinite(action)), "Action contains NaN values"
+        assert torch.all(torch.isfinite(num_actions)), "Num actions contains NaN values"
+        
+        # use numpy to check the reward is not NaN
+        assert not np.isnan(r_t), "Reward contains NaN values"
+
         # Assume state and shape are torch tensors
         current_state = state[:, :, 0]
         target_state = state[:, :, 1]

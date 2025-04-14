@@ -250,7 +250,9 @@ class EncoderTransformer(nn.Module):
         """
         Load the embedding weights from a file.
         """
-        self.load_state_dict(torch.load(os.path.join(path, 'encoder.pt')))
+        self.load_state_dict(torch.load(os.path.join(path, 'encoder.pt'),  map_location=torch.device('cpu')))
+
+        self.to(DEVICE)
 
     @property
     def num_parameters(self):
