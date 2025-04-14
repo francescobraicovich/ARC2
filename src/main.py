@@ -127,7 +127,6 @@ def main():
     # 6. Create training and evaluation environments
     train_env = ARC_Env(
         path_to_challenges='data/RAW_DATA_DIR/arc-prize-2024/arc-agi_training_challenges.json',
-        #path_to_challenges='data/RAW_DATA_DIR/arc-prize-2024/arc-agi_evaluation_challenges.json',
         action_space=action_space
     )
 
@@ -143,9 +142,6 @@ def main():
         train_env.seed(args.seed)
         eval_env.seed(args.seed)
 
-    # 8. Define state and action dimensions
-    nb_states = 1805
-
     # 9. Create the agent
     agent_args = {
         'nb_actions': num_filtered_actions,
@@ -155,12 +151,11 @@ def main():
     }
     agent = WolpertingerAgent(**agent_args)
 
-    # 10. Optionally load model weights
+    # Optionally load model weights
     if args.load:
         agent.load_weights(args.load_model_dir)
 
 
-    # 14. Run training or (separate) test
     if args.mode == 'train':
         logger.info('Starting Training...')
         train(
@@ -185,12 +180,16 @@ def main():
     elif args.mode == 'test':
         logger.info('Starting Testing...')
         # You could reuse the 'evaluate' or a separate 'test(...)' function
-        from train_test import evaluate
-        evaluate(
+        from test_function import overfit_evaluate
+        overfit_evaluate(
             agent=agent,
             eval_env=eval_env,
-            episodes=args.test_episode,
-            max_episode_length=args.max_episode_length,
+            challenge_key='00576224',
+            max_episodes=50,
+            max_actions=2000,
+            warmpup=150,
+            max_episode_length=50,
+            encoder = state_encoder,
             logger=logger
         )
     else:
