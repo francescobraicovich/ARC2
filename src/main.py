@@ -127,14 +127,17 @@ def main():
     # 6. Create training and evaluation environments
     train_env = ARC_Env(
         path_to_challenges='data/RAW_DATA_DIR/arc-prize-2024/arc-agi_training_challenges.json',
+        path_to_solution= 'data/RAW_DATA_DIR/arc-prize-2024/arc-agi_training_solutions.json',
         action_space=action_space
     )
 
     eval_env = ARC_Env(
         path_to_challenges='data/RAW_DATA_DIR/arc-prize-2024/arc-agi_evaluation_challenges.json',
+        path_to_solution='data/RAW_DATA_DIR/arc-prize-2024/arc-agi_evaluation_solutions.json',
         action_space=action_space
     )
 
+    
     # 7. Set seeds
     if args.seed > 0:
         np.random.seed(args.seed)
@@ -180,17 +183,30 @@ def main():
     elif args.mode == 'test':
         logger.info('Starting Testing...')
         # You could reuse the 'evaluate' or a separate 'test(...)' function
+        """
         from test_function import overfit_evaluate
         overfit_evaluate(
             agent=agent,
             eval_env=eval_env,
             challenge_key='00576224',
-            max_episodes=50,
+            max_episode=50,
             max_actions=2000,
-            warmpup=150,
+            warmup=150,
             max_episode_length=50,
-            encoder = state_encoder,
+            state_encoder = state_encoder,
             logger=logger
+        )
+      """
+        
+        from test_function import test_base_strategy
+        test_base_strategy(
+            agent=agent,
+            test_env=eval_env,
+            challenge_key='00576224',
+            max_episode_length=args.max_episode_length,
+            logger=logger,
+            state_encoder=state_encoder,
+            negative_streak_threshold=3
         )
     else:
         raise RuntimeError(f'Undefined mode {args.mode}')
